@@ -1,0 +1,234 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { listInstalledPlugins, ensurePluginsBooted, pluginOptions } from '../../lib/plugins/registry';
+import { listHooks } from '../../lib/plugins/hooks';
+
+export const prerender = false;
+
+await ensurePluginsBooted();
+const plugins = listInstalledPlugins();
+const hooks = listHooks();
+const activeCount = plugins.filter((plugin) => plugin.active).length;
+
+const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
+---
+
+<CmsLayout title="افزونه‌ها" subtitle={`${activeCount} افزونهٔ فعال از ${plugins.length} افزونهٔ نصب‌شده`}>
+	<Fragment slot="actions">
+		<a class="btn btn--sm" href="#plugin-contract">ساخت افزونه</a>
+	</Fragment>
+
+	{
+		plugins.length === 0 ? (
+			<section class="card">
+				<div class="empty">
+					<span class="empty__icon">
+						<Icon name="layers" size={20} />
+					</span>
+					<span class="empty__title">هیچ افزونه‌ای نصب نشده است</span>
+					<span>
+						هر افزونه یک پوشه در <code class="mono">plugins/</code> است که یک فایل{' '}
+						<code class="mono">plugin.json</code> و یک <code class="mono">index.ts</code> دارد.
+					</span>
+				</div>
+			</section>
+		) : (
+			<div class="stack">
+				{plugins.map((plugin) => {
+					const settings = plugin.manifest.settings ?? [];
+					const options = pluginOptions(plugin.id);
+					const usedHooks = hooksFor(plugin.id);
+
+					return (
+						<section class="card">
+							<div class="card__head">
+								<div>
+									<h2 class="card__title">
+										{plugin.manifest.name}
+										<span class="badge badge--neutral num" style="margin-inline-start:6px">
+											{plugin.manifest.version}
+										</span>
+										<span
+											class:list={[
+												'badge',
+												plugin.active ? 'badge--success' : 'badge--neutral',
+											]}
+											style="margin-inline-start:4px"
+										>
+											{plugin.active ? 'فعال' : 'غیرفعال'}
+										</span>
+									</h2>
+									<p class="card__hint">{plugin.manifest.description}</p>
+								</div>
+								<form method="post" action="/cms/api/plugins">
+									<input type="hidden" name="pluginId" value={plugin.id} />
+									<input
+										type="hidden"
+										name="action"
+										value={plugin.active ? 'deactivate' : 'activate'}
+									/>
+									<button
+										class:list={['btn', 'btn--sm', plugin.active ? '' : 'btn--primary']}
+										type="submit"
+									>
+										{plugin.active ? 'غیرفعال‌کردن' : 'فعال‌کردن'}
+									</button>
+								</form>
+							</div>
+
+							<div class="card__body stack" style="gap:12px">
+								{plugin.error && (
+									<div class="alert alert--error" role="alert">
+										<Icon name="alert" size={16} />
+										<span>{plugin.error}</span>
+									</div>
+								)}
+
+								<dl class="dl">
+									{plugin.manifest.author && (
+										<div class="dl__row">
+											<dt>نویسنده</dt>
+											<dd>{plugin.manifest.author}</dd>
+										</div>
+									)}
+									<div class="dl__row">
+										<dt>مجوز</dt>
+										<dd class="ltr">{plugin.manifest.license ?? 'MIT'}</dd>
+									</div>
+									<div class="dl__row">
+										<dt>پوشه</dt>
+										<dd class="mono ltr">plugins/{plugin.id}</dd>
+									</div>
+									<div class="dl__row">
+										<dt>قلاب‌ها</dt>
+										<dd>
+											{usedHooks.length ? (
+												<span class="tag-list">
+													{usedHooks.map((entry) => (
+														<span class="badge badge--neutral mono">{entry.hook}</span>
+													))}
+												</span>
+											) : (
+												<span class="hint">
+													{plugin.active
+														? 'این افزونه قلابی ثبت نکرده است.'
+														: 'برای دیدن قلاب‌ها، افزونه را فعال کنید.'}
+												</span>
+											)}
+										</dd>
+									</div>
+								</dl>
+
+								{plugin.active && settings.length > 0 && (
+									<form method="post" action="/cms/api/plugins">
+										<input type="hidden" name="pluginId" value={plugin.id} />
+										<input type="hidden" name="action" value="save-options" />
+
+										<div class="stack" style="gap:10px">
+											{settings.map((setting) =>
+												setting.type === 'switch' ? (
+													<label class="switch-row" style="border:1px solid var(--line);border-radius:5px">
+														<span class="switch-row__text">
+															<span>{setting.label}</span>
+															{setting.help && <span class="hint">{setting.help}</span>}
+														</span>
+														<span class="switch">
+															<input type="hidden" name={`opt_${setting.key}`} value="false" />
+															<input
+																type="checkbox"
+																name={`opt_${setting.key}`}
+																value="true"
+																checked={Boolean(
+																	options[setting.key] ?? setting.default ?? false,
+																)}
+															/>
+															<span class="switch__track" />
+														</span>
+													</label>
+												) : (
+													<div class="field">
+														<label class="label" for={`opt-${plugin.id}-${setting.key}`}>
+															{setting.label}
+														</label>
+														<input
+															class="input"
+															id={`opt-${plugin.id}-${setting.key}`}
+															name={`opt_${setting.key}`}
+															value={String(options[setting.key] ?? setting.default ?? '')}
+															placeholder={setting.placeholder ?? ''}
+														/>
+														{setting.help && <span class="hint">{setting.help}</span>}
+													</div>
+												),
+											)}
+
+											<div class="row">
+												<button class="btn btn--sm btn--primary" type="submit">
+													ذخیرهٔ تنظیمات
+												</button>
+											</div>
+										</div>
+									</form>
+								)}
+							</div>
+						</section>
+					);
+				})}
+			</div>
+		)
+	}
+
+	<section class="card" id="plugin-contract">
+		<div class="card__head">
+			<div>
+				<h2 class="card__title">ساخت افزونه</h2>
+				<p class="card__hint">
+					قرارداد همان الگوی آشنای WordPress است — هدر، قلاب و چرخهٔ عمر — بدون PHP.
+				</p>
+			</div>
+		</div>
+		<div class="card__body stack" style="gap:12px">
+			<ol style="margin:0;padding-inline-start:18px;display:grid;gap:4px;font-size:12.5px">
+				<li>
+					پوشهٔ <code class="mono">plugins/&lt;id&gt;/</code> را بسازید؛ شناسه فقط حروف کوچک،
+					عدد و خط تیره.
+				</li>
+				<li>
+					<code class="mono">plugin.json</code> را با نام، نسخه، توضیح، مجوز و فهرست قلاب‌ها
+					بنویسید.
+				</li>
+				<li>
+					در <code class="mono">index.ts</code> تابع <code class="mono">register(api)</code> را
+					صادر کنید و با <code class="mono">api.addFilter</code> یا{' '}
+					<code class="mono">api.addAction</code> به قلاب‌ها وصل شوید.
+				</li>
+				<li>افزونه را از همین صفحه فعال کنید؛ پنل آن را در فهرست نصب‌شده‌ها نشان می‌دهد.</li>
+			</ol>
+
+			<pre class="code-block ltr" dir="ltr"><code>{`// plugins/hello/plugin.json
+{
+  "name": "سلام دنیا",
+  "version": "1.0.0",
+  "description": "یک افزونهٔ نمونه.",
+  "license": "MIT",
+  "hooks": ["site.footer"]
+}
+
+// plugins/hello/index.ts
+import type { PluginApi } from '../../src/lib/plugins/types';
+
+export function register(api: PluginApi) {
+  api.addFilter('site.footer', (value) =>
+    \`\${String(value)} — ساخته‌شده با افزونهٔ «سلام دنیا»\`
+  );
+}`}</code></pre>
+
+			<p class="hint">
+				قلاب‌های موجود: <code class="mono">site.head</code>،{' '}
+				<code class="mono">site.footer</code>، <code class="mono">cms.dashboard.widgets</code>.
+				هر افزونه فقط API را می‌بیند و به فایل‌ها دسترسی مستقیم ندارد.
+			</p>
+		</div>
+	</section>
+</CmsLayout>

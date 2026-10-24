@@ -11,7 +11,17 @@ export interface Crumb {
 	href?: string;
 }
 
-type IconName = 'dashboard' | 'posts' | 'media' | 'settings' | 'language' | 'box' | 'receipt' | 'users' | 'ticket';
+type IconName =
+	| 'dashboard'
+	| 'posts'
+	| 'media'
+	| 'settings'
+	| 'language'
+	| 'box'
+	| 'receipt'
+	| 'users'
+	| 'ticket'
+	| 'layers';
 
 interface NavItem {
 	href: string;
@@ -50,6 +60,9 @@ const flashMap: Record<string, { tone: 'success' | 'error' | 'info'; text: strin
 	'settings-saved': { tone: 'success', text: 'تنظیمات سایت به‌روزرسانی شد.' },
 	'shipped': { tone: 'success', text: 'وضعیت سفارش به‌روزرسانی شد.' },
 	'status-updated': { tone: 'success', text: 'وضعیت با موفقیت تغییر کرد.' },
+	'plugin-activated': { tone: 'success', text: 'افزونه فعال شد و قلاب‌هایش ثبت شدند.' },
+	'plugin-deactivated': { tone: 'success', text: 'افزونه غیرفعال شد و قلاب‌هایش برداشته شدند.' },
+	'plugin-options-saved': { tone: 'success', text: 'تنظیمات افزونه ذخیره شد.' },
 };
 
 const flashKey = Astro.url.searchParams.get('flash') ?? '';
@@ -124,6 +137,12 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 				match: /^\/cms\/settings/,
 			},
 			{
+				href: '/cms/plugins',
+				label: 'افزونه‌ها',
+				icon: 'layers' as const,
+				match: /^\/cms\/plugins/,
+			},
+			{
 				href: '/cms/language',
 				label: 'زبان و نمایش',
 				icon: 'language' as const,
@@ -146,7 +165,7 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="color-scheme" content="light" />
-		<meta name="theme-color" content="#12162a" />
+		<meta name="theme-color" content="#1b1f24" />
 		<meta name="robots" content="noindex, nofollow" />
 		<title>{title} | پنل مدیریت {settings.siteTitle}</title>
 		<meta name="description" content="پنل مدیریت محتوای فارسی نووکس‌کد — راست‌به‌چپ." />
@@ -294,10 +313,8 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 						</main>
 
 						<footer class="panel-footer">
-							<span>
-								پنل مدیریت {settings.siteTitle} — نسخهٔ ۲٫۰ — گزارش‌ها به وقت {timezoneLabel}
-							</span>
-							<span class="ltr">Novex Admin · fa-IR · RTL</span>
+							<span>پنل مدیریت {settings.siteTitle}</span>
+							<span>گزارش‌ها به وقت {timezoneLabel}</span>
 						</footer>
 					</div>
 				</div>

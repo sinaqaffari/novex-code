@@ -1,0 +1,27 @@
+{
+	"name": "سئوی صفحات عمومی",
+	"version": "1.0.0",
+	"description": "تگ کنونیکال، Open Graph و دادهٔ ساختاریافتهٔ JSON-LD را به سر صفحه‌های عمومی اضافه می‌کند.",
+	"author": "تیم نووکس",
+	"authorUri": "https://example.com",
+	"pluginUri": "https://example.com/plugins/seo-meta",
+	"license": "MIT",
+	"requires": "2.0.0",
+	"hooks": ["site.head"],
+	"settings": [
+		{
+			"key": "twitterHandle",
+			"label": "نام کاربری شبکهٔ اجتماعی",
+			"type": "text",
+			"placeholder": "@novex",
+			"help": "در تگ twitter:site استفاده می‌شود. با یا بدون @."
+		},
+		{
+			"key": "enableJsonLd",
+			"label": "افزودن دادهٔ ساختاریافته (JSON-LD)",
+			"type": "switch",
+			"default": true,
+			"help": "برای نوشته‌ها، schema از نوع BlogPosting ساخته می‌شود."
+		}
+	]
+}

@@ -55,9 +55,6 @@ const totalItems = (order: (typeof result.items)[number]) =>
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">در انتظار پرداخت</span>
-				<span class="kpi__icon" style="background:var(--amber-soft);color:var(--amber)">
-					<Icon name="clock" size={16} />
-				</span>
 			</div>
 			<strong class="kpi__value num">{faNumber(result.counts.pending)}</strong>
 			<span class="kpi__foot">نیازمند بررسی</span>
@@ -65,7 +62,6 @@ const totalItems = (order: (typeof result.items)[number]) =>
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">در حال آماده‌سازی</span>
-				<span class="kpi__icon"><Icon name="layers" size={16} /></span>
 			</div>
 			<strong class="kpi__value num">{faNumber(result.counts.processing)}</strong>
 			<span class="kpi__foot">آمادهٔ بسته‌بندی</span>
@@ -73,9 +69,6 @@ const totalItems = (order: (typeof result.items)[number]) =>
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">ارسال‌شده</span>
-				<span class="kpi__icon" style="background:var(--brand-soft);color:var(--brand-ink)">
-					<Icon name="trendUp" size={16} />
-				</span>
 			</div>
 			<strong class="kpi__value num">{faNumber(result.counts.shipped)}</strong>
 			<span class="kpi__foot">در مسیر مشتری</span>
@@ -83,9 +76,6 @@ const totalItems = (order: (typeof result.items)[number]) =>
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">تحویل‌شده</span>
-				<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
-					<Icon name="check" size={16} />
-				</span>
 			</div>
 			<strong class="kpi__value num">{faNumber(result.counts.delivered)}</strong>
 			<span class="kpi__foot">تکمیل‌شده</span>

@@ -23,7 +23,6 @@ const repeat = customers.filter((customer) => customer.ordersCount > 1).length;
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">کل مشتریان</span>
-				<span class="kpi__icon"><Icon name="users" size={16} /></span>
 			</div>
 			<strong class="kpi__value num">{faNumber(customers.length)}</strong>
 			<span class="kpi__foot">ثبت‌شده در فروشگاه</span>
@@ -31,9 +30,6 @@ const repeat = customers.filter((customer) => customer.ordersCount > 1).length;
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">مشتری بازگشتی</span>
-				<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
-					<Icon name="refresh" size={16} />
-				</span>
 			</div>
 			<strong class="kpi__value num">{faNumber(repeat)}</strong>
 			<span class="kpi__foot">بیش از یک سفارش</span>
@@ -41,9 +37,6 @@ const repeat = customers.filter((customer) => customer.ordersCount > 1).length;
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">ارزش کل خرید</span>
-				<span class="kpi__icon" style="background:var(--brand-soft);color:var(--brand-ink)">
-					<Icon name="chart" size={16} />
-				</span>
 			</div>
 			<strong class="kpi__value num" style="font-size:1.2rem">
 				{faMoney(totalSpent, settings.currency)}
@@ -53,7 +46,6 @@ const repeat = customers.filter((customer) => customer.ordersCount > 1).length;
 		<article class="kpi">
 			<div class="kpi__head">
 				<span class="kpi__label">میانگین خرید</span>
-				<span class="kpi__icon"><Icon name="tag" size={16} /></span>
 			</div>
 			<strong class="kpi__value num" style="font-size:1.2rem">
 				{faMoney(customers.length ? Math.round(totalSpent / customers.length) : 0, settings.currency)}

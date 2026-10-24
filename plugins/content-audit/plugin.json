@@ -1,0 +1,25 @@
+{
+	"name": "بازبینی محتوا",
+	"version": "1.0.0",
+	"description": "ویجتی به داشبورد اضافه می‌کند که نوشته‌های ناقص را نشان می‌دهد: بدون توضیح، بدون برچسب یا بدون تصویر.",
+	"author": "تیم نووکس",
+	"license": "MIT",
+	"requires": "2.0.0",
+	"hooks": ["cms.dashboard.widgets"],
+	"settings": [
+		{
+			"key": "includeDrafts",
+			"label": "پیش‌نویس‌ها هم بررسی شوند",
+			"type": "switch",
+			"default": true,
+			"help": "اگر خاموش باشد فقط نوشته‌های منتشرشده بررسی می‌شوند."
+		},
+		{
+			"key": "maxItems",
+			"label": "بیشترین تعداد نمایش",
+			"type": "text",
+			"default": "5",
+			"help": "عددی بین ۱ تا ۱۰."
+		}
+	]
+}

@@ -1,11 +1,15 @@
 import { defineMiddleware } from 'astro:middleware';
 import { readSessionToken, SESSION_COOKIE } from './lib/cms/auth';
 import { json } from './lib/cms/http';
+import { ensurePluginsBooted } from './lib/plugins/registry';
 
 const LOGIN_PATH = '/cms/login';
 
 /** Everything under /cms is private — pages, JSON endpoints and media files. */
 export const onRequest = defineMiddleware(async (context, next) => {
+	// افزونه‌ها یک بار در هر پروسه ثبت می‌شوند تا قلاب‌ها در همهٔ مسیرها فعال باشند.
+	await ensurePluginsBooted();
+
 	const { pathname, search } = context.url;
 
 	if (!pathname.startsWith('/cms')) return next();

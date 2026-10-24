@@ -33,7 +33,14 @@ const related = posts
 	.slice(0, 2);
 ---
 
-<SiteLayout title={draft.title} description={draft.description} cartCount={cart.count}>
+<SiteLayout
+	title={draft.title}
+	description={draft.description}
+	cartCount={cart.count}
+	type="article"
+	image={publicImageSrc(draft.heroImage)}
+	publishedAt={draft.pubDate}
+>
 	<article class="article">
 		<nav class="breadcrumbs" aria-label="مسیر">
 			<a href="/">خانه</a>

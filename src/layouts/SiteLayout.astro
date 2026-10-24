@@ -2,19 +2,50 @@
 import '@fontsource-variable/vazirmatn';
 import '../styles/shop.css';
 import { readSettings } from '../lib/cms/settings';
+import { applyFilters } from '../lib/plugins/hooks';
+import { ensurePluginsBooted } from '../lib/plugins/registry';
 
 interface Props {
 	title: string;
 	description?: string;
 	cartCount?: number;
 	bodyClass?: string;
+	/** برای فیلتر site.head — صفحهٔ معمولی یا نوشتهٔ مجله. */
+	type?: 'website' | 'article';
+	image?: string;
+	publishedAt?: string;
 }
 
-const { title, description = '', cartCount = 0, bodyClass = '' } = Astro.props;
+const {
+	title,
+	description = '',
+	cartCount = 0,
+	bodyClass = '',
+	type = 'website',
+	image,
+	publishedAt,
+} = Astro.props;
 const settings = await readSettings();
 const path = Astro.url.pathname;
 const isActive = (prefix: string) =>
 	prefix === '/' ? path === '/' : path === prefix || path.startsWith(`${prefix}/`);
+
+await ensurePluginsBooted();
+
+const pluginHead = await applyFilters('site.head', '', {
+	title,
+	description: description || settings.siteDescription,
+	url: Astro.url.href,
+	type,
+	image,
+	publishedAt,
+	siteName: settings.siteTitle,
+});
+
+const pluginFooter = await applyFilters('site.footer', '', {
+	siteName: settings.siteTitle,
+	url: Astro.url.origin,
+});
 ---
 
 <!doctype html>
@@ -30,6 +61,7 @@ const isActive = (prefix: string) =>
 		<meta property="og:description" content={description || settings.siteDescription} />
 		<meta property="og:type" content="website" />
 		<meta property="og:locale" content="fa_IR" />
+		<Fragment set:html={pluginHead} />
 	</head>
 	<body class:list={['shop', bodyClass]}>
 		<a class="sr-only" href="#main">پرش به محتوای اصلی</a>
@@ -70,7 +102,10 @@ const isActive = (prefix: string) =>
 		<footer class="shop-footer">
 			<div class="wrap shop-footer__inner">
 				<span>© {new Date().getFullYear()} {settings.siteTitle} — تمام حقوق محفوظ است.</span>
-				<span>{settings.footerNote}</span>
+				<span>
+					{settings.footerNote}
+					<Fragment set:html={pluginFooter} />
+				</span>
 			</div>
 		</footer>
 	</body>

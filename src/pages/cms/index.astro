@@ -1,18 +1,14 @@
 ---
 import CmsLayout from '../../components/cms/CmsLayout.astro';
 import Icon from '../../components/cms/Icon.astro';
-import {
-	faCompactMoney,
-	faDate,
-	faMoney,
-	faNumber,
-	faReadingTime,
-	faRelative,
-} from '../../lib/cms/fa';
+import { faCompactMoney, faDate, faMoney, faNumber, faRelative } from '../../lib/cms/fa';
 import { buildStats, listPosts } from '../../lib/cms/posts';
-import { readSettings, TIMEZONES } from '../../lib/cms/settings';
+import { readSettings } from '../../lib/cms/settings';
 import { buildDashboardMetrics } from '../../lib/commerce/stats';
 import { orderStatusLabel, orderStatusTone } from '../../lib/commerce/types';
+import { applyFilters } from '../../lib/plugins/hooks';
+import { ensurePluginsBooted } from '../../lib/plugins/registry';
+import type { DashboardWidget } from '../../lib/plugins/types';
 
 export const prerender = false;
 
@@ -21,34 +17,35 @@ const stats = buildStats(posts);
 const commerce = settings.commerceEnabled;
 const metrics = commerce ? await buildDashboardMetrics(14) : null;
 
-const timezoneLabel =
-	TIMEZONES.find((zone) => zone.value === settings.timezone)?.label ?? settings.timezone;
-
 const currency = settings.currency;
 const maxBar = metrics ? Math.max(...metrics.series.map((point) => point.total), 1) : 1;
 const dayLabel = new Intl.DateTimeFormat('fa-IR', { day: 'numeric' });
-const seriesTotal = metrics
-	? metrics.series.reduce((sum, point) => sum + point.total, 0)
-	: 0;
+const seriesTotal = metrics ? metrics.series.reduce((sum, point) => sum + point.total, 0) : 0;
 
-const trendClass = (change: number) =>
+const pending = metrics?.pending ?? 0;
+const lowStock = metrics?.lowStock ?? [];
+const recentPosts = posts.slice(0, 5);
+
+await ensurePluginsBooted();
+const pluginWidgets = await applyFilters<DashboardWidget[]>('cms.dashboard.widgets', [], {
+	posts,
+});
+const drafts = posts.filter((post) => post.draft).length;
+
+const trend = (change: number) =>
 	change > 0 ? 'trend trend--up' : change < 0 ? 'trend trend--down' : 'trend trend--flat';
-const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 ---
 
-<CmsLayout
-	title="داشبورد"
-	subtitle={`خلاصهٔ وضعیت ${settings.siteTitle} — گزارش‌ها به وقت ${timezoneLabel}`}
->
+<CmsLayout title="داشبورد" subtitle="نمای کلی محتوا و فروش">
 	<Fragment slot="actions">
-		<a class="btn btn--outline btn--sm" href="/cms/posts/new">
-			<Icon name="posts" size={15} />
+		<a class="btn btn--sm" href="/cms/posts/new">
+			<Icon name="plus" size={14} />
 			<span>نوشتهٔ تازه</span>
 		</a>
 		{
 			commerce && (
 				<a class="btn btn--primary btn--sm" href="/cms/products/new">
-					<Icon name="plus" size={15} />
+					<Icon name="box" size={14} />
 					<span>محصول تازه</span>
 				</a>
 			)
@@ -58,74 +55,54 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 	{
 		commerce && metrics ? (
 			<>
-				<section class="grid grid--stats" aria-label="آمار فروش">
-					<article class="kpi">
-						<div class="kpi__head">
-							<span class="kpi__label">درآمد ۳۰ روز گذشته</span>
-							<span class="kpi__icon">
-								<Icon name="chart" size={16} />
-							</span>
-						</div>
-						<strong class="kpi__value num">{faCompactMoney(metrics.revenue.current, currency)}</strong>
-						<div class="kpi__foot">
-							<span class={trendClass(metrics.revenue.change)}>
-								<Icon name={trendIcon(metrics.revenue.change)} size={12} />
+				<section class="metric-strip" aria-label="شاخص‌های فروش">
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">درآمد ۳۰ روز گذشته</span>
+						<strong class="metric-strip__value num">
+							{faCompactMoney(metrics.revenue.current, currency)}
+						</strong>
+						<span class="metric-strip__foot">
+							<span class={trend(metrics.revenue.change)}>
 								<span class="num">{faNumber(Math.abs(metrics.revenue.change))}٪</span>
 							</span>
 							<span>نسبت به دورهٔ قبل</span>
-						</div>
-					</article>
+						</span>
+					</div>
 
-					<article class="kpi">
-						<div class="kpi__head">
-							<span class="kpi__label">سفارش‌ها</span>
-							<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
-								<Icon name="receipt" size={16} />
-							</span>
-						</div>
-						<strong class="kpi__value num">{faNumber(metrics.orders.current)}</strong>
-						<div class="kpi__foot">
-							<span class={trendClass(metrics.orders.change)}>
-								<Icon name={trendIcon(metrics.orders.change)} size={12} />
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">سفارش‌ها</span>
+						<strong class="metric-strip__value num">{faNumber(metrics.orders.current)}</strong>
+						<span class="metric-strip__foot">
+							<span class={trend(metrics.orders.change)}>
 								<span class="num">{faNumber(Math.abs(metrics.orders.change))}٪</span>
 							</span>
-							<span>{faNumber(metrics.pending)} سفارش در انتظار پرداخت</span>
-						</div>
-					</article>
+							<span>{faNumber(pending)} در انتظار پرداخت</span>
+						</span>
+					</div>
 
-					<article class="kpi">
-						<div class="kpi__head">
-							<span class="kpi__label">میانگین سبد خرید</span>
-							<span class="kpi__icon" style="background:var(--amber-soft);color:var(--amber)">
-								<Icon name="cart" size={16} />
-							</span>
-						</div>
-						<strong class="kpi__value num">
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">میانگین سبد خرید</span>
+						<strong class="metric-strip__value num">
 							{faCompactMoney(metrics.averageOrder, currency)}
 						</strong>
-						<div class="kpi__foot">
+						<span class="metric-strip__foot">
 							<span>{faNumber(metrics.customers)} مشتری ثبت‌شده</span>
-						</div>
-					</article>
+						</span>
+					</div>
 
-					<article class="kpi">
-						<div class="kpi__head">
-							<span class="kpi__label">محصولات فعال</span>
-							<span class="kpi__icon" style="background:var(--bg-accent);color:var(--ink-soft)">
-								<Icon name="box" size={16} />
-							</span>
-						</div>
-						<strong class="kpi__value num">{faNumber(metrics.activeProducts)}</strong>
-						<div class="kpi__foot">
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">محصولات فعال</span>
+						<strong class="metric-strip__value num">{faNumber(metrics.activeProducts)}</strong>
+						<span class="metric-strip__foot">
 							{metrics.outOfStock > 0 ? (
 								<span style="color:var(--danger)">
-									{faNumber(metrics.outOfStock)} محصول ناموجود
+									{faNumber(metrics.outOfStock)} ناموجود
 								</span>
 							) : (
-								<span>همهٔ محصولات موجودند</span>
+								<span>همه موجودند</span>
 							)}
-						</div>
-					</article>
+						</span>
+					</div>
 				</section>
 
 				<div class="split">
@@ -134,9 +111,11 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 							<div class="card__head">
 								<div>
 									<h2 class="card__title">روند درآمد</h2>
-									<p class="card__hint">۱۴ روز گذشته — مجموع {faMoney(seriesTotal, currency)}</p>
+									<p class="card__hint">
+										۱۴ روز گذشته — مجموع {faMoney(seriesTotal, currency)}
+									</p>
 								</div>
-								<span class="badge badge--brand">فقط سفارش‌های درآمدی</span>
+								<span class="badge badge--neutral">سفارش‌های درآمدی</span>
 							</div>
 							<div class="card__body">
 								<div
@@ -145,18 +124,17 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 									aria-label={`نمودار درآمد ۱۴ روز گذشته، مجموع ${faMoney(seriesTotal, currency)}`}
 								>
 									{metrics.series.map((point, index) => (
-										<div class="chart__col" title={`${faDate(point.date)} — ${faMoney(point.total, currency)}`}>
+										<div
+											class="chart__col"
+											title={`${faDate(point.date)} — ${faMoney(point.total, currency)}`}
+										>
 											<div
 												class:list={['chart__bar', point.total === 0 && 'chart__bar--muted']}
 												style={`height:${Math.max(3, Math.round((point.total / maxBar) * 100))}%`}
 											/>
-											{index % 2 === 0 ? (
-												<span class="chart__label num">{dayLabel.format(new Date(point.date))}</span>
-											) : (
-												<span class="chart__label" aria-hidden="true">
-													·
-												</span>
-											)}
+											<span class="chart__label num">
+												{index % 2 === 0 ? dayLabel.format(new Date(point.date)) : ''}
+											</span>
 										</div>
 									))}
 								</div>
@@ -165,14 +143,8 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 
 						<section class="card">
 							<div class="card__head">
-								<div>
-									<h2 class="card__title">آخرین سفارش‌ها</h2>
-									<p class="card__hint">پنج سفارش اخیر</p>
-								</div>
-								<a class="btn btn--ghost btn--sm" href="/cms/orders">
-									<span>همهٔ سفارش‌ها</span>
-									<Icon name="arrow" size={15} />
-								</a>
+								<h2 class="card__title">سفارش‌های اخیر</h2>
+								<a class="btn btn--ghost btn--sm" href="/cms/orders">همهٔ سفارش‌ها</a>
 							</div>
 
 							{metrics.recentOrders.length ? (
@@ -184,26 +156,25 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 												<th scope="col">مشتری</th>
 												<th scope="col">مبلغ</th>
 												<th scope="col">وضعیت</th>
-												<th scope="col">تاریخ</th>
+												<th scope="col">زمان</th>
 											</tr>
 										</thead>
 										<tbody>
 											{metrics.recentOrders.map((order) => (
 												<tr>
 													<td>
-														<a class="table__title ltr" href={`/cms/orders/${order.id}`} dir="ltr">
+														<a class="table__title num" href={`/cms/orders/${order.id}`}>
 															{order.number}
 														</a>
 													</td>
-													<td>{order.customerName}</td>
+													<td class="truncate">{order.customerName}</td>
 													<td class="num nowrap">{faMoney(order.total, currency)}</td>
 													<td>
 														<span class={`badge badge--${orderStatusTone(order.status)}`}>
-															<span class="badge__dot" />
 															{orderStatusLabel(order.status)}
 														</span>
 													</td>
-													<td class="num nowrap">{faRelative(order.createdAt)}</td>
+													<td class="num nowrap muted">{faRelative(order.createdAt)}</td>
 												</tr>
 											))}
 										</tbody>
@@ -211,7 +182,7 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 								</div>
 							) : (
 								<div class="empty">
-									<span class="empty__icon"><Icon name="receipt" size={22} /></span>
+									<span class="empty__icon"><Icon name="receipt" size={20} /></span>
 									<span class="empty__title">هنوز سفارشی ثبت نشده است</span>
 									<span>با فعال‌شدن فروشگاه، سفارش‌ها همین‌جا نمایش داده می‌شوند.</span>
 								</div>
@@ -222,296 +193,234 @@ const trendIcon = (change: number) => (change < 0 ? 'trendDown' : 'trendUp');
 					<div class="stack">
 						<section class="card">
 							<div class="card__head">
-								<div>
-									<h2 class="card__title">کم‌موجودی</h2>
-									<p class="card__hint">محصولات فعال با موجودی ۵ یا کمتر</p>
+								<h2 class="card__title">نیاز به رسیدگی</h2>
+							</div>
+							<ul class="list">
+								<li>
+									<a class="list__row" href="/cms/orders?status=pending">
+										<span class="list__main">
+											<span class="list__title">سفارش در انتظار پرداخت</span>
+											<span class="list__meta">بررسی وضعیت پرداخت</span>
+										</span>
+										<span class={pending > 0 ? 'badge badge--warning num' : 'badge badge--neutral num'}>
+											{faNumber(pending)}
+										</span>
+									</a>
+								</li>
+								<li>
+									<a class="list__row" href="/cms/products?sort=stock-asc">
+										<span class="list__main">
+											<span class="list__title">محصول ناموجود</span>
+											<span class="list__meta">شارژ موجودی یا بایگانی</span>
+										</span>
+										<span
+											class={metrics.outOfStock > 0 ? 'badge badge--danger num' : 'badge badge--neutral num'}
+										>
+											{faNumber(metrics.outOfStock)}
+										</span>
+									</a>
+								</li>
+								<li>
+									<a class="list__row" href="/cms/posts?status=draft">
+										<span class="list__main">
+											<span class="list__title">نوشتهٔ پیش‌نویس</span>
+											<span class="list__meta">آمادهٔ بازبینی و انتشار</span>
+										</span>
+										<span class={drafts > 0 ? 'badge badge--warning num' : 'badge badge--neutral num'}>
+											{faNumber(drafts)}
+										</span>
+									</a>
+								</li>
+							</ul>
+						</section>
+
+						<section class="card">
+							<div class="card__head">
+								<h2 class="card__title">کم‌موجودی</h2>
+								<a class="btn btn--ghost btn--sm" href="/cms/products">انبار</a>
+							</div>
+							{lowStock.length ? (
+								<ul class="list">
+									{lowStock.slice(0, 5).map((product) => (
+										<li>
+											<a class="list__row" href={`/cms/products/${product.id}`}>
+												<span class="list__main">
+													<span class="list__title">{product.name}</span>
+													<span class="list__meta ltr">{product.sku}</span>
+												</span>
+												<span
+													class:list={[
+														'list__value',
+														product.stock === 0 ? 'stock--out' : 'stock--low',
+													]}
+												>
+													{product.stock === 0 ? 'ناموجود' : `${faNumber(product.stock)} عدد`}
+												</span>
+											</a>
+										</li>
+									))}
+								</ul>
+							) : (
+								<p class="hint" style="padding:12px 16px">موجودی همهٔ محصولات کافی است.</p>
+							)}
+						</section>
+
+						<section class="card">
+							<div class="card__head">
+								<h2 class="card__title">آخرین نوشته‌ها</h2>
+								<a class="btn btn--ghost btn--sm" href="/cms/posts">همه</a>
+							</div>
+							{recentPosts.length ? (
+								<ul class="list">
+									{recentPosts.map((post) => (
+										<li>
+											<a class="list__row" href={`/cms/posts/${post.id}`}>
+												<span class="list__main">
+													<span class="list__title">{post.title}</span>
+													<span class="list__meta num">
+														{faRelative(post.modifiedAt)} — {faNumber(post.words)} واژه
+													</span>
+												</span>
+												{post.draft && <span class="badge badge--warning">پیش‌نویس</span>}
+											</a>
+										</li>
+									))}
+								</ul>
+							) : (
+								<div class="empty" style="padding:24px">
+									<span class="empty__title">هنوز نوشته‌ای نیست</span>
+									<a class="btn btn--sm" href="/cms/posts/new" style="margin-top:8px">
+										نوشتن اولین نوشته
+									</a>
 								</div>
-								<a class="btn btn--ghost btn--sm" href="/cms/products?sort=stock-asc">
-									<Icon name="box" size={14} />
-									<span>انبار</span>
+							)}
+						</section>
+
+						{pluginWidgets.map((widget) => (
+							<section class="card">
+								<div class="card__head">
+									<h2 class="card__title">{widget.title}</h2>
+								</div>
+								<Fragment set:html={widget.html} />
+							</section>
+						))}
+					</div>
+				</div>
+			</>
+		) : (
+			<>
+				<section class="metric-strip" aria-label="شاخص‌های محتوا">
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">نوشته‌ها</span>
+						<strong class="metric-strip__value num">{faNumber(stats.total)}</strong>
+						<span class="metric-strip__foot">{faNumber(stats.published)} منتشرشده</span>
+					</div>
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">پیش‌نویس</span>
+						<strong class="metric-strip__value num">{faNumber(stats.drafts)}</strong>
+						<span class="metric-strip__foot">در انتظار بازبینی</span>
+					</div>
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">واژه‌های نوشته‌شده</span>
+						<strong class="metric-strip__value num">{faNumber(stats.words)}</strong>
+						<span class="metric-strip__foot">
+							میانگین {faNumber(stats.total ? Math.round(stats.words / stats.total) : 0)} در هر نوشته
+						</span>
+					</div>
+					<div class="metric-strip__item">
+						<span class="metric-strip__label">برچسب‌ها</span>
+						<strong class="metric-strip__value num">{faNumber(stats.tags.length)}</strong>
+						<span class="metric-strip__foot">
+							{stats.tags.length ? `پرکاربردترین: ${stats.tags[0].name}` : 'بدون برچسب'}
+						</span>
+					</div>
+				</section>
+
+				<div class="split">
+					<section class="card">
+						<div class="card__head">
+							<h2 class="card__title">آخرین نوشته‌ها</h2>
+							<a class="btn btn--ghost btn--sm" href="/cms/posts">همهٔ نوشته‌ها</a>
+						</div>
+						{recentPosts.length ? (
+							<div class="table-wrap">
+								<table class="table">
+									<thead>
+										<tr>
+											<th scope="col">عنوان</th>
+											<th scope="col">وضعیت</th>
+											<th scope="col">انتشار</th>
+											<th scope="col">واژه</th>
+										</tr>
+									</thead>
+									<tbody>
+										{recentPosts.map((post) => (
+											<tr>
+												<td>
+													<a class="table__title" href={`/cms/posts/${post.id}`}>
+														{post.title}
+													</a>
+												</td>
+												<td>
+													<span class={`badge badge--${post.draft ? 'warning' : 'success'}`}>
+														{post.draft ? 'پیش‌نویس' : 'منتشرشده'}
+													</span>
+												</td>
+												<td class="num nowrap">{faDate(post.pubDate)}</td>
+												<td class="num nowrap">{faNumber(post.words)}</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						) : (
+							<div class="empty">
+								<span class="empty__title">هنوز نوشته‌ای ثبت نشده است</span>
+								<a class="btn btn--primary btn--sm" href="/cms/posts/new" style="margin-top:8px">
+									نوشتهٔ تازه
 								</a>
 							</div>
-							<div class="card__body stack" style="gap:.7rem">
-								{metrics.lowStock.length ? (
-									metrics.lowStock.map((product) => (
-										<a
-											href={`/cms/products/${product.id}`}
-											class="row row--between"
-											style="gap:.5rem;color:inherit"
-										>
-											<span class="row" style="gap:.5rem;min-width:0">
-												<span class="thumb" style="width:2rem;height:2rem;font-size:.75rem">
-													{product.name.trim().charAt(0)}
-												</span>
-												<span class="truncate" style="font-size:.82rem">
-													{product.name}
-												</span>
-											</span>
-											<span class:list={['stock', product.stock === 0 ? 'stock--out' : 'stock--low']}>
-												{product.stock === 0 ? 'ناموجود' : `${faNumber(product.stock)} عدد`}
-											</span>
-										</a>
-									))
-								) : (
-									<p class="hint">همهٔ محصولات موجودی کافی دارند.</p>
-								)}
+						)}
+					</section>
+
+					<div class="stack">
+						<section class="card">
+							<div class="card__head">
+								<h2 class="card__title">فروشگاه</h2>
+							</div>
+							<div class="card__body" style="display:flex;flex-direction:column;gap:8px">
+								<p class="hint">
+									ماژول فروشگاه خاموش است. با فعال‌کردن آن، محصولات، سفارش‌ها، مشتریان و
+									کدهای تخفیف به پنل اضافه می‌شوند.
+								</p>
+								<a class="btn btn--sm" href="/cms/settings">رفتن به تنظیمات</a>
 							</div>
 						</section>
 
 						<section class="card">
 							<div class="card__head">
-								<div>
-									<h2 class="card__title">پرفروش‌ترین‌ها</h2>
-									<p class="card__hint">بر اساس مبلغ فروش</p>
-								</div>
+								<h2 class="card__title">برچسب‌ها</h2>
 							</div>
-							<div class="card__body stack" style="gap:.7rem">
-								{metrics.topProducts.length ? (
-									metrics.topProducts.map((product, index) => (
-										<div class="row row--between" style="gap:.5rem">
-											<span class="row" style="gap:.5rem;min-width:0">
-												<span class="badge badge--neutral num">{faNumber(index + 1)}</span>
-												<span class="truncate" style="font-size:.82rem">
-													{product.name}
-												</span>
-											</span>
-											<span class="num hint nowrap">
-												{faCompactMoney(product.revenue, currency)}
-											</span>
-										</div>
-									))
+							<div class="card__body">
+								{stats.tags.length ? (
+									<ul class="tag-list">
+										{stats.tags.map((tag) => (
+											<li>
+												<a class="badge" href={`/cms/posts?tag=${encodeURIComponent(tag.name)}`}>
+													#{tag.name}
+													<span class="num">{faNumber(tag.count)}</span>
+												</a>
+											</li>
+										))}
+									</ul>
 								) : (
-									<p class="hint">پس از ثبت سفارش‌ها، این فهرست پر می‌شود.</p>
+									<p class="hint">با افزودن برچسب به نوشته‌ها، این بخش پر می‌شود.</p>
 								)}
 							</div>
 						</section>
 					</div>
 				</div>
 			</>
-		) : (
-			<section class="card">
-				<div class="card__body">
-					<div class="alert alert--info" role="note">
-						<Icon name="info" size={17} />
-						<span>
-							ماژول فروشگاه خاموش است؛ برای فعال‌کردن محصولات، سفارش‌ها و آمار فروش به{' '}
-							<a href="/cms/settings">تنظیمات سایت</a> بروید.
-						</span>
-					</div>
-				</div>
-			</section>
 		)
 	}
-
-	<section class="grid grid--stats" aria-label="آمار محتوا">
-		<article class="kpi">
-			<div class="kpi__head">
-				<span class="kpi__label">نوشته‌ها</span>
-				<span class="kpi__icon"><Icon name="posts" size={16} /></span>
-			</div>
-			<strong class="kpi__value num">{faNumber(stats.total)}</strong>
-			<div class="kpi__foot">
-				<span>{faNumber(stats.published)} منتشرشده</span>
-				<span>—</span>
-				<span>{faNumber(stats.drafts)} پیش‌نویس</span>
-			</div>
-		</article>
-
-		<article class="kpi">
-			<div class="kpi__head">
-				<span class="kpi__label">واژه‌های نوشته‌شده</span>
-				<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
-					<Icon name="word" size={16} />
-				</span>
-			</div>
-			<strong class="kpi__value num">{faNumber(stats.words)}</strong>
-			<div class="kpi__foot">
-				<span>
-					میانگین {faNumber(stats.total ? Math.round(stats.words / stats.total) : 0)} واژه در هر نوشته
-				</span>
-			</div>
-		</article>
-
-		<article class="kpi">
-			<div class="kpi__head">
-				<span class="kpi__label">برچسب‌های فعال</span>
-				<span class="kpi__icon" style="background:var(--amber-soft);color:var(--amber)">
-					<Icon name="tag" size={16} />
-				</span>
-			</div>
-			<strong class="kpi__value num">{faNumber(stats.tags.length)}</strong>
-			<div class="kpi__foot">
-				<span>{stats.tags.length ? `پرکاربردترین: ${stats.tags[0].name}` : 'بدون برچسب'}</span>
-			</div>
-		</article>
-
-		<article class="kpi">
-			<div class="kpi__head">
-				<span class="kpi__label">آخرین به‌روزرسانی محتوا</span>
-				<span class="kpi__icon" style="background:var(--bg-accent);color:var(--ink-soft)">
-					<Icon name="clock" size={16} />
-				</span>
-			</div>
-			<strong class="kpi__value" style="font-size:1rem">
-				{stats.latest ? stats.latest.title : 'بدون نوشته'}
-			</strong>
-			<div class="kpi__foot">
-				{stats.latest ? (
-					<span>ویرایش {faRelative(stats.latest.modifiedAt)}</span>
-				) : (
-					<a href="/cms/posts/new">اولین نوشته را بسازید</a>
-				)}
-			</div>
-		</article>
-	</section>
-
-	<div class="split">
-		<section class="card">
-			<div class="card__head">
-				<div>
-					<h2 class="card__title">آخرین نوشته‌ها</h2>
-					<p class="card__hint">پنج نوشتهٔ اخیر بر پایهٔ تاریخ انتشار</p>
-				</div>
-				<a class="btn btn--ghost btn--sm" href="/cms/posts">
-					<span>همهٔ نوشته‌ها</span>
-					<Icon name="arrow" size={15} />
-				</a>
-			</div>
-
-			{posts.length ? (
-				<div class="table-wrap">
-					<table class="table">
-						<thead>
-							<tr>
-								<th scope="col">عنوان</th>
-								<th scope="col">وضعیت</th>
-								<th scope="col">انتشار</th>
-								<th scope="col">مطالعه</th>
-							</tr>
-						</thead>
-						<tbody>
-							{posts.slice(0, 5).map((post) => (
-								<tr>
-									<td>
-										<a class="table__title" href={`/cms/posts/${post.id}`}>
-											{post.title}
-										</a>
-										<code class="table__slug ltr">/blog/{post.slug}</code>
-									</td>
-									<td>
-										{post.draft ? (
-											<span class="badge badge--warning">
-												<span class="badge__dot" />
-												پیش‌نویس
-											</span>
-										) : (
-											<span class="badge badge--success">
-												<span class="badge__dot" />
-												منتشرشده
-											</span>
-										)}
-									</td>
-									<td class="num nowrap">{faDate(post.pubDate)}</td>
-									<td class="num nowrap">{faReadingTime(post.words)}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			) : (
-				<div class="empty">
-					<span class="empty__icon"><Icon name="posts" size={22} /></span>
-					<span class="empty__title">هنوز نوشته‌ای ثبت نشده است</span>
-					<a class="btn btn--primary" href="/cms/posts/new" style="margin-top:.6rem">
-						<Icon name="plus" size={15} />
-						<span>نوشتهٔ تازه</span>
-					</a>
-				</div>
-			)}
-		</section>
-
-		<div class="stack">
-			<section class="card">
-				<div class="card__head">
-					<h2 class="card__title">میان‌بُرها</h2>
-				</div>
-				<div class="card__body">
-					<div class="stack stack--tight">
-						<a class="btn btn--outline" href="/cms/posts/new" style="justify-content:flex-start">
-							<Icon name="plus" size={15} />
-							<span>نوشتهٔ تازه</span>
-						</a>
-						{commerce && (
-							<a class="btn btn--outline" href="/cms/products/new" style="justify-content:flex-start">
-								<Icon name="box" size={15} />
-								<span>محصول تازه</span>
-							</a>
-						)}
-						<a class="btn btn--outline" href="/cms/media" style="justify-content:flex-start">
-							<Icon name="upload" size={15} />
-							<span>بارگذاری تصویر</span>
-						</a>
-						<a class="btn btn--outline" href="/cms/settings" style="justify-content:flex-start">
-							<Icon name="settings" size={15} />
-							<span>تنظیمات سایت</span>
-						</a>
-					</div>
-				</div>
-			</section>
-
-			<section class="card">
-				<div class="card__head">
-					<div>
-						<h2 class="card__title">پرکاربردترین برچسب‌ها</h2>
-						<p class="card__hint">بر اساس تعداد نوشته</p>
-					</div>
-				</div>
-				<div class="card__body">
-					{stats.tags.length ? (
-						<ul class="tag-list">
-							{stats.tags.map((tag) => (
-								<li>
-									<a class="badge" href={`/cms/posts?tag=${encodeURIComponent(tag.name)}`}>
-										#{tag.name}
-										<span class="num">{faNumber(tag.count)}</span>
-									</a>
-								</li>
-							))}
-						</ul>
-					) : (
-						<p class="hint">با افزودن برچسب به نوشته‌ها، این بخش پر می‌شود.</p>
-					)}
-				</div>
-			</section>
-
-			<section class="card">
-				<div class="card__head">
-					<div>
-						<h2 class="card__title">وضعیت سیستم</h2>
-						<p class="card__hint">قرارداد ثابت پنل</p>
-					</div>
-				</div>
-				<div class="card__body stack" style="gap:.6rem">
-					<div class="row row--between">
-						<span class="muted" style="font-size:.8rem">زبان و جهت</span>
-						<span class="badge badge--brand">فارسی — RTL</span>
-					</div>
-					<div class="row row--between">
-						<span class="muted" style="font-size:.8rem">تقویم و ارقام</span>
-						<span class="badge">{settings.calendar === 'jalali' ? 'شمسی' : 'میلادی'} — {settings.digits === 'persian' ? 'ارقام فارسی' : 'لاتین'}</span>
-					</div>
-					<div class="row row--between">
-						<span class="muted" style="font-size:.8rem">ماژول فروشگاه</span>
-						<span class={`badge badge--${commerce ? 'success' : 'neutral'}`}>
-							{commerce ? 'فعال' : 'خاموش'}
-						</span>
-					</div>
-					<div class="row row--between">
-						<span class="muted" style="font-size:.8rem">قلم</span>
-						<span class="badge">وزیرمتن</span>
-					</div>
-				</div>
-			</section>
-		</div>
-	</div>
 </CmsLayout>

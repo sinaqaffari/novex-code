@@ -26,3 +26,6 @@ pnpm-debug.log*
 # CMS runtime data (settings and store data are edited from /cms)
 data/cms-settings.json
 data/commerce.json
+
+# وضعیت افزونه‌ها (فعال/غیرفعال و تنظیمات)
+data/plugins.json

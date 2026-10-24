@@ -24,6 +24,7 @@ const scannedDirs = [
 	'src/components/cms',
 	'src/lib/cms',
 	'src/lib/commerce',
+	'src/lib/plugins',
 	'src/layouts',
 	'src/styles/cms.css',
 	'src/styles/shop.css',
