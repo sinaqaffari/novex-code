@@ -13,6 +13,7 @@ export const prerender = false;
 const settings = await readSettings();
 const cart = await hydrateCart(readCart(Astro.cookies));
 const code = readDiscountCode(Astro.cookies);
+const cartError = Astro.url.searchParams.get('error') ?? '';
 
 let discount = 0;
 let discountCode = '';
@@ -44,6 +45,10 @@ const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subto
 	</nav>
 
 	<h1 class="page-title">سبد خرید</h1>
+
+	{cartError && (
+		<p class="notice notice--error" style="margin-top:0.8rem" role="alert">{cartError}</p>
+	)}
 
 	{cart.lines.length === 0 ? (
 		<div class="empty">
