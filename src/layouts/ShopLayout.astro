@@ -1,5 +1,12 @@
 ---
-import SiteLayout from './SiteLayout.astro';
+/* ==========================================================================
+   نووکس‌کد — چیدمان صفحات فروش(store)
+   هدر و پاورقی جدید، 시스템 طراحی مشترک.
+   ========================================================================== */
+
+import Header from '../components/store/Header.astro';
+import Footer from '../components/store/Footer.astro';
+import '../styles/store.css';
 
 interface Props {
 	title: string;
@@ -10,6 +17,23 @@ interface Props {
 const { title, description = '', cartCount = 0 } = Astro.props;
 ---
 
-<SiteLayout title={title} description={description} cartCount={cartCount} bodyClass="shop--store">
-	<slot />
-</SiteLayout>
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	</head>
+	<body class="store">
+		<Header title={title} description={description} cartCount={cartCount} />
+
+		<main id="main" class="container">
+			<slot />
+		</main>
+
+		<Footer />
+	</body>
+</html>

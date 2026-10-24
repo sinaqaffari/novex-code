@@ -1,99 +1,209 @@
 ---
-import SiteLayout from '../layouts/SiteLayout.astro';
-import { publicImageSrc } from '../lib/cms/public-image';
-import { faDate, faMoney, faReadingTime } from '../lib/cms/fa';
+/* ==========================================================================
+   نووکس‌کد — صفحه اصلی (بازنگ리 شده)
+   یک تجربهٔ کـاشفِ محصولات، نه یک صفحه خالی.
+   ========================================================================== */
+
+import ShopLayout from '../layouts/ShopLayout.astro';
+import ProductCard from '../components/store/ProductCard.astro';
 import { readSettings } from '../lib/cms/settings';
-import { listPosts } from '../lib/cms/posts';
-import { listPublicProducts } from '../lib/commerce/products';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
+import { listPublicProducts } from '../lib/commerce/products';
+import { faMoney, faNumber } from '../lib/cms/fa';
+import { listPosts } from '../lib/cms/posts';
+import { faDate, faReadingTime } from '../lib/cms/fa';
 
 export const prerender = false;
 
 const settings = await readSettings();
 const cart = await hydrateCart(readCart(Astro.cookies));
+const products = settings.commerceEnabled ? (await listPublicProducts()) : [];
+const featured = products.filter((product) => product.featured);
 const posts = (await listPosts()).filter((post) => !post.draft && post.id.endsWith('.md')).slice(0, 3);
-const products = settings.commerceEnabled ? (await listPublicProducts()).slice(0, 3) : [];
+const shopClosed = !settings.commerceEnabled;
+
+const collections = [
+	{
+		title: 'ساخت سایت سریع‌تر',
+		desc: 'قالب‌های آماده با چیدمان RTL و کیت‌های رابط کاربری فارسی.',
+		mark: 'و',
+		href: '/shop',
+	},
+	{
+		title: 'پ یون‌سازی SaaS',
+		desc: 'کیت‌های استارت‌آپ برای لانچ سریع پروژه‌های inher.',
+		mark: 'S',
+		href: '/shop',
+	},
+	{
+		title: 'تایپوگرافی وب فارسی',
+		desc: 'دوره‌های آموزشی و ابزارهای تایپوگرافی برای رابط‌های راست‌به‌چپ.',
+		mark: 'ت',
+		href: '/blog',
+	},
+	{
+		title: 'ابزارهای توسعه',
+		desc: 'افزونه‌ها، کدهای پرداخت و پیامک برای پروژه‌های واقعی.',
+		mark: 'اب',
+		href: '/shop',
+	},
+];
+
+const whyItems = [
+	{
+		mark: 'کد',
+		title: 'کد قابل بررسی',
+		desc: 'تمام محصولات کد منبع دارند و قبل از خرید قابل بازبینی است.',
+	},
+	{
+		mark: 'راهنمای نصب',
+		title: 'راهنمای نصب کاربردی',
+		desc: 'مستندات واضحة و مثال‌های عملی برای راه‌اندازی سریع.',
+	},
+	{
+		mark: 'مجوز',
+		title: 'مجوز‌های شفاف',
+		desc: 'شرایط استفاده و مجوز هر محصول صراحتاًlys verklaar شده است.',
+	},
+];
+
+const categoryOrder = ['قالب', 'کیت رابط کاربری', 'دوره آموزشی', 'کتاب', 'افزونه'];
+const categories = categoryOrder.filter((cat) => products.some((p) => p.category === cat));
 ---
 
-<SiteLayout title={settings.heroTitle} description={settings.siteDescription} cartCount={cart.count} bodyClass="home">
-	<section class="home-hero">
-		<div>
-			<span class="shop-hero__eyebrow">مجله + فروشگاه، در یک پنل</span>
-			<h1>{settings.heroTitle}</h1>
-			<p>{settings.heroSubtitle}</p>
-			<div class="home-hero__actions">
-				<a class="btn btn--primary" href={settings.commerceEnabled ? '/shop' : '/blog'}>
-					{settings.commerceEnabled ? 'دیدن محصولات' : 'خواندن مجله'}
-				</a>
-				<a class="btn btn--outline" href="/blog">تازه‌های مجله</a>
-			</div>
+<ShopLayout title={settings.shopTitle || 'فروشگاه'} description={settings.shopDescription} cartCount={cart.count}>
+	{shopClosed ? (
+		<div class="empty" style="padding:5rem 1rem">
+			<h2 class="empty__title">فروشگاه موقتاً بسته است</h2>
+			<p class="empty__desc">برای اطلاع از بازگشایی، مجله را دنبال کنید.</p>
+			<p style="margin-top:1rem"><a class="btn btn--primary" href="/blog">رفتن به مجله</a></p>
 		</div>
-
-		<aside class="home-hero__card" aria-label="دربارهٔ این سایت">
-			<span class="hint">پنل مدیریت فارسی، بدون وابستگی به سرویس خارجی</span>
-			<h2>محتوای فارسی، از پایه راست‌به‌چپ</h2>
-			<ul>
-				<li>نوشته‌ها، رسانه و تنظیمات سایت از پنل `/cms`</li>
-				<li>تاریخ شمسی و ارقام فارسی در همه‌جا</li>
-				<li>سفارش‌ها، مشتریان و کدهای تخفیف در همان پنل</li>
-			</ul>
-			<a class="btn btn--ghost" href="/about">بیشتر بدانید ←</a>
-		</aside>
-	</section>
-
-	{products.length > 0 && (
-		<section class="shop-section">
-			<div class="shop-section__head">
-				<h2>تازه‌های فروشگاه</h2>
-				<a class="hint" href="/shop">همهٔ محصولات ←</a>
-			</div>
-			<div class="shop-grid">
-				{products.map((product) => (
-					<a class="shop-card" href={`/shop/${product.slug}`}>
-						<div class="shop-card__media" aria-hidden="true">
-							{product.image ? (
-								<img src={product.image} alt="" loading="lazy" />
-							) : (
-								product.name.charAt(0)
-							)}
+	) : (
+		<>
+			<!-- Section A: Compact hero -->
+			<section class="hero">
+				<div class="hero__inner">
+					<div>
+						<span class="hero__eyebrow">
+							{faNumber(products.length)} محصول آمادهٔ خرید
+						</span>
+						<h1 class="hero__title">کد آماده برای ساخت محصولات بهتر</h1>
+						<p class="hero__desc">
+							قالب‌های مدرن، کیت‌های SaaS و ابزارهای توسعه؛ آماده استفاده در پروژه‌های واقعی.
+						</p>
+						<div class="hero__actions">
+							<a class="btn btn--primary btn--lg" href="/shop">
+								مشاهده محصولات
+							</a>
+							<a class="btn btn--outline btn--lg" href="/blog">
+								راهنمای انتخاب محصول
+							</a>
 						</div>
-						<div class="shop-card__body">
-							<span class="shop-card__category">{product.category}</span>
-							<span class="shop-card__name">{product.name}</span>
-							<div class="shop-card__foot">
-								<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
-								<span class="btn btn--outline">مشاهده</span>
+					</div>
+					<div class="hero__media" aria-hidden="true">
+						<div class="product-placeholder" style="height:100%;width:100%;border:none">
+							<span class="product-placeholder__symbol" style="font-size:4rem">کد</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- Section B: Category navigation -->
+			{settings.commerceEnabled && categories.length > 0 && (
+				<nav class="category-nav" aria-label="دسته‌بندی محصولات">
+					{categories.map((cat) => (
+						<a class="category-chip" href={`/shop?category=${encodeURIComponent(cat)}`}>
+							{cat}
+						</a>
+					))}
+				</nav>
+			)}
+
+			<!-- Section C: Featured products -->
+			{featured.length > 0 && (
+				<section class="section" aria-labelledby="featured-title">
+					<div class="section__head">
+						<h2 id="featured-title">پیشنهاد ویژه</h2>
+						<span class="section__subtitle">دستچین‌شده توسط تیم نووکس‌کد</span>
+					</div>
+					<div class="product-grid">
+						{featured.map((product) => (
+							<ProductCard product={product} currency={settings.currency} />
+						))}
+					</div>
+				</section>
+			)}
+
+			<!-- Section D: Curated collections -->
+			<section class="section" aria-labelledby="collections-title">
+				<div class="section__head">
+					<h2 id="collections-title">مجموعه‌های پیشنهادی</h2>
+					<span class="section__subtitle">برای‌های diverso پروژه‌ها</span>
+				</div>
+				<div class="collection-grid">
+					{collections.map((collection) => (
+						<a class="collection-card" href={collection.href}>
+							<span class="collection__mark">{collection.mark}</span>
+							<div>
+								<h3 class="collection__title">{collection.title}</h3>
+								<p class="collection__desc">{collection.desc}</p>
 							</div>
-						</div>
-					</a>
-				))}
-			</div>
-		</section>
+						</a>
+					))}
+				</div>
+			</section>
+
+			{products.length > featured.length && (
+				<section class="section" aria-labelledby="all-title">
+					<div class="section__head">
+						<h2 id="all-title">همهٔ محصولات</h2>
+						<a class="section__subtitle" href="/shop">مشاهدهٔ همه ←</a>
+					</div>
+					<div class="product-grid">
+						{products.filter((product) => !product.featured).map((product) => (
+							<ProductCard product={product} currency={settings.currency} />
+						))}
+					</div>
+				</section>
+			)}
+
+			<!-- Section E: Why this marketplace -->
+			<section class="section" style="background:var(--surface-2)" aria-labelledby="why-title">
+				<div class="container">
+					<div class="section__head" style="text-align:start">
+						<h2 id="why-title">چرا نووکس‌کد؟</h2>
+						<span class="section__subtitle">تفاوت‌های واقعی، نه ادعاهای تبلیغاتی</span>
+					</div>
+					<div class="why-grid">
+						{whyItems.map((item) => (
+							<div class="why-item">
+								<span class="why__mark">{item.mark}</span>
+								<h3 class="why__title">{item.title}</h3>
+								<p class="why__desc">{item.desc}</p>
+							</div>
+						))}
+					</div>
+				</div>
+			</section>
+
+			<!-- Section F: Developer resources -->
+			{posts.length > 0 && (
+				<section class="section" aria-labelledby="resources-title">
+					<div class="section__head">
+						<h2 id="resources-title">منابع توسعه</h2>
+						<a class="section__subtitle" href="/blog">همهٔ نوشته‌ها ←</a>
+					</div>
+					<div class="resources-grid">
+						{posts.map((post) => (
+							<a class="resource-card" href={`/blog/${post.slug}`}>
+								<h3 class="resource__title">{post.title}</h3>
+								<p class="resource__desc">{post.description}</p>
+								<span class="hint num">{faDate(post.pubDate)} — {faReadingTime(post.words)}</span>
+							</a>
+						))}
+					</div>
+				</section>
+			)}
+		</>
 	)}
-
-	<section class="shop-section">
-		<div class="shop-section__head">
-			<h2>از مجله</h2>
-			<a class="hint" href="/blog">همهٔ نوشته‌ها ←</a>
-		</div>
-
-		{posts.length ? (
-			<div class="blog-list">
-				{posts.map((post) => (
-					<a class="blog-item" href={`/blog/${post.slug}`}>
-						<div class="blog-item__media" aria-hidden="true">
-							{publicImageSrc(post.heroImage) ? <img src={publicImageSrc(post.heroImage)} alt="" /> : <span>{post.title.charAt(0)}</span>}
-						</div>
-						<div>
-							<span class="hint num">{faDate(post.pubDate)} — {faReadingTime(post.words)}</span>
-							<h3>{post.title}</h3>
-							<p class="shop-card__desc">{post.description}</p>
-						</div>
-					</a>
-				))}
-			</div>
-		) : (
-			<p class="hint">هنوز نوشته‌ای منتشر نشده است.</p>
-		)}
-	</section>
-</SiteLayout>
+</ShopLayout>

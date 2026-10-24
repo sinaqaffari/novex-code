@@ -34,10 +34,10 @@ const terminal = order ? order.status === 'cancelled' || order.status === 'refun
 	</nav>
 
 	{!order ? (
-		<div class="empty">
-			<h2>سفارشی با این شماره پیدا نشد</h2>
+		<div class="empty" style="max-width:520px;margin-inline:auto">
+			<h2 class="empty__title">سفارشی با این شماره پیدا نشد</h2>
 			<p class="num">{number}</p>
-			<p style="margin-top:1rem"><a class="btn btn--outline" href="/shop/track">جست‌وجوی دوباره</a></p>
+			<p style="margin-top:1.5rem"><a class="btn btn--outline" href="/shop/track">جست‌وجوی دوباره</a></p>
 		</div>
 	) : !ownsOrder ? (
 		<div class="panel" style="max-width:460px;margin:2rem auto">
@@ -82,7 +82,7 @@ const terminal = order ? order.status === 'cancelled' || order.status === 'refun
 										<li style={index <= stepIndex ? 'font-weight:700' : 'color:var(--muted)'}>
 											{orderStatusLabel(step)}
 											{index === stepIndex && ' — مرحلهٔ جاری'}
-											{index < stepIndex && ' ✓'}
+											{index < stepIndex && 'انجام‌شده'}
 										</li>
 									))}
 								</ol>
@@ -109,7 +109,7 @@ const terminal = order ? order.status === 'cancelled' || order.status === 'refun
 					</div>
 				</div>
 
-				<aside style="display:grid;gap:1rem">
+				<aside class="order-summary">
 					<div class="panel">
 						<div class="panel__head">صورت‌حساب</div>
 						<div class="panel__body totals">
@@ -151,18 +151,18 @@ const terminal = order ? order.status === 'cancelled' || order.status === 'refun
 						</div>
 					</div>
 
-		<div class="panel">
-			<div class="panel__body" style="display:grid;gap:0.5rem">
-				<a class="btn btn--primary btn--block" href="/shop">ادامهٔ خرید</a>
-				<a class="btn btn--ghost btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
-				{!terminal && (
-					<a class="btn btn--outline btn--block" href={`/shop/invoice/${order.number}`}>
-						مشاهدهٔ فاکتور
-					</a>
-				)}
-				<p class="hint">حداقل هزینهٔ ارسال {faMoney(SHIPPING.fee, settings.currency)} است.</p>
-			</div>
-		</div>
+					<div class="panel">
+						<div class="panel__body" style="display:grid;gap:0.5rem">
+							<a class="btn btn--primary btn--block" href="/shop">ادامهٔ خرید</a>
+							<a class="btn btn--ghost btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
+							{!terminal && (
+								<a class="btn btn--outline btn--block" href={`/shop/invoice/${order.number}`}>
+									مشاهدهٔ فاکتور
+								</a>
+							)}
+							<p class="hint">حداقل هزینهٔ ارسال {faMoney(SHIPPING.fee, settings.currency)} است.</p>
+						</div>
+					</div>
 				</aside>
 			</div>
 		</>

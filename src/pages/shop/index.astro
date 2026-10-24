@@ -1,143 +1,179 @@
 ---
+/* ==========================================================================
+   نووکس‌کد — کتالوغ محصولات (بازنگری شده)
+   جست‌وجو، فیلتر، مرتب‌سازی و grid-responsive.
+   ========================================================================== */
+
 import ShopLayout from '../../layouts/ShopLayout.astro';
-import { faMoney, faNumber } from '../../lib/cms/fa';
+import ProductCard from '../../components/store/ProductCard.astro';
 import { readSettings } from '../../lib/cms/settings';
-import { listPublicProducts } from '../../lib/commerce/products';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { listProducts } from '../../lib/commerce/products';
+import { faNumber } from '../../lib/cms/fa';
 
 export const prerender = false;
 
-const [settings, products, cart] = await Promise.all([
-	readSettings(),
-	listPublicProducts(),
-	hydrateCart(readCart(Astro.cookies)),
-]);
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
 
-const featured = products.filter((product) => product.featured);
-const rest = products.filter((product) => !product.featured);
-const initial = (name: string) => name.trim().charAt(0);
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const category = (Astro.url.searchParams.get('category') ?? '').trim();
+const sort = (Astro.url.searchParams.get('sort') ?? 'newest').trim();
+const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+
+const result = await listProducts({
+	query,
+	status: 'active',
+	category,
+	sort: sort as 'newest' | 'price-asc' | 'price-desc' | 'stock-asc' | 'name',
+	page,
+	perPage: 12,
+});
+
+const products = result.items;
 const shopClosed = !settings.commerceEnabled;
+
+const allCategories = result.categories;
+const sortOptions: Array<{ value: string; label: string }> = [
+	{ value: 'newest', label: 'تجدیدشده‌ها' },
+	{ value: 'price-asc', label: 'قیمت: کم به زیاد' },
+	{ value: 'price-desc', label: 'قیمت: زیاد به کم' },
+	{ value: 'name', label: 'نام: الفبا' },
+];
+
+function paginationUrl(p: number): string {
+	const params = new URLSearchParams(Astro.url.searchParams);
+	params.set('page', String(p));
+	return `${Astro.url.pathname}?${params.toString()}`;
+}
 ---
 
-<ShopLayout
-	title={settings.shopTitle}
-	description={settings.shopDescription}
-	cartCount={cart.count}
->
+<ShopLayout title={settings.shopTitle || 'فروشگاه'} description={settings.shopDescription} cartCount={cart.count}>
 	{shopClosed ? (
-		<div class="empty">
-			<h2>فروشگاه موقتاً بسته است</h2>
-			<p>برای اطلاع از بازگشایی، مجله را دنبال کنید.</p>
+		<div class="empty" style="padding:4rem 1rem">
+			<h2 class="empty__title">فروشگاه موقتاً بسته است</h2>
+			<p class="empty__desc">برای اطلاع از بازگشایی، مجله را دنبال کنید.</p>
+			<p style="margin-top:1rem"><a class="btn btn--primary" href="/blog">رفتن به مجله</a></p>
 		</div>
 	) : (
 		<>
-			<section class="shop-hero">
-				<span class="shop-hero__eyebrow">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-						<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
-					</svg>
-					{faNumber(products.length)} محصول آمادهٔ خرید
-				</span>
-				<h1>{settings.shopTitle}</h1>
-				<p>{settings.shopDescription}</p>
-			</section>
+			<nav class="breadcrumbs" style="margin-block:1.5rem 0" aria-label="مسیر">
+				<a href="/">خانه</a>
+				<span aria-hidden="true">/</span>
+				<span>فروشگاه</span>
+			</nav>
+
+			<h1 style="font-size:var(--text-2xl);margin-block-end:var(--space-3)">
+				فروشگاه
+				{query && <span class="muted num" style="font-weight:normal;font-size:var(--text-sm);margin-inline-start:0.75rem">— "{query}"</span>}
+			</h1>
+
+			<!-- Catalog toolbar: search + filters + sort -->
+			<div class="catalog-toolbar">
+				<div class="catalog-search">
+					<form action="/shop" method="GET" role="search">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<circle cx="11" cy="11" r="8" />
+							<path d="m21 21-4.3-4.3" />
+						</svg>
+						<input
+							type="search"
+							name="q"
+							value={query}
+							placeholder="جست‌وجو در محصولات…"
+							aria-label="جست‌وجو در محصولات"
+							dir="auto"
+						/>
+						{category && <input type="hidden" name="category" value={category} />}
+						{sort && sort !== 'newest' && <input type="hidden" name="sort" value={sort} />}
+						{page > 1 && <input type="hidden" name="page" value={String(page)} />}
+					</form>
+				</div>
+
+				<div class="catalog-filters">
+					{allCategories.map((cat) => {
+						const isActive = category === cat;
+						const params = new URLSearchParams(Astro.url.searchParams);
+						params.set('category', cat);
+						params.set('page', '1');
+						return (
+							<a
+								href={`${Astro.url.pathname}?${params.toString()}`}
+								class={`filter-chip ${isActive ? 'filter-chip--active' : ''}`}
+							>
+								{cat}
+								{isActive && (
+									<button class="filter-chip__remove" title="حذف فیلتر">×</button>
+								)}
+							</a>
+						);
+					})}
+					{category && (
+						<a href={`/${Astro.url.pathname.split('/').slice(1).join('/')}`} class="filter-chip filter-chip--active">
+							{category}
+							<button class="filter-chip__remove" title="حذف فیلتر">×</button>
+						</a>
+					)}
+					{query && (
+						<a href={`/${Astro.url.pathname.split('/').slice(1).join('/')}`} class="filter-chip filter-chip--active">
+							"{query}"
+							<button class="filter-chip__remove" title="حذف جست‌وجو">×</button>
+						</a>
+					)}
+					{!category && !query && <button class="reset-filters" style="visibility:hidden">بازنشانی فیلترها</button>}
+				</div>
+
+				<div class="catalog-sort">
+					<form class="catalog-sort-form" action="/shop" method="GET">
+						<label for="sortSelect" class="muted">مرتب‌سازی:</label>
+						<select id="sortSelect" name="sort">
+							{sortOptions.map((opt) => (
+								<option value={opt.value} selected={opt.value === sort}>{opt.label}</option>
+							))}
+						</select>
+						{query && <input type="hidden" name="q" value={query} />}
+						{category && <input type="hidden" name="category" value={category} />}
+						<button type="submit" class="btn btn--sm btn--primary">بررسی</button>
+					</form>
+				</div>
+			</div>
+
+			<div class="catalog__count num muted">
+				{result.total} محصول
+			</div>
 
 			{products.length ? (
-				<>
-					{featured.length > 0 && (
-						<section class="shop-section" aria-labelledby="featured-title">
-							<div class="shop-section__head">
-								<h2 id="featured-title">پیشنهاد ویژه</h2>
-								<span class="hint">دستچین‌شده توسط تیم ما</span>
-							</div>
-
-							<div class="shop-grid">
-								{featured.map((product) => (
-									<article class="shop-card">
-										<a href={`/shop/${product.slug}`} class="shop-card__media" aria-hidden="true" tabindex="-1">
-											{product.image ? (
-												<img src={product.image} alt="" loading="lazy" />
-											) : (
-												initial(product.name)
-											)}
-											<span class="shop-card__flag">ویژه</span>
-										</a>
-										<div class="shop-card__body">
-											<span class="shop-card__category">{product.category}</span>
-											<a class="shop-card__name" href={`/shop/${product.slug}`}>
-												{product.name}
-											</a>
-											<p class="shop-card__desc">{product.description}</p>
-											<div class="shop-card__foot">
-												<span class="price">
-													<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
-													{product.compareAtPrice && (
-														<span class="price__was num">
-															{faMoney(product.compareAtPrice, settings.currency)}
-														</span>
-													)}
-												</span>
-												<a class="btn btn--outline" href={`/shop/${product.slug}`}>
-													مشاهده
-												</a>
-											</div>
-										</div>
-									</article>
-								))}
-							</div>
-						</section>
-					)}
-
-					<section class="shop-section" aria-labelledby="all-title">
-						<div class="shop-section__head">
-							<h2 id="all-title">همهٔ محصولات</h2>
-							<span class="hint">ارسال سریع — پشتیبانی فارسی</span>
-						</div>
-
-						<div class="shop-grid">
-							{(featured.length ? rest : products).map((product) => (
-								<article class="shop-card">
-									<a href={`/shop/${product.slug}`} class="shop-card__media" aria-hidden="true" tabindex="-1">
-										{product.image ? (
-											<img src={product.image} alt="" loading="lazy" />
-										) : (
-											initial(product.name)
-										)}
-									</a>
-									<div class="shop-card__body">
-										<span class="shop-card__category">{product.category}</span>
-										<a class="shop-card__name" href={`/shop/${product.slug}`}>
-											{product.name}
-										</a>
-										<p class="shop-card__desc">{product.description}</p>
-										<div class="shop-card__foot">
-											<span class="price">
-												<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
-												{product.compareAtPrice && (
-													<span class="price__was num">
-														{faMoney(product.compareAtPrice, settings.currency)}
-													</span>
-												)}
-											</span>
-											{product.stock > 0 ? (
-												<a class="btn btn--primary" href={`/shop/${product.slug}`}>
-													خرید
-												</a>
-											) : (
-												<span class="badge badge--danger">ناموجود</span>
-											)}
-										</div>
-									</div>
-								</article>
-							))}
-						</div>
-					</section>
-				</>
-			) : (
-				<div class="empty">
-					<h2>هنوز محصولی برای فروش نیست</h2>
-					<p>به‌زودی محصولات تازه اضافه می‌شود.</p>
+				<div class="product-grid">
+					{products.map((product) => (
+						<ProductCard product={product} currency={settings.currency} />
+					))}
 				</div>
+			) : (
+				<div class="empty" style="padding:4rem 1rem">
+					<h2 class="empty__title">محصولی پیدا نشد</h2>
+					<p class="empty__desc">تلاش کنید با کلمات کلیدی دیگری جست‌وجو کنید یا فیلترها را حذف کنید.</p>
+					<p style="margin-top:1.5rem"><a class="btn btn--primary" href="/shop">بازگشت به فروشگاه</a></p>
+				</div>
+			)}
+
+			{result.pages > 1 && (
+				<nav class="pagination" aria-label="صفحه‌بندی" style="margin-block:var(--space-10) 0;display:flex;justify-content:center;gap:var(--space-2)">
+					{page > 1 && (
+						<a class="btn btn--outline btn--sm" href={paginationUrl(page - 1)}>صفحه قبل</a>
+					)}
+					{Array.from({ length: result.pages }, (_, i) => i + 1).map((p) => (
+						<a
+							class={`btn btn--sm ${p === page ? 'btn--primary' : 'btn--outline'}`}
+							href={paginationUrl(p)}
+							aria-current={p === page ? 'page' : undefined}
+						>
+							{faNumber(p)}
+						</a>
+					))}
+					{page < result.pages && (
+						<a class="btn btn--outline btn--sm" href={paginationUrl(page + 1)}>صفحه بعد</a>
+					)}
+				</nav>
 			)}
 		</>
 	)}

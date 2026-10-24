@@ -1,10 +1,15 @@
 ---
+/* ==========================================================================
+   نووکس‌کد — صفحه جزئیات محصول (بازنگری شده)
+   اطلاعات کافی برای تصمیم خرید، حفظ شده پرداخت و سبد خرید.
+   ========================================================================== */
+
 import ShopLayout from '../../layouts/ShopLayout.astro';
-import { faMoney, faNumber } from '../../lib/cms/fa';
 import { readSettings } from '../../lib/cms/settings';
-import { getProduct } from '../../lib/commerce/products';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { getProduct } from '../../lib/commerce/products';
 import { SHIPPING } from '../../lib/commerce/orders';
+import { faMoney, faNumber, faDate } from '../../lib/cms/fa';
 
 export const prerender = false;
 
@@ -26,64 +31,82 @@ const percentOff = onSale
 	? Math.round(((product.compareAtPrice! - product.price) / product.compareAtPrice!) * 100)
 	: 0;
 const soldOut = product.stock === 0;
+const lowStock = product.stock > 0 && product.stock <= 3;
 const errorMessage = Astro.url.searchParams.get('error') ?? '';
 const added = Astro.url.searchParams.get('added') === '1';
+const initial = product.name.trim().charAt(0);
 ---
 
-<ShopLayout title={product.name} description={product.description.slice(0, 150)} cartCount={cart.count}>
-	<nav class="breadcrumbs" aria-label="مسیر">
+<ShopLayout title={product.name} description={product.description.slice(0, 160)} cartCount={cart.count}>
+	<nav class="breadcrumbs" style="margin-block:1.5rem 0" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
 		<a href="/shop">فروشگاه</a>
 		<span aria-hidden="true">/</span>
 		<a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a>
 		<span aria-hidden="true">/</span>
-		<span>{product.name}</span>
+		<span aria-current="page">{product.name}</span>
 	</nav>
 
-	<div class="product-detail">
-		<div class="product-detail__media">
-			{product.image ? (
-				<img src={product.image} alt={product.name} />
-			) : (
-				product.name.charAt(0)
+	<div class="product-detail-page" style="display:grid;gap:var(--space-8)">
+		<!-- Left: media -->
+		<div class="product-media">
+			<div class="product-media__main">
+				{product.image ? (
+					<img src={product.image} alt={product.name} />
+				) : (
+					<div class="product-placeholder" style="height:100%;width:100%">
+						<span class="product-placeholder__symbol">{initial}</span>
+					</div>
+				)}
+			</div>
+			{!soldOut && (
+				<p class="hint" style="margin-top:0.5rem;color:var(--success);font-weight:var(--font-weight-semibold)">
+					{lowStock ? `فقط {faNumber(product.stock)} عدد باقی مانده` : 'موجود در انبار'}
+				</p>
 			)}
 		</div>
 
-		<div>
-			<div class="buy-box__row" style="gap:0.4rem">
-				<span class="badge">{product.category}</span>
+		<!-- Right: info + buy -->
+		<div class="product-info">
+			<div class="product-meta">
+				<span class="badge badge--brand">{product.category}</span>
 				{onSale && <span class="badge badge--warning num">{faNumber(percentOff)}٪ تخفیف</span>}
 				{soldOut ? (
 					<span class="badge badge--danger">ناموجود</span>
-				) : product.stock <= 3 ? (
-					<span class="badge badge--warning num">فقط {faNumber(product.stock)} عدد باقی مانده</span>
+				) : lowStock ? (
+					<span class="badge badge--warning num">فقط {faNumber(product.stock)} عدد</span>
 				) : (
 					<span class="badge badge--success">موجود در انبار</span>
 				)}
 			</div>
 
 			<h1>{product.name}</h1>
-			<p class="product-detail__desc">{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
+
+			<p class="product-desc">{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
 
 			<div class="buy-box">
-				<div class="buy-box__row" style="justify-content:space-between">
-					<span class="price">
-						<span class="price__now num" style="font-size:1.3rem">
-							{faMoney(product.price, settings.currency)}
-						</span>
-						{onSale && (
-							<span class="price__was num">{faMoney(product.compareAtPrice!, settings.currency)}</span>
+				<div class="buy-box__row" style="justify-content:space-between;align-items:center">
+					<span class="product-price">
+						{product.compareAtPrice && (
+							<span class="product-price--was num">
+								{faMoney(product.compareAtPrice!, settings.currency)}
+							</span>
 						)}
+						<span class="product-price--now num">{faMoney(product.price, settings.currency)}</span>
 					</span>
-					<span class="hint num">کد کالا: {product.sku}</span>
+					<span class="product-sku muted">کد کالا: {product.sku}</span>
 				</div>
 
-				{errorMessage && <p class="notice notice--error">{errorMessage}</p>}
-				{added && <p class="notice notice--success">محصول به سبد خرید اضافه شد.</p>}
+				{errorMessage && <p class="alert alert--error">{errorMessage}</p>}
+				{added && <p class="alert alert--success">محصول به سبد خرید اضافه شد.</p>}
 
 				{soldOut ? (
-					<p class="notice">این محصول فعلاً ناموجود است — برای اطلاع از شارژ موجودی به مجله سر بزنید.</p>
+					<p class="notice" style="text-align:center">
+						این محصول فعلاً ناموجود است — برای اطلاع از شارژ موجودی به مجله سر بزنید.
+					</p>
 				) : (
-					<form method="post" action="/shop/api/cart" class="buy-box__row">
+					<form method="post" action="/shop/api/cart" class="buy-form">
 						<input type="hidden" name="action" value="add" />
 						<input type="hidden" name="productId" value={product.id} />
 						<input
@@ -92,7 +115,7 @@ const added = Astro.url.searchParams.get('added') === '1';
 							value={`/shop/${product.slug}?added=1`}
 						/>
 						<label class="sr-only" for="quantity">تعداد</label>
-						<div class="qty">
+						<div class="qty-control" style="display:flex;align-items:center;gap:0.5rem">
 							<input
 								id="quantity"
 								name="quantity"
@@ -101,16 +124,19 @@ const added = Astro.url.searchParams.get('added') === '1';
 								max={product.stock}
 								value="1"
 								inputmode="numeric"
+								class="qty-input"
 							/>
+							<button class="btn btn--primary btn--lg" type="submit">
+								افزودن به سبد خرید
+							</button>
+							{cart.count > 0 && (
+								<a class="btn btn--outline" href="/shop/cart">مشاهدهٔ سبد</a>
+							)}
 						</div>
-						<button class="btn btn--primary" type="submit">افزودن به سبد خرید</button>
-						{cart.count > 0 && (
-							<a class="btn btn--outline" href="/shop/cart">مشاهدهٔ سبد</a>
-						)}
 					</form>
 				)}
 
-				<ul class="hint" style="margin:0;padding-inline-start:1.1rem;display:grid;gap:0.2rem">
+				<ul class="buy-info" style="margin:0;padding:0;list-style:none;display:grid;gap:0.25rem;margin-top:1rem">
 					<li>
 						{product.price >= SHIPPING.freeThreshold
 							? 'ارسال این محصول رایگان است.'
@@ -120,6 +146,64 @@ const added = Astro.url.searchParams.get('added') === '1';
 					<li>پشتیبانی فارسی در روزهای کاری.</li>
 				</ul>
 			</div>
+
+			<!-- Product info sections -->
+			<section class="product-sections" style="margin-top:var(--space-10)">
+				<div class="section-tab">
+					<h3>آنلاین‌سازی محصول</h3>
+					<p class="product-section-desc">
+						{product.description || 'توضیحی برای این محصول ثبت نشده است.'}
+					</p>
+				</div>
+
+				<div class="product-section">
+					<h4>تکنولوژی و سازگاری</h4>
+					<p class="product-section-desc">
+						این محصول در دسته‌بندی <span class="ltr">{product.category}</span> قرار دارد و برای استفاده در
+						پروژه‌های فارسی آماده‌سازی شده است.
+					</p>
+				</div>
+
+				<div class="product-section">
+					<h4>نصب و راه‌اندازی</h4>
+					<p class="product-section-desc">
+						بعد از خرید، فایل‌های محصول در حسابتان در دسترس خواهد بود. برای نصب، فایل‌ها را دانلود کنید و
+						براساس راهنمای مراحل آموزشی پیش بروید.
+					</p>
+				</div>
+
+				<div class="product-section">
+					<h4>نسخه و به‌روزرسانی</h4>
+					<p class="product-section-desc">
+						آخرین به‌روزرسانی: {faDate(product.updatedAt)} — این نسخه قابل استفاده در محیط‌های تولیدی است.
+					</p>
+				</div>
+
+				<div class="product-section">
+					<h4>مجوز و پشتیبانی</h4>
+					<p class="product-section-desc">
+						مجوز استفاده برای یک پروژه/domäne است. پشتیبانی فارسی در روزهای کاری ارائه می‌شود.
+					</p>
+				</div>
+
+				<div class="product-section">
+					<h4>سوالات متداول</h4>
+					<dl class="faq-list" style="margin:0;padding:0;display:grid;gap:0.75rem">
+						<div class="faq-item">
+							<dt class="faq-question">چه چیزی پس از خرید دریافت می‌کنم؟</dt>
+							<dd class="faq-answer">فایل‌های منبعpropyl و مستندات نصب محصول.</dd>
+						</div>
+						<div class="faq-item">
+							<dt class="faq-question">آیا کد منبع باز است؟</dt>
+							<dd class="faq-answer">بله، کد منبعpropyl قابل بررسی و تغییر است.</dd>
+						</div>
+						<div class="faq-item">
+							<dt class="faq-question">چگونه به به‌روزرسانی‌ها دسترسی پیدا کنم؟</dt>
+							<dd class="faq-answer">از طریق پنل کاربری خود، نسخه‌های جدید را دانلود کنید.</dd>
+						</div>
+					</dl>
+				</div>
+			</section>
 		</div>
 	</div>
 </ShopLayout>

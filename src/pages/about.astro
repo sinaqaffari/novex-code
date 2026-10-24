@@ -1,5 +1,5 @@
 ---
-import SiteLayout from '../layouts/SiteLayout.astro';
+import ShopLayout from '../layouts/ShopLayout.astro';
 import { faNumber } from '../lib/cms/fa';
 import { readSettings } from '../lib/cms/settings';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
@@ -10,27 +10,31 @@ const settings = await readSettings();
 const cart = await hydrateCart(readCart(Astro.cookies));
 ---
 
-<SiteLayout title="درباره" description={settings.siteDescription} cartCount={cart.count}>
-	<section class="shop-hero">
+<ShopLayout title="درباره" description={settings.siteDescription} cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span>درباره</span>
+	</nav>
+
+	<section class="shop-hero" style="padding:var(--space-10) 1rem var(--space-6)">
 		<span class="shop-hero__eyebrow">دربارهٔ ما</span>
-		<h1>{settings.siteTitle}</h1>
-		<p>{settings.siteDescription}</p>
+		<h1 style="font-size:var(--text-2xl);margin-block-end:var(--space-2)">{settings.siteTitle}</h1>
+		<p style="color:var(--ink-soft);max-width:48ch">{settings.siteDescription}</p>
 	</section>
 
-	<div class="prose" style="padding-bottom:2rem">
+	<div class="prose" style="padding-bottom:var(--space-10)">
 		<p>
-			این سایت با Astro ساخته شده و همهٔ محتوای آن — نوشته‌ها، تصاویر، تنظیمات و
-			محصولات — از یک پنل مدیریت فارسی و راست‌به‌چپ اداره می‌شود. هیچ سرویس خارجی،
-			پایگاه‌دادهٔ مدیریت‌شده یا حساب کاربری ابری لازم نیست؛ داده‌ها روی همان سروری
-			می‌مانند که سایت روی آن اجرا می‌شود.
+			این سایت با Astro ساخته شده و همهٔ محتوای آن — نوشته‌ها، تنظیمات و محصولات — از یک
+			پنل مدیریت فارسی و راست‌به‌چپ اداره می‌شود. هیچ سرویس خارجی، پایگاه‌دادهٔ مدیریت‌شده یا
+			حساب کاربری ابری لازم نیست؛ داده‌ها روی همان سروری می‌مانند که سایت روی آن اجرا می‌شود.
 		</p>
 
 		<h2>چرا این ساختار؟</h2>
 		<p>
-			پنل‌های مدیریت معمولاً یا بسیار سنگین‌اند یا برای زبان‌های چپ‌به‌راست ساخته
-			شده‌اند. این‌جا چیدمان از ابتدا با <code>dir="rtl"</code> و ویژگی‌های منطقی CSS
-			نوشته شده — نه با وصله‌های بعدی. اعداد فارسی، تاریخ هجری شمسی و قلم وزیرمتن
-			بخشی از قرارداد هستند، نه افزونه.
+			پنل‌های مدیریت معمولاً یا بسیار سنگین‌اند یا برای زبان‌های چپ‌به‌راست ساخته شده‌اند.
+			این‌جا چیدمان از ابتدا با dir="rtl" و ویژگی‌های منطقی CSS نوشته شده — نه با وصله‌های
+			بعدی. اعداد فارسی، تاریخ هجری شمسی و قلم وزیرمتن بخشی از قرارداد هستند، نه افزونه.
 		</p>
 
 		<h2>امکانات</h2>
@@ -46,7 +50,7 @@ const cart = await hydrateCart(readCart(Astro.cookies));
 		<p>
 			برای ارتباط با تیم، از نشانی{' '}
 			<a href={`mailto:${settings.authorEmail}`} dir="ltr">{settings.authorEmail}</a>{' '}
-			استفاده کنید. 👋
+			استفاده کنید.
 		</p>
 
 		<p class="hint">
@@ -55,4 +59,4 @@ const cart = await hydrateCart(readCart(Astro.cookies));
 				: 'ماژول فروشگاه در حال حاضر خاموش است؛ مجله در دسترس است.'}
 		</p>
 	</div>
-</SiteLayout>
+</ShopLayout>
