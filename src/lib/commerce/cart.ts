@@ -4,13 +4,8 @@
  */
 
 import type { AstroCookies } from 'astro';
-<<<<<<< HEAD
-import { readDatabase } from './db';
-import type { Product } from './types';
-=======
 import { readDatabase } from './db.ts';
 import type { Product } from './types.ts';
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 
 export const CART_COOKIE = 'novex_cart';
 export const DISCOUNT_COOKIE = 'novex_discount';

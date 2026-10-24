@@ -1,17 +1,4 @@
 /**
-<<<<<<< HEAD
- * Panel authentication — a single administrator account, signed HMAC session
- * cookies, and a small in-memory brute-force brake.
- *
- * Credentials come from the environment:
- *   CMS_USERNAME       (default: admin)
- *   CMS_PASSWORD       (plain, convenient for local development)
- *   CMS_PASSWORD_HASH  (`scrypt:<saltHex>:<hashHex>`, preferred in production)
- *   CMS_SESSION_SECRET (signing key; a random one is generated per boot)
- */
-
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-=======
  * احراز هویت پنل مدیریت — overeen با سیستم کاربر RBAC.
  *
  * Credentials از `data/users.json` می‌آیند (یک کاربر مدیر پیش‌فرض از محیط ساخته می‌شود).
@@ -26,7 +13,6 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { ensureDefaultAdmin, getUserByUsername, type User } from './users.ts';
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 
 export const SESSION_COOKIE = 'novex_cms_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // ۸ ساعت
@@ -36,31 +22,15 @@ const env = (key: string): string | undefined => {
 	return value && value.trim() !== '' ? value.trim() : undefined;
 };
 
-<<<<<<< HEAD
-const ADMIN_USERNAME = env('CMS_USERNAME') ?? 'admin';
-const ADMIN_PASSWORD = env('CMS_PASSWORD') ?? 'novex-admin';
-const ADMIN_PASSWORD_HASH = env('CMS_PASSWORD_HASH');
-const SESSION_SECRET = env('CMS_SESSION_SECRET') ?? randomBytes(32).toString('hex');
-
-=======
 const SESSION_SECRET = env('CMS_SESSION_SECRET') ?? randomBytes(32).toString('hex');
 
 let adminBooted = false;
 
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 if (!env('CMS_SESSION_SECRET')) {
 	console.warn(
 		'[CMS] CMS_SESSION_SECRET تنظیم نشده است؛ کلید موقت ساخته شد و با هر بار راه‌اندازی، نشست‌ها باطل می‌شوند.',
 	);
 }
-<<<<<<< HEAD
-if (!env('CMS_PASSWORD') && !env('CMS_PASSWORD_HASH')) {
-	console.warn(
-		'[CMS] رمز پیش‌فرض فعال است (novex-admin). برای محیط عملیاتی CMS_PASSWORD یا CMS_PASSWORD_HASH را تنظیم کنید.',
-	);
-}
-=======
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 
 export function hashPassword(password: string): string {
 	const salt = randomBytes(16);
@@ -75,20 +45,6 @@ function safeEqual(a: string, b: string): boolean {
 	return timingSafeEqual(bufferA, bufferB);
 }
 
-<<<<<<< HEAD
-function verifyPassword(password: string): boolean {
-	if (ADMIN_PASSWORD_HASH) {
-		const [scheme, saltHex, hashHex] = ADMIN_PASSWORD_HASH.split(':');
-		if (scheme !== 'scrypt' || !saltHex || !hashHex) return false;
-		const expected = scryptSync(password, Buffer.from(saltHex, 'hex'), 64);
-		const actual = Buffer.from(hashHex, 'hex');
-		return expected.length === actual.length && timingSafeEqual(expected, actual);
-	}
-	return safeEqual(password, ADMIN_PASSWORD);
-}
-
-=======
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 interface Attempt {
 	count: number;
 	lockedUntil: number;
@@ -120,18 +76,11 @@ export interface Credentials {
 	ip: string;
 }
 
-<<<<<<< HEAD
-export function verifyCredentials({ username, password, ip }: Credentials): {
-	ok: boolean;
-	message?: string;
-} {
-=======
 export async function verifyCredentials({ username, password, ip }: Credentials): Promise<{
 	ok: boolean;
 	user?: User;
 	message?: string;
 }> {
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 	if (loginThrottleRemaining(ip) > 0) {
 		return {
 			ok: false,
@@ -139,12 +88,6 @@ export async function verifyCredentials({ username, password, ip }: Credentials)
 		};
 	}
 
-<<<<<<< HEAD
-	const usernameOk = safeEqual(username.trim().toLowerCase(), ADMIN_USERNAME.toLowerCase());
-	const passwordOk = verifyPassword(password);
-
-	if (!usernameOk || !passwordOk) {
-=======
 	// ادمین پیش‌فرض را از محیط بسازد (فقط یک بار در طول عمر پروسه).
 	if (!adminBooted) {
 		ensureDefaultAdmin().catch(() => undefined);
@@ -159,15 +102,11 @@ export async function verifyCredentials({ username, password, ip }: Credentials)
 
 	const passwordOk = verifyPassword(user.passwordHash, password);
 	if (!passwordOk) {
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 		registerFailure(ip);
 		return { ok: false, message: 'نام کاربری یا گذرواژه نادرست است.' };
 	}
 
 	attempts.delete(ip);
-<<<<<<< HEAD
-	return { ok: true };
-=======
 	return { ok: true, user };
 }
 
@@ -181,15 +120,11 @@ export function verifyPassword(passwordHash: string, password: string): boolean 
 	const expected = scryptSync(password, Buffer.from(saltHex, 'hex'), 64);
 	const actual = Buffer.from(hashHex, 'hex');
 	return expected.length === actual.length && timingSafeEqual(expected, actual);
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 }
 
 export interface SessionPayload {
 	sub: string;
-<<<<<<< HEAD
-=======
 	role?: string;
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 	iat: number;
 	exp: number;
 }
@@ -198,22 +133,15 @@ function sign(value: string): string {
 	return createHmac('sha256', SESSION_SECRET).update(value).digest('base64url');
 }
 
-<<<<<<< HEAD
-export function createSessionToken(username: string): { token: string; expiresAt: Date } {
-=======
 export function createSessionToken(
 	username: string,
 	role?: string,
 ): { token: string; expiresAt: Date } {
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 	const issuedAt = Date.now();
 	const expiresAt = new Date(issuedAt + SESSION_TTL_MS);
 	const payload: SessionPayload = {
 		sub: username,
-<<<<<<< HEAD
-=======
 		...(role ? { role } : {}),
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 		iat: issuedAt,
 		exp: expiresAt.getTime(),
 	};
@@ -251,8 +179,4 @@ export const sessionCookieOptions = {
 
 export const clearedSessionCookieOptions = { ...sessionCookieOptions, maxAge: 0 };
 
-<<<<<<< HEAD
-export const ADMIN_NAME = ADMIN_USERNAME;
-=======
 export const ADMIN_NAME = env('CMS_USERNAME') ?? 'admin';
->>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
