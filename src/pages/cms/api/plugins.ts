@@ -5,6 +5,7 @@ import {
 	deactivatePlugin,
 	findPlugin,
 	savePluginOption,
+	uninstallPlugin,
 } from '../../../lib/plugins/registry';
 import type { PluginSetting } from '../../../lib/plugins/types';
 
@@ -14,11 +15,26 @@ const FLASH: Record<string, string> = {
 	activate: 'plugin-activated',
 	deactivate: 'plugin-deactivated',
 	'save-options': 'plugin-options-saved',
+	uninstall: 'plugin-uninstalled',
 };
 
+/**
+ * مقدار فرم را به همان تایپی تبدیل می‌کند که در مانیفست اعلام شده است؛
+ * بدون این کار عددها رشته ذخیره می‌شدند و مقایسه‌ها در افزونه‌ها می‌شکست.
+ */
 function readSetting(setting: PluginSetting, payload: Record<string, unknown>): unknown {
-	if (setting.type === 'switch') return asBoolean(payload[`opt_${setting.key}`]);
-	return asText(payload[`opt_${setting.key}`]).trim();
+	const raw = payload[`opt_${setting.key}`];
+
+	if (setting.type === 'switch') return asBoolean(raw);
+
+	const text = asText(raw).trim();
+	if (setting.type === 'number') {
+		const value = Number(text);
+		if (!Number.isFinite(value)) throw new Error(`مقدار «${setting.label}» باید عدد باشد.`);
+		return value;
+	}
+
+	return text;
 }
 
 export const POST: APIRoute = async ({ request }) => {
@@ -35,6 +51,7 @@ export const POST: APIRoute = async ({ request }) => {
 
 		if (action === 'activate') await activatePlugin(id);
 		if (action === 'deactivate') await deactivatePlugin(id);
+		if (action === 'uninstall') await uninstallPlugin(id);
 
 		if (action === 'save-options') {
 			if (!plugin.active) {

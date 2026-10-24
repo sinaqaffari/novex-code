@@ -2,10 +2,22 @@
 	"name": "بازبینی محتوا",
 	"version": "1.0.0",
 	"description": "ویجتی به داشبورد اضافه می‌کند که نوشته‌های ناقص را نشان می‌دهد: بدون توضیح، بدون برچسب یا بدون تصویر.",
+	"pluginUri": "https://example.com/plugins/content-audit",
 	"author": "تیم نووکس",
+	"authorUri": "https://example.com",
 	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-content-audit",
 	"requires": "2.0.0",
-	"hooks": ["cms.dashboard.widgets"],
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"admin",
+		"dashboard",
+		"content"
+	],
+	"hooks": [
+		"cms.dashboard.widgets"
+	],
 	"settings": [
 		{
 			"key": "includeDrafts",
@@ -17,9 +29,11 @@
 		{
 			"key": "maxItems",
 			"label": "بیشترین تعداد نمایش",
-			"type": "text",
+			"type": "number",
 			"default": "5",
-			"help": "عددی بین ۱ تا ۱۰."
+			"help": "عددی بین ۱ تا ۱۰.",
+			"min": 1,
+			"max": 10
 		}
 	]
 }

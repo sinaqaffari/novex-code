@@ -14,7 +14,8 @@
 		"check": "astro check",
 		"docker:build": "docker build -t novex-code .",
 		"docker:up": "docker compose up --build -d",
-		"docker:down": "docker compose down"
+		"docker:down": "docker compose down",
+		"check:copy": "node scripts/check-copy.mjs"
 	},
 	"dependencies": {
 		"@astrojs/mdx": "^8.1.1",

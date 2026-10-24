@@ -2336,3 +2336,43 @@ code.mono {
 .grid--stats > .kpi:last-child {
 	border-inline-end: 0;
 }
+
+/* صفحهٔ افزونه‌ها */
+.plugin-mark {
+	display: grid;
+	place-items: center;
+	width: 26px;
+	height: 26px;
+	flex: none;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--muted);
+}
+
+.readme-section {
+	padding: 8px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+}
+
+.readme-section summary {
+	color: var(--ink);
+	font-size: 12.5px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.readme-body {
+	margin: 8px 0 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--ink-soft);
+	font-family: var(--font-fa);
+	font-size: 12.5px;
+	line-height: 1.95;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

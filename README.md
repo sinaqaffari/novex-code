@@ -61,6 +61,7 @@ docker run -d --name novex-code -p 4321:4321 \
 | `PORT` | `4321` | پورت سرور |
 | `HOST` | `0.0.0.0` | در Docker باید `0.0.0.0` باشد |
 | `TZ` | `Asia/Tehran` | منطقهٔ زمانی سرور |
+| `SITE_URL` | — | نشانی عمومی برای canonical، `og:url` و فید RSS؛ بدون آن از هدر `Host` خوانده می‌شود |
 | `CMS_USERNAME` | `admin` | نام کاربری مدیر |
 | `CMS_PASSWORD` | `novex-admin` | گذرواژهٔ ساده — فقط توسعه |
 | `CMS_PASSWORD_HASH` | — | هش scrypt؛ در محیط عملیاتی جایگزین گذرواژهٔ ساده |
@@ -124,20 +125,39 @@ HTML جلوگیری می‌کنید:
 ```text
 plugins/
 └─ seo-meta/
-   ├─ plugin.json     هدر افزونه: نام، نسخه، مجوز، قلاب‌ها، تنظیمات
-   ├─ index.ts        نقطهٔ ورود: register(api)
-   └─ readme.md       مستندات افزونه
+   ├─ plugin.json     هدر افزونه — معادل هدر PHP در وردپرس
+   ├─ index.ts        نقطهٔ ورود: register / activate / deactivate / uninstall
+   ├─ readme.txt      readme استاندارد مخزن وردپرس
+   └─ assets/         تصاویر فهرست، اختیاری: icon-256x256.png و banner-772x250.png
 ```
 
-`plugin.json` نقش همان هدر PHP را دارد:
+هدر `plugin.json` همان کلیدهای هدر وردپرس را با نام‌های camelCase نگه می‌دارد تا
+نقل‌وبرگرد ساده باشد:
+
+| هدر وردپرس | کلید در `plugin.json` |
+| --- | --- |
+| Plugin Name | `name` |
+| Plugin URI | `pluginUri` |
+| Description | `description` |
+| Version | `version` |
+| Requires at least | `requires` |
+| Tested up to | `testedUpTo` |
+| Requires Plugins | `requiresPlugins` |
+| Author / Author URI | `author` / `authorUri` |
+| License / License URI | `license` / `licenseUri` |
+| Text Domain | `textDomain` |
+| Tags | `tags` |
 
 ```json
 {
 	"name": "سئوی صفحات عمومی",
 	"version": "1.0.0",
 	"description": "کنونیکال، Open Graph و JSON-LD",
-	"license": "MIT",
 	"requires": "2.0.0",
+	"requiresPlugins": [],
+	"textDomain": "seo-meta",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
 	"hooks": ["site.head"],
 	"settings": [
 		{ "key": "enableJsonLd", "label": "دادهٔ ساختاریافته", "type": "switch", "default": true }
@@ -155,6 +175,10 @@ export function register(api: PluginApi) {
 }
 ```
 
+`readme.txt` با قالب رسمی مخزن وردپرس نوشته می‌شود (`=== نام ===`، بخش‌های
+`== Description ==` و `== Changelog ==`) و در همان صفحه با `?plugin=<id>&view=readme`
+خوانده می‌شود.
+
 ### قلاب‌های موجود
 
 | قلاب | نوع | زمان اجرا |
@@ -168,11 +192,18 @@ export function register(api: PluginApi) {
 
 ### چرخهٔ عمر
 
-- **فعال‌سازی** — `activate(api)` صدا زده می‌شود، قلاب‌ها ثبت و شناسهٔ افزونه در
+- **فعال‌سازی** — ابتدا `requires` (نسخهٔ پنل) و `requiresPlugins` بررسی می‌شوند؛
+  سپس `activate(api)` صدا زده می‌شود، قلاب‌ها ثبت و شناسهٔ افزونه در
   `data/plugins.json` ذخیره می‌شود.
 - **غیرفعال‌سازی** — `deactivate(api)` اجرا و همهٔ قلاب‌ها برداشته می‌شوند.
+- **حذف** — `uninstall(api)` اجرا، افزونه غیرفعال و تنظیماتش پاک می‌شود؛ فایل‌ها
+  دست‌نخورده می‌مانند، چون در زمان ساخت خوانده می‌شوند.
 - **بارگذاری** — در هر راه‌اندازی، فقط افزونه‌های فعال ثبت می‌شوند؛ خطای یک افزونه
   بقیهٔ پنل را از کار نمی‌اندازد و در همان صفحه نمایش داده می‌شود.
+
+صفحهٔ `/cms/plugins` مثل فهرست افزونه‌های وردپرس است: تب‌های «همه / فعال / غیرفعال»
+با شمارش، جست‌وجو (`?q=`)، و برای هر افزونه چهار عمل فعال‌سازی، غیرفعال‌سازی،
+تنظیمات و حذف.
 
 دو افزونهٔ نمونه همراه پروژه است: `seo-meta` (سمت عمومی) و `content-audit` (سمت پنل).
 

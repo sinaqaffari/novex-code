@@ -267,7 +267,7 @@ export async function readDatabase(): Promise<Database> {
 
 let queue: Promise<unknown> = Promise.resolve();
 
-/** Serialised read–modify–write. The mutator may change `db` in place. */
+/** Serialised read, modify, write cycle. The mutator may change `db` in place. */
 export function updateDatabase<T>(mutator: (db: Database) => T | Promise<T>): Promise<T> {
 	const run = async () => {
 		const db = await readDatabase();

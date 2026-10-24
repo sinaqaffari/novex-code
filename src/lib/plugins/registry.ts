@@ -4,15 +4,23 @@
  * افزونه‌ها در زمان ساخت باندل می‌شوند (import.meta.glob)، پس روی خروجی
  * standalone هم بدون بارگذاری کد از دیسک کار می‌کنند. فعال/غیرفعال بودن با
  * data/plugins.json کنترل می‌شود، نه با حذف فایل.
+ *
+ * چرخهٔ عمر، معادل WordPress:
+ *   register  ← هنگام فعال‌شدن و در هر راه‌اندازی برای افزونه‌های فعال
+ *   activate  ← register_activation_hook
+ *   deactivate← register_deactivation_hook
+ *   uninstall ← uninstall.php (پاک‌سازی تنظیمات)
  */
 
 import { addAction, addFilter, removePluginHooks } from './hooks';
+import { parseReadme } from './readme';
 import { readPluginState, setPluginOption, updatePluginState, type PluginState } from './store';
 import type {
 	InstalledPlugin,
 	PluginApi,
 	PluginManifest,
 	PluginModule,
+	PluginReadme,
 	PluginSetting,
 } from './types';
 
@@ -27,11 +35,17 @@ const codeModules = import.meta.glob('/plugins/*/index.ts', { eager: true }) as 
 	string,
 	PluginModule
 >;
+const readmeModules = import.meta.glob('/plugins/*/readme.txt', {
+	eager: true,
+	query: '?raw',
+	import: 'default',
+}) as Record<string, string>;
 
 interface PluginEntry {
 	id: string;
 	manifest: PluginManifest;
 	module: PluginModule;
+	readme?: PluginReadme;
 }
 
 const errors = new Map<string, string>();
@@ -59,7 +73,13 @@ function buildEntries(): PluginEntry[] {
 		if (!id || !code?.register) continue;
 
 		const manifest = { ...FALLBACK_MANIFEST, ...(module.default ?? {}) };
-		entries.push({ id, manifest, module: code });
+		const rawReadme = readmeModules[`/plugins/${id}/readme.txt`];
+		entries.push({
+			id,
+			manifest,
+			module: code,
+			readme: typeof rawReadme === 'string' ? parseReadme(rawReadme) : undefined,
+		});
 	}
 
 	return entries.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name, 'fa'));
@@ -96,6 +116,13 @@ function createApi(entry: PluginEntry): PluginApi {
 			cache = await setPluginOption(id, key, value);
 		},
 	};
+}
+
+/** وابستگی‌های فعال‌نشده را برمی‌گرداند؛ خالی یعنی مشکلی نیست. */
+function missingDependencies(entry: PluginEntry, active: string[]): string[] {
+	return (entry.manifest.requiresPlugins ?? []).filter(
+		(dependency) => dependency !== entry.id && !active.includes(dependency),
+	);
 }
 
 async function registerPlugin(entry: PluginEntry, runActivate: boolean): Promise<void> {
@@ -140,18 +167,31 @@ export function ensurePluginsBooted(): Promise<void> {
 }
 
 export function listInstalledPlugins(): InstalledPlugin[] {
-	const active = new Set(cache?.active ?? []);
+	const active = cache?.active ?? [];
+	const activeIds = new Set(active);
+
 	return buildEntries().map((entry) => ({
 		id: entry.id,
 		manifest: entry.manifest,
-		active: active.has(entry.id),
+		active: activeIds.has(entry.id),
 		error: errors.get(entry.id),
+		readme: entry.readme,
+		missingDependencies: missingDependencies(entry, active),
 	}));
 }
 
 export async function activatePlugin(id: string): Promise<void> {
 	const entry = buildEntries().find((item) => item.id === id);
 	if (!entry) throw new Error('افزونهٔ مورد نظر پیدا نشد.');
+
+	const active = cache?.active ?? [];
+	const missing = missingDependencies(entry, active);
+	if (missing.length) {
+		const names = missing
+			.map((dependency) => buildEntries().find((item) => item.id === dependency)?.manifest.name ?? dependency)
+			.join('، ');
+		throw new Error(`برای فعال‌سازی این افزونه، ابتدا «${names}» را فعال کنید.`);
+	}
 
 	cache = await updatePluginState((state) => {
 		if (!state.active.includes(id)) state.active.push(id);
@@ -175,20 +215,40 @@ export async function deactivatePlugin(id: string): Promise<void> {
 	}
 }
 
+/**
+ * حذف داده‌های افزونه — معادل uninstall.php.
+ *
+ * فایل‌های افزونه داخل مخزن‌اند و در زمان اجرا حذف نمی‌شوند؛ پس این عملیات
+ * افزونه را غیرفعال، قلاب‌هایش را برمی‌دارد و همهٔ تنظیماتش را پاک می‌کند.
+ */
+export async function uninstallPlugin(id: string): Promise<void> {
+	const entry = buildEntries().find((item) => item.id === id);
+	if (!entry) throw new Error('افزونهٔ مورد نظر پیدا نشد.');
+
+	const active = cache?.active ?? [];
+	if (active.includes(id)) await deactivatePlugin(id);
+
+	const api = createApi(entry);
+	await entry.module.uninstall?.(api);
+
+	cache = await updatePluginState((state) => {
+		state.active = state.active.filter((item) => item !== id);
+		const options = { ...state.options };
+		delete options[id];
+		state.options = options;
+	});
+	errors.delete(id);
+}
+
+export function findPlugin(id: string): InstalledPlugin | undefined {
+	return listInstalledPlugins().find((plugin) => plugin.id === id);
+}
+
 export function pluginOptions(id: string): Record<string, unknown> {
 	return cache?.options[id] ?? {};
 }
 
 /** ذخیرهٔ یک تنظیم و تازه‌سازی کش — تا افزونه مقدار تازه را همان لحظه ببیند. */
-export async function savePluginOption(
-	id: string,
-	key: string,
-	value: unknown,
-): Promise<void> {
+export async function savePluginOption(id: string, key: string, value: unknown): Promise<void> {
 	cache = await setPluginOption(id, key, value);
-}
-
-/** یک افزونهٔ نصب‌شده با شناسه — برای صفحهٔ تنظیمات و API. */
-export function findPlugin(id: string): InstalledPlugin | undefined {
-	return listInstalledPlugins().find((plugin) => plugin.id === id);
 }

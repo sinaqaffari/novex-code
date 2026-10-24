@@ -17,6 +17,12 @@ export default defineConfig({
 	server: {
 		allowedHosts: true,
 	},
+	// آداپتور Node نشانی درخواست را به `localhost` تثبیت می‌کند، پس محافظ CSRF
+	// داخلی آسترو پشت دامنهٔ واقعی و پروکسی پیش‌نمایش همهٔ فرم‌ها را رد می‌کند.
+	// همان قاعده در `src/middleware.ts` با میزبان واقعی درخواست اجرا می‌شود.
+	security: {
+		checkOrigin: false,
+	},
 	integrations: [mdx(), sitemap()],
 	fonts: [
 		{

@@ -2,6 +2,7 @@ import rss from '@astrojs/rss';
 import type { APIRoute } from 'astro';
 import { listPosts } from '../lib/cms/posts';
 import { readSettings } from '../lib/cms/settings';
+import { publicOrigin } from '../lib/urls';
 
 export const prerender = false;
 
@@ -13,7 +14,7 @@ export const GET: APIRoute = async (context) => {
 	return rss({
 		title: settings.siteTitle,
 		description: settings.siteDescription,
-		site: context.site ?? 'https://example.com',
+		site: publicOrigin(context.request),
 		items: posts.map((post) => ({
 			title: post.title,
 			description: post.description,

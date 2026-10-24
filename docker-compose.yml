@@ -13,6 +13,8 @@ services:
       HOST: 0.0.0.0
       PORT: 4321
       TZ: ${TZ:-Asia/Tehran}
+      # نشانی عمومی؛ در canonical، og:url و فید RSS استفاده می‌شود.
+      SITE_URL: ${SITE_URL:-http://localhost:4321}
       # حساب مدیر — پیش از انتشار عمومی تغییر دهید.
       CMS_USERNAME: ${CMS_USERNAME:-admin}
       CMS_PASSWORD: ${CMS_PASSWORD:-novex-admin}

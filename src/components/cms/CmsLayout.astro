@@ -63,6 +63,7 @@ const flashMap: Record<string, { tone: 'success' | 'error' | 'info'; text: strin
 	'plugin-activated': { tone: 'success', text: 'افزونه فعال شد و قلاب‌هایش ثبت شدند.' },
 	'plugin-deactivated': { tone: 'success', text: 'افزونه غیرفعال شد و قلاب‌هایش برداشته شدند.' },
 	'plugin-options-saved': { tone: 'success', text: 'تنظیمات افزونه ذخیره شد.' },
+	'plugin-uninstalled': { tone: 'success', text: 'داده‌های افزونه پاک شد.' },
 };
 
 const flashKey = Astro.url.searchParams.get('flash') ?? '';

@@ -1,13 +1,23 @@
 {
 	"name": "سئوی صفحات عمومی",
 	"version": "1.0.0",
-	"description": "تگ کنونیکال، Open Graph و دادهٔ ساختاریافتهٔ JSON-LD را به سر صفحه‌های عمومی اضافه می‌کند.",
+	"description": "تگ کنونیکال، Open Graph، Twitter Card و دادهٔ ساختاریافتهٔ JSON-LD را به سر صفحه‌های عمومی اضافه می‌کند.",
+	"pluginUri": "https://example.com/plugins/seo-meta",
 	"author": "تیم نووکس",
 	"authorUri": "https://example.com",
-	"pluginUri": "https://example.com/plugins/seo-meta",
 	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-seo",
 	"requires": "2.0.0",
-	"hooks": ["site.head"],
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"seo",
+		"opengraph",
+		"jsonld"
+	],
+	"hooks": [
+		"site.head"
+	],
 	"settings": [
 		{
 			"key": "twitterHandle",
@@ -21,7 +31,7 @@
 			"label": "افزودن دادهٔ ساختاریافته (JSON-LD)",
 			"type": "switch",
 			"default": true,
-			"help": "برای نوشته‌ها، schema از نوع BlogPosting ساخته می‌شود."
+			"help": "برای نوشته‌ها schema از نوع BlogPosting ساخته می‌شود."
 		}
 	]
 }

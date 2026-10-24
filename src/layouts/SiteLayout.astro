@@ -4,6 +4,7 @@ import '../styles/shop.css';
 import { readSettings } from '../lib/cms/settings';
 import { applyFilters } from '../lib/plugins/hooks';
 import { ensurePluginsBooted } from '../lib/plugins/registry';
+import { absoluteUrl, publicOrigin } from '../lib/urls';
 
 interface Props {
 	title: string;
@@ -27,6 +28,8 @@ const {
 } = Astro.props;
 const settings = await readSettings();
 const path = Astro.url.pathname;
+const origin = publicOrigin(Astro.request);
+const canonical = absoluteUrl(Astro.request, path);
 const isActive = (prefix: string) =>
 	prefix === '/' ? path === '/' : path === prefix || path.startsWith(`${prefix}/`);
 
@@ -35,16 +38,20 @@ await ensurePluginsBooted();
 const pluginHead = await applyFilters('site.head', '', {
 	title,
 	description: description || settings.siteDescription,
-	url: Astro.url.href,
+	url: canonical,
 	type,
 	image,
 	publishedAt,
 	siteName: settings.siteTitle,
 });
 
+// افزونه‌ای که خودش canonical می‌دهد (مثل سئو) نباید تگ تکراری بگیرد.
+const pluginHasCanonical = pluginHead.includes('rel="canonical"');
+const pluginHasOgUrl = pluginHead.includes('property="og:url"');
+
 const pluginFooter = await applyFilters('site.footer', '', {
 	siteName: settings.siteTitle,
-	url: Astro.url.origin,
+	url: origin,
 });
 ---
 
@@ -61,6 +68,11 @@ const pluginFooter = await applyFilters('site.footer', '', {
 		<meta property="og:description" content={description || settings.siteDescription} />
 		<meta property="og:type" content="website" />
 		<meta property="og:locale" content="fa_IR" />
+		{!pluginHasOgUrl && <meta property="og:url" content={canonical} />}
+		{!pluginHasCanonical && <link rel="canonical" href={canonical} />}
+		{image && !pluginHead.includes('property="og:image"') && (
+			<meta property="og:image" content={absoluteUrl(Astro.request, image)} />
+		)}
 		<Fragment set:html={pluginHead} />
 	</head>
 	<body class:list={['shop', bodyClass]}>

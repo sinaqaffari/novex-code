@@ -1,210 +1,409 @@
 ---
 import CmsLayout from '../../components/cms/CmsLayout.astro';
 import Icon from '../../components/cms/Icon.astro';
-import { listInstalledPlugins, ensurePluginsBooted, pluginOptions } from '../../lib/plugins/registry';
+import {
+	ensurePluginsBooted,
+	listInstalledPlugins,
+	PANEL_VERSION,
+	pluginOptions,
+} from '../../lib/plugins/registry';
 import { listHooks } from '../../lib/plugins/hooks';
 
 export const prerender = false;
 
 await ensurePluginsBooted();
-const plugins = listInstalledPlugins();
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const status = Astro.url.searchParams.get('status') ?? 'all';
+const selectedId = Astro.url.searchParams.get('plugin') ?? '';
+const view = Astro.url.searchParams.get('view') ?? 'settings';
+
+const installed = listInstalledPlugins();
 const hooks = listHooks();
-const activeCount = plugins.filter((plugin) => plugin.active).length;
+const activeCount = installed.filter((plugin) => plugin.active).length;
+
+const matchesQuery = (haystack: string[]) =>
+	!query || haystack.join(' ').toLowerCase().includes(query.toLowerCase());
+
+const plugins = installed.filter((plugin) => {
+	if (status === 'active' && !plugin.active) return false;
+	if (status === 'inactive' && plugin.active) return false;
+	return matchesQuery([
+		plugin.manifest.name,
+		plugin.manifest.description,
+		plugin.manifest.author ?? '',
+		...(plugin.manifest.tags ?? []),
+	]);
+});
+
+const selected = installed.find((plugin) => plugin.id === selectedId);
+const missingPlugin = Boolean(selectedId) && !selected;
+const fa = (value: number | string) =>
+	String(value).replace(/[0-9]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+
+const filterHref = (nextStatus: string) => {
+	const params = new URLSearchParams();
+	if (query) params.set('q', query);
+	if (nextStatus !== 'all') params.set('status', nextStatus);
+	const suffix = params.toString();
+	return suffix ? `/cms/plugins?${suffix}` : '/cms/plugins';
+};
+
+const detailHref = (id: string, nextView: 'settings' | 'readme') =>
+	`/cms/plugins?plugin=${encodeURIComponent(id)}&view=${nextView}`;
+
+const tabs = [
+	{ value: 'all', label: 'همه', count: installed.length },
+	{ value: 'active', label: 'فعال', count: activeCount },
+	{ value: 'inactive', label: 'غیرفعال', count: installed.length - activeCount },
+];
 
 const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
 ---
 
-<CmsLayout title="افزونه‌ها" subtitle={`${activeCount} افزونهٔ فعال از ${plugins.length} افزونهٔ نصب‌شده`}>
+<CmsLayout
+	title="افزونه‌ها"
+	subtitle={`${fa(activeCount)} افزونهٔ فعال از ${fa(installed.length)} — سازگار با پنل نسخهٔ ${fa(PANEL_VERSION)}`}
+>
 	<Fragment slot="actions">
-		<a class="btn btn--sm" href="#plugin-contract">ساخت افزونه</a>
+		<a class="btn btn--sm" href="#plugin-docs">ساخت افزونه</a>
 	</Fragment>
 
-	{
-		plugins.length === 0 ? (
-			<section class="card">
-				<div class="empty">
-					<span class="empty__icon">
-						<Icon name="layers" size={20} />
-					</span>
-					<span class="empty__title">هیچ افزونه‌ای نصب نشده است</span>
-					<span>
-						هر افزونه یک پوشه در <code class="mono">plugins/</code> است که یک فایل{' '}
-						<code class="mono">plugin.json</code> و یک <code class="mono">index.ts</code> دارد.
-					</span>
-				</div>
-			</section>
-		) : (
-			<div class="stack">
-				{plugins.map((plugin) => {
-					const settings = plugin.manifest.settings ?? [];
-					const options = pluginOptions(plugin.id);
-					const usedHooks = hooksFor(plugin.id);
+	<section class="card">
+		<div class="card__head">
+			<div class="filterbar grow">
+				<nav class="segmented" aria-label="پالایش وضعیت افزونه">
+					{tabs.map((tab) => (
+						<a href={filterHref(tab.value)} aria-current={status === tab.value ? 'page' : undefined}>
+							{tab.label}
+							<span class="segmented__count num">{fa(tab.count)}</span>
+						</a>
+					))}
+				</nav>
 
-					return (
-						<section class="card">
-							<div class="card__head">
-								<div>
-									<h2 class="card__title">
-										{plugin.manifest.name}
-										<span class="badge badge--neutral num" style="margin-inline-start:6px">
-											{plugin.manifest.version}
-										</span>
+				<form method="get" action="/cms/plugins" class="toolbar" style="margin-inline-start:auto">
+					{status !== 'all' && <input type="hidden" name="status" value={status} />}
+					<label class="search">
+						<Icon name="search" size={15} />
+						<input class="input" type="search" name="q" value={query} placeholder="جست‌وجوی افزونه…" />
+					</label>
+					<button class="btn btn--sm" type="submit">جست‌وجو</button>
+				</form>
+			</div>
+		</div>
+
+		{missingPlugin && (
+			<div class="card__body">
+				<p class="alert alert--warning">افزونه‌ای با شناسهٔ «{selectedId}» نصب نشده است.</p>
+			</div>
+		)}
+
+		{plugins.length ? (
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">افزونه</th>
+							<th scope="col">وضعیت</th>
+							<th scope="col">قلاب‌ها</th>
+							<th scope="col" style="text-align:end">عملیات</th>
+						</tr>
+					</thead>
+					<tbody>
+						{plugins.map((plugin) => {
+							const usedHooks = hooksFor(plugin.id);
+							const hasSettings = (plugin.manifest.settings ?? []).length > 0;
+
+							return (
+								<tr>
+									<td>
+										<div class="cell-product">
+											<span class="plugin-mark" aria-hidden="true">
+												<Icon name="layers" size={15} />
+											</span>
+											<span>
+												<a class="cell-product__name" href={detailHref(plugin.id, 'readme')}>
+													{plugin.manifest.name}
+												</a>
+												<span class="cell-product__meta">{plugin.manifest.description}</span>
+												<span class="cell-product__meta num">
+													نسخهٔ {plugin.manifest.version}
+													{plugin.manifest.author && ` — ${plugin.manifest.author}`}
+												</span>
+											</span>
+										</div>
+										{plugin.error && (
+											<span class="error-text" style="display:block;margin-top:4px">
+												{plugin.error}
+											</span>
+										)}
+										{!plugin.active && plugin.missingDependencies?.length ? (
+											<span class="hint" style="display:block;margin-top:4px">
+												نیازمند فعال‌بودن: {plugin.missingDependencies.join('، ')}
+											</span>
+										) : null}
+									</td>
+
+									<td>
 										<span
-											class:list={[
-												'badge',
-												plugin.active ? 'badge--success' : 'badge--neutral',
-											]}
-											style="margin-inline-start:4px"
+											class:list={['badge', plugin.active ? 'badge--success' : 'badge--neutral']}
 										>
 											{plugin.active ? 'فعال' : 'غیرفعال'}
 										</span>
-									</h2>
-									<p class="card__hint">{plugin.manifest.description}</p>
-								</div>
-								<form method="post" action="/cms/api/plugins">
-									<input type="hidden" name="pluginId" value={plugin.id} />
-									<input
-										type="hidden"
-										name="action"
-										value={plugin.active ? 'deactivate' : 'activate'}
-									/>
-									<button
-										class:list={['btn', 'btn--sm', plugin.active ? '' : 'btn--primary']}
-										type="submit"
-									>
-										{plugin.active ? 'غیرفعال‌کردن' : 'فعال‌کردن'}
-									</button>
-								</form>
-							</div>
+									</td>
 
-							<div class="card__body stack" style="gap:12px">
-								{plugin.error && (
-									<div class="alert alert--error" role="alert">
-										<Icon name="alert" size={16} />
-										<span>{plugin.error}</span>
-									</div>
-								)}
+									<td>
+										{usedHooks.length ? (
+											<span class="tag-list">
+												{usedHooks.map((entry) => (
+													<span class="badge badge--neutral mono">{entry.hook}</span>
+												))}
+											</span>
+										) : (
+											<span class="muted">—</span>
+										)}
+									</td>
 
-								<dl class="dl">
-									{plugin.manifest.author && (
-										<div class="dl__row">
-											<dt>نویسنده</dt>
-											<dd>{plugin.manifest.author}</dd>
-										</div>
-									)}
-									<div class="dl__row">
-										<dt>مجوز</dt>
-										<dd class="ltr">{plugin.manifest.license ?? 'MIT'}</dd>
-									</div>
-									<div class="dl__row">
-										<dt>پوشه</dt>
-										<dd class="mono ltr">plugins/{plugin.id}</dd>
-									</div>
-									<div class="dl__row">
-										<dt>قلاب‌ها</dt>
-										<dd>
-											{usedHooks.length ? (
-												<span class="tag-list">
-													{usedHooks.map((entry) => (
-														<span class="badge badge--neutral mono">{entry.hook}</span>
-													))}
-												</span>
-											) : (
-												<span class="hint">
-													{plugin.active
-														? 'این افزونه قلابی ثبت نکرده است.'
-														: 'برای دیدن قلاب‌ها، افزونه را فعال کنید.'}
-												</span>
-											)}
-										</dd>
-									</div>
-								</dl>
-
-								{plugin.active && settings.length > 0 && (
-									<form method="post" action="/cms/api/plugins">
-										<input type="hidden" name="pluginId" value={plugin.id} />
-										<input type="hidden" name="action" value="save-options" />
-
-										<div class="stack" style="gap:10px">
-											{settings.map((setting) =>
-												setting.type === 'switch' ? (
-													<label class="switch-row" style="border:1px solid var(--line);border-radius:5px">
-														<span class="switch-row__text">
-															<span>{setting.label}</span>
-															{setting.help && <span class="hint">{setting.help}</span>}
-														</span>
-														<span class="switch">
-															<input type="hidden" name={`opt_${setting.key}`} value="false" />
-															<input
-																type="checkbox"
-																name={`opt_${setting.key}`}
-																value="true"
-																checked={Boolean(
-																	options[setting.key] ?? setting.default ?? false,
-																)}
-															/>
-															<span class="switch__track" />
-														</span>
-													</label>
-												) : (
-													<div class="field">
-														<label class="label" for={`opt-${plugin.id}-${setting.key}`}>
-															{setting.label}
-														</label>
-														<input
-															class="input"
-															id={`opt-${plugin.id}-${setting.key}`}
-															name={`opt_${setting.key}`}
-															value={String(options[setting.key] ?? setting.default ?? '')}
-															placeholder={setting.placeholder ?? ''}
-														/>
-														{setting.help && <span class="hint">{setting.help}</span>}
-													</div>
-												),
-											)}
-
-											<div class="row">
-												<button class="btn btn--sm btn--primary" type="submit">
-													ذخیرهٔ تنظیمات
+									<td>
+										<div class="table__actions">
+											<form method="post" action="/cms/api/plugins">
+												<input type="hidden" name="pluginId" value={plugin.id} />
+												<input
+													type="hidden"
+													name="action"
+													value={plugin.active ? 'deactivate' : 'activate'}
+												/>
+												<button class="btn btn--sm" type="submit">
+													{plugin.active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}
 												</button>
-											</div>
+											</form>
+
+											{plugin.active && hasSettings && (
+												<a class="btn btn--sm btn--ghost" href={detailHref(plugin.id, 'settings')}>
+													تنظیمات
+												</a>
+											)}
+
+											<a class="btn btn--sm btn--ghost" href={detailHref(plugin.id, 'readme')}>
+												جزئیات
+											</a>
+
+											{!plugin.active && (
+												<form
+													method="post"
+													action="/cms/api/plugins"
+													data-confirm={`داده‌های «${plugin.manifest.name}» پاک شود؟ این کار تنظیمات افزونه را حذف می‌کند.`}
+												>
+													<input type="hidden" name="pluginId" value={plugin.id} />
+													<input type="hidden" name="action" value="uninstall" />
+													<button class="btn btn--sm btn--danger" type="submit">
+														حذف داده‌ها
+													</button>
+												</form>
+											)}
 										</div>
-									</form>
-								)}
-							</div>
-						</section>
-					);
-				})}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
 			</div>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="layers" size={20} /></span>
+				<span class="empty__title">
+					{query ? 'افزونه‌ای با این جست‌وجو پیدا نشد' : 'هیچ افزونه‌ای نصب نشده است'}
+				</span>
+				<span>
+					هر افزونه یک پوشه در <code class="mono">plugins/</code> است که یک{' '}
+					<code class="mono">plugin.json</code> و یک <code class="mono">index.ts</code> دارد.
+				</span>
+			</div>
+		)}
+	</section>
+
+	{
+		selected && (
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">{selected.manifest.name}</h2>
+						<p class="card__hint">
+							{view === 'readme' ? 'مستندات افزونه (readme.txt)' : 'تنظیمات افزونه'}
+						</p>
+					</div>
+					<div class="row">
+						<a class="btn btn--sm btn--ghost" href={detailHref(selected.id, view === 'readme' ? 'settings' : 'readme')}>
+							{view === 'readme' ? 'تنظیمات' : 'مستندات'}
+						</a>
+						<a class="btn btn--sm btn--ghost" href="/cms/plugins">
+							بستن
+						</a>
+					</div>
+				</div>
+
+				{view === 'settings' ? (
+					selected.manifest.settings?.length ? (
+						<form method="post" action="/cms/api/plugins" class="card__body">
+							<input type="hidden" name="pluginId" value={selected.id} />
+							<input type="hidden" name="action" value="save-options" />
+
+							<div class="stack" style="gap:12px;max-width:520px">
+								{selected.manifest.settings.map((setting) =>
+									setting.type === 'switch' ? (
+										<label class="switch-row" style="border:1px solid var(--line);border-radius:5px">
+											<span class="switch-row__text">
+												<span>{setting.label}</span>
+												{setting.help && <span class="hint">{setting.help}</span>}
+											</span>
+											<span class="switch">
+												<input type="hidden" name={`opt_${setting.key}`} value="false" />
+												<input
+													type="checkbox"
+													name={`opt_${setting.key}`}
+													value="true"
+													checked={Boolean(
+														pluginOptions(selected.id)[setting.key] ?? setting.default ?? false,
+													)}
+												/>
+												<span class="switch__track" />
+											</span>
+										</label>
+									) : (
+										<div class="field">
+											<label class="label" for={`opt-${selected.id}-${setting.key}`}>
+												{setting.label}
+											</label>
+											<input
+										class="input"
+										id={`opt-${selected.id}-${setting.key}`}
+										type={setting.type === 'number' ? 'number' : 'text'}
+										inputmode={setting.type === 'number' ? 'numeric' : undefined}
+										min={setting.min}
+										max={setting.max}
+										step={setting.type === 'number' ? (setting.step ?? 1) : undefined}
+										dir={setting.type === 'number' ? 'ltr' : undefined}
+										name={`opt_${setting.key}`}
+												value={String(pluginOptions(selected.id)[setting.key] ?? setting.default ?? '')}
+												placeholder={setting.placeholder ?? ''}
+											/>
+											{setting.help && <span class="hint">{setting.help}</span>}
+										</div>
+									),
+								)}
+
+								<div class="row">
+									<button class="btn btn--sm btn--primary" type="submit">ذخیرهٔ تنظیمات</button>
+								</div>
+							</div>
+						</form>
+					) : (
+						<div class="card__body">
+							<p class="hint">این افزونه تنظیماتی ندارد.</p>
+						</div>
+					)
+				) : (
+					<div class="card__body stack" style="gap:16px">
+						<dl class="dl">
+							<div class="dl__row">
+								<dt>نسخه</dt>
+								<dd class="num">{selected.manifest.version}</dd>
+							</div>
+							<div class="dl__row">
+								<dt>نیازمند پنل</dt>
+								<dd class="num">{selected.manifest.requires ?? '—'}</dd>
+							</div>
+							<div class="dl__row">
+								<dt>آزموده‌شده تا</dt>
+								<dd class="num">{selected.manifest.testedUpTo ?? '—'}</dd>
+							</div>
+							<div class="dl__row">
+								<dt>مجوز</dt>
+								<dd>
+									{selected.manifest.licenseUri ? (
+										<a class="ltr" href={selected.manifest.licenseUri} target="_blank" rel="noreferrer">
+											{selected.manifest.license ?? 'MIT'}
+										</a>
+									) : (
+										<span class="ltr">{selected.manifest.license ?? 'MIT'}</span>
+									)}
+								</dd>
+							</div>
+							<div class="dl__row">
+								<dt>پوشه</dt>
+								<dd class="mono ltr">plugins/{selected.id}</dd>
+							</div>
+							{selected.manifest.textDomain && (
+								<div class="dl__row">
+									<dt>Text Domain</dt>
+									<dd class="mono ltr">{selected.manifest.textDomain}</dd>
+								</div>
+							)}
+							{selected.manifest.tags?.length ? (
+								<div class="dl__row">
+									<dt>برچسب‌ها</dt>
+									<dd class="tag-list">
+										{selected.manifest.tags.map((tag) => (
+											<span class="badge badge--neutral mono">{tag}</span>
+										))}
+									</dd>
+								</div>
+							) : null}
+						</dl>
+
+						{selected.readme ? (
+							<div class="stack" style="gap:12px">
+								{selected.readme.sections.map((section) => (
+									<details class="readme-section" open={section.title === 'Description'}>
+										<summary>{section.title}</summary>
+										<pre class="readme-body">{section.body}</pre>
+									</details>
+								))}
+							</div>
+						) : (
+							<p class="hint">
+								این افزونه فایل <code class="mono">readme.txt</code> ندارد.
+							</p>
+						)}
+					</div>
+				)}
+			</section>
 		)
 	}
 
-	<section class="card" id="plugin-contract">
+	<section class="card" id="plugin-docs">
 		<div class="card__head">
 			<div>
 				<h2 class="card__title">ساخت افزونه</h2>
 				<p class="card__hint">
-					قرارداد همان الگوی آشنای WordPress است — هدر، قلاب و چرخهٔ عمر — بدون PHP.
+					قرارداد عیناً همان الگوی WordPress است — هدر، readme.txt، قلاب اولویت‌دار و چرخهٔ عمر.
 				</p>
 			</div>
 		</div>
 		<div class="card__body stack" style="gap:12px">
-			<ol style="margin:0;padding-inline-start:18px;display:grid;gap:4px;font-size:12.5px">
-				<li>
-					پوشهٔ <code class="mono">plugins/&lt;id&gt;/</code> را بسازید؛ شناسه فقط حروف کوچک،
-					عدد و خط تیره.
-				</li>
-				<li>
-					<code class="mono">plugin.json</code> را با نام، نسخه، توضیح، مجوز و فهرست قلاب‌ها
-					بنویسید.
-				</li>
-				<li>
-					در <code class="mono">index.ts</code> تابع <code class="mono">register(api)</code> را
-					صادر کنید و با <code class="mono">api.addFilter</code> یا{' '}
-					<code class="mono">api.addAction</code> به قلاب‌ها وصل شوید.
-				</li>
-				<li>افزونه را از همین صفحه فعال کنید؛ پنل آن را در فهرست نصب‌شده‌ها نشان می‌دهد.</li>
-			</ol>
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">هدر WordPress</th>
+						<th scope="col">معادل در این پروژه</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr><td class="ltr">Plugin Name</td><td><code class="mono">name</code></td></tr>
+					<tr><td class="ltr">Version</td><td><code class="mono">version</code></td></tr>
+					<tr><td class="ltr">Description</td><td><code class="mono">description</code></td></tr>
+					<tr><td class="ltr">Requires at least</td><td><code class="mono">requires</code></td></tr>
+					<tr><td class="ltr">Tested up to</td><td><code class="mono">testedUpTo</code></td></tr>
+					<tr><td class="ltr">Requires Plugins</td><td><code class="mono">requiresPlugins</code></td></tr>
+					<tr><td class="ltr">Author / Author URI</td><td><code class="mono">author</code>، <code class="mono">authorUri</code></td></tr>
+					<tr><td class="ltr">License / License URI</td><td><code class="mono">license</code>، <code class="mono">licenseUri</code></td></tr>
+					<tr><td class="ltr">Text Domain</td><td><code class="mono">textDomain</code></td></tr>
+					<tr><td class="ltr">Tags</td><td><code class="mono">tags</code></td></tr>
+					<tr><td class="ltr">readme.txt</td><td><code class="mono">readme.txt</code> — Description، Installation، FAQ، Changelog</td></tr>
+					<tr><td class="ltr">uninstall.php</td><td><code class="mono">export function uninstall(api)</code></td></tr>
+				</tbody>
+			</table>
 
 			<pre class="code-block ltr" dir="ltr"><code>{`// plugins/hello/plugin.json
 {
@@ -212,6 +411,10 @@ const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
   "version": "1.0.0",
   "description": "یک افزونهٔ نمونه.",
   "license": "MIT",
+  "requires": "2.0.0",
+  "testedUpTo": "2.0.0",
+  "textDomain": "novex-hello",
+  "tags": ["demo"],
   "hooks": ["site.footer"]
 }
 
@@ -225,9 +428,9 @@ export function register(api: PluginApi) {
 }`}</code></pre>
 
 			<p class="hint">
-				قلاب‌های موجود: <code class="mono">site.head</code>،{' '}
-				<code class="mono">site.footer</code>، <code class="mono">cms.dashboard.widgets</code>.
-				هر افزونه فقط API را می‌بیند و به فایل‌ها دسترسی مستقیم ندارد.
+				قلاب‌های موجود: <code class="mono">site.head</code>، <code class="mono">site.footer</code>،{' '}
+				<code class="mono">cms.dashboard.widgets</code>. اولویت پیش‌فرض ۱۰ است و عدد کوچک‌تر
+				زودتر اجرا می‌شود.
 			</p>
 		</div>
 	</section>
