@@ -1,7 +1,11 @@
 {
 	"name": "novex-code-clean",
 	"type": "module",
+<<<<<<< HEAD
 	"version": "0.0.1",
+=======
+	"version": "0.1.1",
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 	"engines": {
 		"node": ">=22.23.4"
 	},
@@ -11,12 +15,24 @@
 		"preview": "astro preview",
 		"astro": "astro",
 		"check:rtl": "node scripts/check-rtl.mjs",
+<<<<<<< HEAD
 		"check": "astro check",
 		"docker:build": "docker build -t novex-code .",
 		"docker:up": "docker compose up --build -d",
 		"docker:down": "docker compose down",
 		"check:copy": "node scripts/check-copy.mjs"
 	},
+=======
+		"check:copy": "node scripts/check-copy.mjs",
+		"check": "astro check",
+		"test": "node --experimental-strip-types --test tests/",
+		"test:ci": "npm run check && npm run build && npm test",
+		"docker:build": "docker build -t novex-code .",
+		"docker:up": "docker compose up --build -d",
+		"docker:down": "docker compose down"
+	},
+	"version": "0.1.0",
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 	"dependencies": {
 		"@astrojs/mdx": "^8.1.1",
 		"@astrojs/node": "^11.1.9",

@@ -1,6 +1,6 @@
 /** ورودی‌های فارسی (ارقام و جداکننده‌ها) را به عدد و متن استاندارد تبدیل می‌کند. */
 
-import { AppError } from '../errors';
+import { AppError } from '../errors.ts';
 
 const persianDigits = /[\u06F0-\u06F9]/g;
 const arabicDigits = /[\u0660-\u0669]/g;

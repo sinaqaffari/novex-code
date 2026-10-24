@@ -10,7 +10,11 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+<<<<<<< HEAD
 import type { Database } from './types';
+=======
+import type { Database } from './types.ts';
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 
 export const DATA_DIR = path.resolve(process.cwd(), 'data');
 export const DB_FILE = path.join(DATA_DIR, 'commerce.json');

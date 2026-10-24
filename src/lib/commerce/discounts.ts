@@ -1,9 +1,9 @@
 /** کدهای تخفیف: ساخت، فعال/غیرفعال‌سازی و اعتبارسنجی هنگام تسویه. */
 
-import { AppError } from '../errors';
-import { newId, readDatabase, updateDatabase } from './db';
-import type { Database, Discount, DiscountType } from './types';
-import { asBool, asText, parseDate, parseEnum, parseInteger, parseMoney } from './validation';
+import { AppError } from '../errors.ts';
+import { newId, readDatabase, updateDatabase } from './db.ts';
+import type { Database, Discount, DiscountType } from './types.ts';
+import { asBool, asText, parseDate, parseEnum, parseInteger, parseMoney } from './validation.ts';
 
 export interface DiscountInput {
 	code: string;

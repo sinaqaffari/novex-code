@@ -1,8 +1,8 @@
 /** آمار فروش برای داشبورد پنل. همهٔ محاسبات سمت سرور و بدون وابستگی به فرانت‌اند است. */
 
-import { readDatabase } from './db';
-import type { Order, Product } from './types';
-import { isRevenue } from './types';
+import { readDatabase } from './db.ts';
+import type { Order, Product } from './types.ts';
+import { isRevenue } from './types.ts';
 
 const DAY = 86_400_000;
 

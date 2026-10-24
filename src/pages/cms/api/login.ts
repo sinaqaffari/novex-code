@@ -37,7 +37,7 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
 		ip = clientIp(request);
 	}
 
-	const result = verifyCredentials({ username, password, ip });
+	const result = await verifyCredentials({ username, password, ip });
 	if (!result.ok) {
 		const message = result.message ?? 'ورود ناموفق بود.';
 		return wantsJson
@@ -45,10 +45,15 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
 			: redirect(`/cms/login?error=${encodeURIComponent(message)}`);
 	}
 
-	const { token, expiresAt } = createSessionToken(username);
+	const { token, expiresAt } = createSessionToken(username, result.user?.role);
 	cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
 
 	return wantsJson
-		? json({ ok: true, redirect: safeNext, expiresAt: expiresAt.toISOString() })
+		? json({
+				ok: true,
+				redirect: safeNext,
+				expiresAt: expiresAt.toISOString(),
+				user: { username: result.user?.username, role: result.user?.role },
+		  })
 		: redirect(safeNext);
 };

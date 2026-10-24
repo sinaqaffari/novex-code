@@ -1,0 +1,131 @@
+---
+import ShopLayout from '../../../layouts/ShopLayout.astro';
+import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { getOrder } from '../../../lib/commerce/orders';
+import { orderStatusLabel } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const { number = '' } = Astro.params;
+const order = await getOrder(number);
+const settings = await readSettings();
+
+if (!order) {
+	return new Response(
+		`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>فاکتور پیدا نشد</title></head><body style="font-family:Tahoma;padding:3rem;text-align:center"><h1>فاکتور پیدا نشد</h1><p><a href="/shop">بازگشت به فروشگاه</a></p></body></html>`,
+		{ status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
+	);
+}
+
+const currency = settings.currency;
+const invoiceDate = faDate(order.createdAt, 'long');
+---
+
+<ShopLayout title={`فاکتور ${order.number}`} description="فاکتور خرید" cartCount={0}>
+	<style>
+		.invoice { max-width: 800px; margin: 2rem auto; padding: 1.5rem; font-family: var(--font-fa); color: var(--ink); }
+		.invoice__header { display: flex; align-items: center; justify-content: space-between; border-block-end: 2px solid var(--line); padding-block-end: 1rem; margin-block-end: 2rem; }
+		.invoice__brand { font-weight: 800; font-size: 1.5rem; color: var(--ink); text-decoration: none; }
+		.invoice__meta { text-align: start; font-size: 0.9rem; color: var(--muted); }
+		.invoice__meta__title { font-weight: 700; color: var(--brand); font-size: 1.25rem; margin-block-end: 0.25rem; }
+		.invoice__customer { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; margin-block-end: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+		.invoice__customer__block { font-size: 0.9rem; }
+		.invoice__customer__label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-block-end: 0.25rem; }
+		.invoice__table { width: 100%; border-collapse: collapse; margin-block-end: 2rem; }
+		.invoice__table th { background: var(--surface-2); color: var(--muted); font-size: 0.8rem; text-align: start; padding: 0.75rem; border-block-end: 1px solid var(--line); font-weight: 700; }
+		.invoice__table td { padding: 0.75rem; border-block-end: 1px solid var(--line); vertical-align: top; }
+		.invoice__table tbody tr:last-child td { border-block-end: none; }
+		.invoice__item__name { font-weight: 700; color: var(--ink); }
+		.invoice__item__sku { font-size: 0.8rem; color: var(--muted); font-family: var(--font-mono); }
+		.invoice__totals { display: flex; flex-direction: column; gap: 0.5rem; margin-block-end: 2rem; text-align: start; }
+		.invoice__totals__row { display: flex; justify-content: space-between; gap: 1rem; color: var(--ink-soft); font-size: 0.95rem; }
+		.invoice__totals__row--grand { font-weight: 800; color: var(--ink); border-block-start: 2px solid var(--line); padding-block-start: 0.75rem; margin-block-start: 0.75rem; }
+		.invoice__footer { border-block-start: 1px solid var(--line); padding-block-start: 1rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+		.invoice__actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-block-end: 1rem; }
+		.btn--print { background: var(--brand); border-color: var(--brand); color: #fff; }
+		.btn--print:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+		@media print { body * { visibility: hidden; } .invoice, .invoice * { visibility: visible; } .invoice { position: absolute; inset-inline-start: 0; top: 0; width: 100%; margin: 0; padding: 1rem; } .invoice__actions { display: none; } .no-print { display: none !important; } }
+	</style>
+
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<span>فاکتور سفارش {order.number}</span>
+	</nav>
+
+	<div class="invoice__actions no-print">
+		<a class="btn btn--ghost btn--sm" href="/shop/order/{order.number}?phone={order.phone}">بازگشت به سفارش</a>
+		<button class="btn btn--print btn--sm" onclick="window.print()"><span>چاپ فاکتور</span></button>
+	</div>
+
+	<div class="invoice">
+		<div class="invoice__header">
+			<div>
+				<a class="invoice__brand" href="/shop">
+					<span>ن</span>
+					<span style="margin-inline-start:0.5rem">{settings.siteTitle}</span>
+				</a>
+				<p style="font-size:0.85rem;color:var(--muted);margin-block-start:0.25rem">{settings.shopDescription}</p>
+			</div>
+			<div class="invoice__meta">
+				<div class="invoice__meta__title">{`فاکتور ${order.number}`}</div>
+				<div>تاریخ فاکتور: {invoiceDate}</div>
+				<div>شماره سفارش: {order.number}</div>
+				<div>وضعیت: <span class="badge badge--{orderStatusLabel(order.status) === 'پرداخت‌شده' ? 'success' : 'neutral'}">{orderStatusLabel(order.status)}</span></div>
+			</div>
+		</div>
+
+		<div class="invoice__customer">
+			<div class="invoice__customer__block">
+				<div class="invoice__customer__label">مشتری</div>
+				<div><strong>{order.customerName}</strong></div>
+				{order.email && <div dir="ltr">{order.email}</div>}
+				<div dir="ltr">{order.phone}</div>
+			</div>
+			<div class="invoice__customer__block">
+				<div class="invoice__customer__label">نشانی تحویل</div>
+				<div>{order.city} — {order.address}</div>
+				{order.note && <div>یادداشت: {order.note}</div>}
+			</div>
+		</div>
+
+		<table class="invoice__table">
+			<thead>
+				<tr>
+					<th scope="col" style="width:45%">محصول</th>
+					<th scope="col" style="width:15%" class="num">تعداد</th>
+					<th scope="col" style="width:20%" class="num">قیمت واحد</th>
+					<th scope="col" style="width:20%" class="num">مجموع</th>
+				</tr>
+			</thead>
+			<tbody>
+				{order.items.map((item) => (
+					<tr>
+						<td>
+							<div class="invoice__item__name">{item.name}</div>
+							<div class="invoice__item__sku">{item.sku}</div>
+						</td>
+						<td class="num">{faNumber(item.quantity)}</td>
+						<td class="num">{faMoney(item.price, currency)}</td>
+						<td class="num">{faMoney(item.price * item.quantity, currency)}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+
+		<div class="invoice__totals">
+			<div class="invoice__totals__row"><span>جمع کالاها</span><span class="num">{faMoney(order.subtotal, currency)}</span></div>
+			<div class="invoice__totals__row"><span>هزینه ارسال</span><span class="num">{order.shipping === 0 ? 'رایگان' : faMoney(order.shipping, currency)}</span></div>
+			{order.discount > 0 && (
+				<div class="invoice__totals__row" style="color:var(--success)"><span>تخفیف {order.discountCode ? `(${order.discountCode})` : ''}</span><span class="num">− {faMoney(order.discount, currency)}</span></div>
+			)}
+			<div class="invoice__totals__row--grand"><span>مبلغ نهایی</span><span class="num">{faMoney(order.total, currency)}</span></div>
+		</div>
+
+		<div class="invoice__footer">
+			<div>ساخته‌شده با <strong>نووکس‌کد</strong> — پلتفرم تجارت الکترونیک فارسی</div>
+			<div>تاریخ صدور: {invoiceDate}</div>
+		</div>
+	</div>
+</ShopLayout>

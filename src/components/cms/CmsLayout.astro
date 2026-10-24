@@ -2,6 +2,10 @@
 import '@fontsource-variable/vazirmatn';
 import '../../styles/cms.css';
 import Icon from './Icon.astro';
+<<<<<<< HEAD
+=======
+import { faNumber } from '../../lib/cms/fa';
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 import { ADMIN_NAME } from '../../lib/cms/auth';
 import { readSettings, TIMEZONES } from '../../lib/cms/settings';
 import { readDatabase } from '../../lib/commerce/db';
@@ -22,7 +26,12 @@ type IconName =
 	| 'receipt'
 	| 'users'
 	| 'ticket'
+<<<<<<< HEAD
 	| 'layers';
+=======
+	| 'layers'
+	| 'chart';
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 
 interface NavItem {
 	href: string;
@@ -126,9 +135,21 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 							icon: 'ticket' as const,
 							match: /^\/cms\/discounts/,
 						},
+<<<<<<< HEAD
 					],
 				},
 			]
+=======
+						{
+							href: '/cms/reports/revenue',
+							label: 'گزارش درآمد',
+							icon: 'chart' as const,
+							match: /^\/cms\/reports/,
+						},
+					],
+				},
+		  ]
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 		: []),
 	{
 		label: 'سیستم',
@@ -167,7 +188,11 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 						};
 					}),
 				},
+<<<<<<< HEAD
 			]
+=======
+		  ]
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 		: []),
 ];
 
@@ -200,7 +225,11 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 			) : (
 				<div class="shell">
 					<aside class="sidebar" id="cms-sidebar" aria-label="ناوبری پنل مدیریت">
+<<<<<<< HEAD
 						<a class="brand" href="/cms">
+=======
+						<a class="brand" href="/cms" aria-label="{settings.siteTitle}">
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 							<span class="brand__mark" aria-hidden="true">ن</span>
 							<span class="brand__text">
 								<span class="brand__title">{settings.siteTitle}</span>
@@ -221,7 +250,13 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 											<Icon name={item.icon} size={17} />
 											<span>{item.label}</span>
 											{item.badge ? (
+<<<<<<< HEAD
 												<span class="nav-link__badge num">{item.badge.toLocaleString('fa-IR')}</span>
+=======
+												<span class="nav-link__badge num">
+													{faNumber(item.badge)}
+												</span>
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 											) : null}
 										</a>
 									))}
@@ -258,6 +293,7 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 
 					<div class="main">
 						<header class="topbar">
+<<<<<<< HEAD
 							<div class="topbar__heading grow">
 								<div class="row" style="gap:.5rem">
 									<button
@@ -290,6 +326,42 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 								{subtitle && <p class="topbar__subtitle">{subtitle}</p>}
 							</div>
 							<div class="topbar__actions">
+=======
+							<div class="topbar__start">
+								<button
+									class="btn btn--icon btn--ghost sidebar-toggle"
+									type="button"
+									data-sidebar-toggle
+									aria-controls="cms-sidebar"
+									aria-expanded="false"
+									aria-label="نمایش منو"
+								>
+									<Icon name="menu" size={18} />
+								</button>
+								{breadcrumbs.length > 0 && (
+									<nav class="breadcrumbs" aria-label="مسیر صفحه">
+										<a href="/cms">پنل</a>
+										{breadcrumbs.map((crumb) => (
+											<>
+												<Icon name="arrow" size={12} />
+												{crumb.href ? (
+													<a href={crumb.href}>{crumb.label}</a>
+												) : (
+													<span aria-current="page">{crumb.label}</span>
+												)}
+											</>
+										))}
+									</nav>
+								)}
+							</div>
+
+							<div class="topbar__center">
+								<h1 class="topbar__title">{title}</h1>
+								{subtitle && <p class="topbar__subtitle">{subtitle}</p>}
+							</div>
+
+							<div class="topbar__end">
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 								<form class="topbar-search" method="get" action="/cms/search" role="search">
 									<Icon name="search" size={15} />
 									<input
@@ -302,14 +374,26 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 									<kbd>⌘K</kbd>
 								</form>
 								<slot name="actions" />
+<<<<<<< HEAD
 								<a class="btn btn--ghost btn--sm" href="/" target="_blank" rel="noreferrer">
 									<Icon name="external" size={15} />
 									<span>سایت</span>
+=======
+								<a
+									class="btn btn--icon btn--ghost"
+									href="/"
+									target="_blank"
+									rel="noreferrer"
+									aria-label="بازدید از سایت"
+								>
+									<Icon name="external" size={15} />
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 								</a>
 							</div>
 						</header>
 
 						<main id="cms-main" class:list={['content', wide && 'content--wide']}>
+<<<<<<< HEAD
 							{flash && (
 								<div
 									class={`alert alert--${flash.tone}`}
@@ -327,6 +411,25 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 								</div>
 							)}
 							<div class="stack">
+=======
+							<div class="stack">
+								{flash && (
+									<div
+										class={`alert alert--${flash.tone}`}
+										role="status"
+										style="margin-block-end: 1.1rem"
+									>
+										<Icon name={flash.tone === 'success' ? 'check' : 'info'} size={17} />
+										<span>{flash.text}</span>
+									</div>
+								)}
+								{errorMessage && (
+									<div class="alert alert--error" role="alert" style="margin-block-end: 1.1rem">
+										<Icon name="alert" size={17} />
+										<span>{errorMessage}</span>
+									</div>
+								)}
+>>>>>>> eec85ad (بازنویسی UI پنل مدیریت — تمیز، راست‌به‌چپ، بدون زیربنای وردپرس)
 								<slot />
 							</div>
 						</main>

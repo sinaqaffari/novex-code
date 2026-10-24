@@ -1,10 +1,10 @@
 /** محصولات: فهرست، جست‌وجو، ساخت، ویرایش و حذف. */
 
-import { AppError } from '../errors';
-import { slugify } from '../cms/posts';
-import { newId, readDatabase, updateDatabase } from './db';
-import type { Product, ProductStatus } from './types';
-import { parseEnum, parseInteger, parseMoney, requireText, asBool, asText } from './validation';
+import { AppError } from '../errors.ts';
+import { slugify } from '../cms/posts.ts';
+import { newId, readDatabase, updateDatabase } from './db.ts';
+import type { Product, ProductStatus } from './types.ts';
+import { parseEnum, parseInteger, parseMoney, requireText, asBool, asText } from './validation.ts';
 
 export interface ProductInput {
 	name: string;

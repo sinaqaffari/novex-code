@@ -1,11 +1,11 @@
 /** سفارش‌ها و تسویه‌حساب فروشگاه. موجودی و شمارندهٔ سفارش در همین‌جا مدیریت می‌شود. */
 
-import { AppError } from '../errors';
-import { newId, readDatabase, updateDatabase } from './db';
-import { computeDiscount } from './discounts';
-import type { Database, Order, OrderItem, OrderStatus } from './types';
-import { isRevenue } from './types';
-import { asText, parseEnum, requireText } from './validation';
+import { AppError } from '../errors.ts';
+import { newId, readDatabase, updateDatabase } from './db.ts';
+import { computeDiscount } from './discounts.ts';
+import type { Database, Order, OrderItem, OrderStatus } from './types.ts';
+import { isRevenue } from './types.ts';
+import { asText, parseEnum, requireText } from './validation.ts';
 
 const FREE_SHIPPING_THRESHOLD = 1_000_000;
 const SHIPPING_FEE = 45_000;
@@ -227,6 +227,23 @@ export async function updateOrderNote(id: string, note: string): Promise<Order> 
 		order.updatedAt = new Date().toISOString();
 		return order;
 	});
+}
+
+/** ذخیرهٔ مرجع پرداخت (مثل Authority درگاه زرین‌پال) در سفارش. */
+export async function updateOrderPaymentRef(id: string, paymentRef: string): Promise<Order> {
+	return updateDatabase((db) => {
+		const order = db.orders.find((item) => item.id === id);
+		if (!order) throw new AppError('سفارش پیدا نشد.', undefined, 404);
+		order.paymentRef = paymentRef;
+		order.updatedAt = new Date().toISOString();
+		return order;
+	});
+}
+
+/** یافتن سفارش بر اساس مرجع پرداخت (Authority). */
+export async function findOrderByPaymentRef(paymentRef: string): Promise<Order | null> {
+	const db = await readDatabase();
+	return db.orders.find((item) => item.paymentRef === paymentRef) ?? null;
 }
 
 export async function listCustomers(query = '') {

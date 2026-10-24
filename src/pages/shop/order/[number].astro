@@ -151,13 +151,18 @@ const terminal = order ? order.status === 'cancelled' || order.status === 'refun
 						</div>
 					</div>
 
-					<div class="panel">
-						<div class="panel__body" style="display:grid;gap:0.5rem">
-							<a class="btn btn--primary btn--block" href="/shop">ادامهٔ خرید</a>
-							<a class="btn btn--ghost btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
-							<p class="hint">حداقل هزینهٔ ارسال {faMoney(SHIPPING.fee, settings.currency)} است.</p>
-						</div>
-					</div>
+		<div class="panel">
+			<div class="panel__body" style="display:grid;gap:0.5rem">
+				<a class="btn btn--primary btn--block" href="/shop">ادامهٔ خرید</a>
+				<a class="btn btn--ghost btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
+				{!terminal && (
+					<a class="btn btn--outline btn--block" href={`/shop/invoice/${order.number}`}>
+						مشاهدهٔ فاکتور
+					</a>
+				)}
+				<p class="hint">حداقل هزینهٔ ارسال {faMoney(SHIPPING.fee, settings.currency)} است.</p>
+			</div>
+		</div>
 				</aside>
 			</div>
 		</>

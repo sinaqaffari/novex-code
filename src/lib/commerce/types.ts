@@ -58,6 +58,8 @@ export interface Order {
 	discount: number;
 	total: number;
 	status: OrderStatus;
+	/** مرجع پرداخت (مثل Authority درگاه زرین‌پال) برای به‌روزرسانی پس از Callback. */
+	paymentRef?: string;
 	note?: string;
 	createdAt: string;
 	updatedAt: string;

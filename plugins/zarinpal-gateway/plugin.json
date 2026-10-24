@@ -1,0 +1,63 @@
+{
+	"name": "درگاه پرداخت زرین‌پال",
+	"version": "1.0.0",
+	"description": "اتصال فروشگاه نووکس‌کد به درگاه پرداخت زرین‌پال برای خرید محصولات.",
+	"pluginUri": "https://example.com/plugins/zarinpal-gateway",
+	"author": "تیم نووکس",
+	"authorUri": "https://example.com",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-zarinpal",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"payment",
+		"zarinpal",
+		"gateway",
+		"ecommerce",
+		"iran"
+	],
+	"hooks": [
+		"shop.payment.initiate",
+		"shop.payment.verify"
+	],
+	"capabilities": [
+		"cms:widgets",
+		"site:render",
+		"options:read",
+		"options:write",
+		"admin:page"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات زرین‌پال",
+				"description": "تنظیم Merchant ID، حالتรรมی/عملی و آدرس بازگردانی"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "merchantId",
+			"label": "شناسه تاجر (Merchant ID)",
+			"type": "text",
+			"placeholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+			"help": "شناسه تاجر از پنل زرین‌پال."
+		},
+		{
+			"key": "isSandbox",
+			"label": "حالت آزمایشی (Sandbox)",
+			"type": "switch",
+			"default": true,
+			"help": "اگر فعال باشد، به درگاه آزمایشی زرین‌پال وصل می‌شود."
+		},
+		{
+			"key": "callbackUrl",
+			"label": "آدرس بازگردانی پس از پرداخت",
+			"type": "text",
+			"default": "/shop/payment/callback",
+			"help": "آدرسrelative سایت برای بازگشت کاربر پس از پرداخت."
+		}
+	]
+}
