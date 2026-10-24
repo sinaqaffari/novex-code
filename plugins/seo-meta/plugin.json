@@ -18,6 +18,10 @@
 	"hooks": [
 		"site.head"
 	],
+	"capabilities": [
+		"site:render",
+		"options:read"
+	],
 	"settings": [
 		{
 			"key": "twitterHandle",

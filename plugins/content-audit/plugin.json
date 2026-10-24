@@ -18,6 +18,21 @@
 	"hooks": [
 		"cms.dashboard.widgets"
 	],
+	"capabilities": [
+		"cms:widgets",
+		"content:read",
+		"options:read",
+		"admin:page"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "audit",
+				"title": "بازبینی محتوا",
+				"description": "همهٔ نوشته‌هایی که توضیح، برچسب یا تصویر ندارند."
+			}
+		]
+	},
 	"settings": [
 		{
 			"key": "includeDrafts",

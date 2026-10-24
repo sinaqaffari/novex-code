@@ -8,6 +8,7 @@ import {
 	pluginOptions,
 } from '../../lib/plugins/registry';
 import { listHooks } from '../../lib/plugins/hooks';
+import { PLUGIN_CAPABILITY_LABELS, type PluginCapability } from '../../lib/plugins/types';
 
 export const prerender = false;
 
@@ -130,6 +131,11 @@ const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
 													نسخهٔ {plugin.manifest.version}
 													{plugin.manifest.author && ` — ${plugin.manifest.author}`}
 												</span>
+												{plugin.manifest.capabilities?.length ? (
+													<span class="cell-product__meta mono" dir="ltr">
+														{plugin.manifest.capabilities.join(' · ')}
+													</span>
+												) : null}
 											</span>
 										</div>
 										{plugin.error && (
@@ -240,6 +246,42 @@ const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
 						<a class="btn btn--sm btn--ghost" href="/cms/plugins">
 							بستن
 						</a>
+					</div>
+				</div>
+
+				<div class="card__body" style="border-bottom:1px solid var(--line)">
+					<div class="stack" style="gap:10px">
+						<div>
+							<span class="label">دسترسی‌های اعلام‌شده</span>
+							{selected.manifest.capabilities?.length ? (
+								<div class="tag-list" style="margin-top:6px">
+									{selected.manifest.capabilities.map((capability: PluginCapability) => (
+										<span class="badge badge--neutral mono" dir="ltr" title={PLUGIN_CAPABILITY_LABELS[capability]}>
+											{capability}
+										</span>
+									))}
+								</div>
+							) : (
+								<p class="hint">این افزونه هیچ دسترسی اضافه‌ای نخواسته است.</p>
+							)}
+						</div>
+
+						{selected.manifest.admin?.pages?.length ? (
+							<div>
+								<span class="label">صفحه‌های این افزونه</span>
+								<div class="row" style="margin-top:6px;flex-wrap:wrap">
+									{selected.manifest.admin.pages.map((page) =>
+										selected.active ? (
+											<a class="btn btn--sm" href={`/cms/plugins/${selected.id}/${page.path}`}>
+												{page.title}
+											</a>
+										) : (
+											<span class="badge badge--neutral">{page.title}</span>
+										),
+									)}
+								</div>
+							</div>
+						) : null}
 					</div>
 				</div>
 
@@ -400,6 +442,8 @@ const hooksFor = (id: string) => hooks.filter((entry) => entry.owner === id);
 					<tr><td class="ltr">License / License URI</td><td><code class="mono">license</code>، <code class="mono">licenseUri</code></td></tr>
 					<tr><td class="ltr">Text Domain</td><td><code class="mono">textDomain</code></td></tr>
 					<tr><td class="ltr">Tags</td><td><code class="mono">tags</code></td></tr>
+					<tr><td class="ltr">Capabilities</td><td><code class="mono">capabilities</code> — همان ایدهٔ EmDash</td></tr>
+					<tr><td class="ltr">Admin pages</td><td><code class="mono">admin.pages</code> + <code class="mono">pages</code> در index.ts</td></tr>
 					<tr><td class="ltr">readme.txt</td><td><code class="mono">readme.txt</code> — Description، Installation، FAQ، Changelog</td></tr>
 					<tr><td class="ltr">uninstall.php</td><td><code class="mono">export function uninstall(api)</code></td></tr>
 				</tbody>
@@ -427,10 +471,27 @@ export function register(api: PluginApi) {
   );
 }`}</code></pre>
 
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">توانایی</th>
+						<th scope="col">چه چیزی می‌دهد</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr><td class="ltr"><code class="mono">site:render</code></td><td>افزودن تگ به <code class="mono">site.head</code> و <code class="mono">site.footer</code></td></tr>
+					<tr><td class="ltr"><code class="mono">cms:widgets</code></td><td>ویجت داشبورد از راه <code class="mono">cms.dashboard.widgets</code></td></tr>
+					<tr><td class="ltr"><code class="mono">content:read</code></td><td><code class="mono">api.getPosts()</code> — فقط خواندن</td></tr>
+					<tr><td class="ltr"><code class="mono">options:read</code> / <code class="mono">options:write</code></td><td>خواندن و ذخیرهٔ تنظیمات خود افزونه</td></tr>
+					<tr><td class="ltr"><code class="mono">admin:page</code></td><td>صفحهٔ اختصاصی زیر <code class="mono">/cms/plugins/&lt;id&gt;/&lt;path&gt;</code></td></tr>
+				</tbody>
+			</table>
+
 			<p class="hint">
 				قلاب‌های موجود: <code class="mono">site.head</code>، <code class="mono">site.footer</code>،{' '}
 				<code class="mono">cms.dashboard.widgets</code>. اولویت پیش‌فرض ۱۰ است و عدد کوچک‌تر
-				زودتر اجرا می‌شود.
+				زودتر اجرا می‌شود. اگر افزونه‌ای قلابی را بدون توانایی لازم ثبت کند، همان لحظه با
+				خطای روشن رد می‌شود و بقیهٔ پنل دست‌نخورده می‌ماند.
 			</p>
 		</div>
 	</section>

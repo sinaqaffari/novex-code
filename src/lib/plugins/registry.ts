@@ -15,13 +15,17 @@
 import { addAction, addFilter, removePluginHooks } from './hooks';
 import { parseReadme } from './readme';
 import { readPluginState, setPluginOption, updatePluginState, type PluginState } from './store';
-import type {
-	InstalledPlugin,
-	PluginApi,
-	PluginManifest,
-	PluginModule,
-	PluginReadme,
-	PluginSetting,
+import {
+	PLUGIN_CAPABILITIES,
+	type InstalledPlugin,
+	type PluginAdminPage,
+	type PluginApi,
+	type PluginCapability,
+	type PluginManifest,
+	type PluginModule,
+	type PluginPageRenderer,
+	type PluginReadme,
+	type PluginSetting,
 } from './types';
 
 /** نسخهٔ پنل برای مقایسهٔ فیلد `requires` در هدر افزونه. */
@@ -47,6 +51,16 @@ interface PluginEntry {
 	module: PluginModule;
 	readme?: PluginReadme;
 }
+
+/**
+ * قلاب‌هایی که هسته در اختیار می‌گذارد و توانایی لازمشان مشخص است.
+ * قلاب سفارشی (که خود پروژه تعریف می‌کند) در این فهرست نیست و آزاد است.
+ */
+const HOOK_CAPABILITIES: Record<string, PluginCapability> = {
+	'site.head': 'site:render',
+	'site.footer': 'site:render',
+	'cms.dashboard.widgets': 'cms:widgets',
+};
 
 const errors = new Map<string, string>();
 const registered = new Set<string>();
@@ -101,19 +115,52 @@ function settingDefault(settings: PluginSetting[] | undefined, key: string): unk
 
 function createApi(entry: PluginEntry): PluginApi {
 	const { id, manifest } = entry;
+	const capabilities = new Set<PluginCapability>(
+		(manifest.capabilities ?? []).filter((capability) =>
+			(PLUGIN_CAPABILITIES as readonly string[]).includes(capability),
+		),
+	);
+
+	/** هر دسترسی، اول توانایی‌اش را می‌خواهد؛ پیام خطا هم روشن است. */
+	const authorize = (capability: PluginCapability, action: string) => {
+		if (capabilities.has(capability)) return;
+		throw new Error(
+			`افزونه «${manifest.name}» برای ${action} باید توانایی «${capability}» را در plugin.json اعلام کند.`,
+		);
+	};
+
+	const authorizeHook = (hook: string) => {
+		const required = HOOK_CAPABILITIES[hook];
+		if (required) authorize(required, `گوش‌دادن به قلاب ${hook}`);
+	};
 
 	return {
 		id,
 		manifest,
-		addAction: (hook, callback, priority = 10) => addAction(hook, callback, priority, id),
-		addFilter: (hook, callback, priority = 10) => addFilter(hook, callback, priority, id),
+		capabilities,
+		hasCapability: (capability) => capabilities.has(capability),
+		addAction: (hook, callback, priority = 10) => {
+			authorizeHook(hook);
+			addAction(hook, callback, priority, id);
+		},
+		addFilter: (hook, callback, priority = 10) => {
+			authorizeHook(hook);
+			addFilter(hook, callback, priority, id);
+		},
 		getOption<T = unknown>(key: string, fallback?: T): T {
+			authorize('options:read', 'خواندن تنظیمات');
 			const stored = cache?.options[id]?.[key];
 			const value = stored === undefined ? settingDefault(manifest.settings, key) : stored;
 			return (value === undefined ? fallback : value) as T;
 		},
 		async setOption(key, value) {
+			authorize('options:write', 'ذخیرهٔ تنظیمات');
 			cache = await setPluginOption(id, key, value);
+		},
+		async getPosts() {
+			authorize('content:read', 'خواندن نوشته‌ها');
+			const { listPosts } = await import('../cms/posts');
+			return listPosts();
 		},
 	};
 }
@@ -132,6 +179,21 @@ async function registerPlugin(entry: PluginEntry, runActivate: boolean): Promise
 		const message = `این افزونه به پنل نسخهٔ ${entry.manifest.requires} یا بالاتر نیاز دارد.`;
 		errors.set(entry.id, message);
 		throw new Error(message);
+	}
+
+	const declaredPages = entry.manifest.admin?.pages ?? [];
+	if (declaredPages.length) {
+		if (!(entry.manifest.capabilities ?? []).includes('admin:page')) {
+			const message = `افزونه «${entry.manifest.name}» صفحهٔ پنل اعلام کرده اما توانایی «admin:page» را ندارد.`;
+			errors.set(entry.id, message);
+			throw new Error(message);
+		}
+		for (const page of declaredPages) {
+			if (entry.module.pages?.[page.path]) continue;
+			const message = `صفحهٔ «${page.title}» در مانیفست اعلام شده اما سازندهٔ آن در index.ts نیست.`;
+			errors.set(entry.id, message);
+			throw new Error(message);
+		}
 	}
 
 	const api = createApi(entry);
@@ -251,4 +313,45 @@ export function pluginOptions(id: string): Record<string, unknown> {
 /** ذخیرهٔ یک تنظیم و تازه‌سازی کش — تا افزونه مقدار تازه را همان لحظه ببیند. */
 export async function savePluginOption(id: string, key: string, value: unknown): Promise<void> {
 	cache = await setPluginOption(id, key, value);
+}
+
+/** صفحه‌های اعلام‌شدهٔ افزونه‌های فعال — برای ناوبری پنل. */
+export interface PluginPageEntry {
+	pluginId: string;
+	pluginName: string;
+	page: PluginAdminPage;
+}
+
+export function listPluginPages(): PluginPageEntry[] {
+	const active = new Set(cache?.active ?? []);
+
+	return buildEntries()
+		.filter((entry) => active.has(entry.id))
+		.flatMap((entry) =>
+			(entry.manifest.admin?.pages ?? [])
+				.filter((page) => typeof entry.module.pages?.[page.path] === 'function')
+				.map((page) => ({ pluginId: entry.id, pluginName: entry.manifest.name, page })),
+		);
+}
+
+/**
+ * رندر صفحهٔ اختصاصی یک افزونهٔ فعال.
+ *
+ * فقط صفحه‌هایی که هم در مانیفست اعلام شده‌اند و هم سازنده دارند اجرا می‌شوند؛
+ * در غیر این صورت `null` برمی‌گردد تا مسیر Astro به ۴۰۴ برود.
+ */
+export async function renderPluginPage(
+	pluginId: string,
+	path: string,
+): Promise<{ manifest: PluginManifest; page: PluginAdminPage; html: string } | null> {
+	const entry = buildEntries().find((item) => item.id === pluginId);
+	if (!entry) return null;
+	if (!(cache?.active ?? []).includes(pluginId)) return null;
+
+	const page = (entry.manifest.admin?.pages ?? []).find((item) => item.path === path);
+	const renderer: PluginPageRenderer | undefined = page ? entry.module.pages?.[page.path] : undefined;
+	if (!page || !renderer) return null;
+
+	const html = await renderer(createApi(entry));
+	return { manifest: entry.manifest, page, html };
 }

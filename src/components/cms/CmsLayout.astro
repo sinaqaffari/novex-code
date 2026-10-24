@@ -5,6 +5,7 @@ import Icon from './Icon.astro';
 import { ADMIN_NAME } from '../../lib/cms/auth';
 import { readSettings, TIMEZONES } from '../../lib/cms/settings';
 import { readDatabase } from '../../lib/commerce/db';
+import { listPluginPages } from '../../lib/plugins/registry';
 
 export interface Crumb {
 	label: string;
@@ -44,6 +45,7 @@ const { title, subtitle, variant = 'panel', breadcrumbs = [], wide = false } = A
 
 const settings = await readSettings();
 const pathname = Astro.url.pathname;
+const pluginPages = listPluginPages();
 const commerceReady = settings.commerceEnabled;
 
 const pendingOrders = commerceReady
@@ -141,7 +143,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 				href: '/cms/plugins',
 				label: 'افزونه‌ها',
 				icon: 'layers' as const,
-				match: /^\/cms\/plugins/,
+				match: /^\/cms\/plugins\/?$/,
 			},
 			{
 				href: '/cms/language',
@@ -151,6 +153,22 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 			},
 		],
 	},
+	...(pluginPages.length
+		? [
+				{
+					label: 'صفحه‌های افزونه',
+					items: pluginPages.map(({ pluginId, page }) => {
+						const base = `/cms/plugins/${pluginId}/${page.path}`;
+						return {
+							href: base,
+							label: page.title,
+							icon: 'layers' as const,
+							match: new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/|$)`),
+						};
+					}),
+				},
+			]
+		: []),
 ];
 
 const isActive = (pattern: RegExp) => pattern.test(pathname);
