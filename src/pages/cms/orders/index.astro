@@ -1,0 +1,204 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import Pagination from '../../../components/cms/Pagination.astro';
+import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { listOrders } from '../../../lib/commerce/orders';
+import { orderStatusLabel, orderStatusTone, type OrderStatus } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const url = Astro.url;
+const query = url.searchParams.get('q') ?? '';
+const status = (url.searchParams.get('status') ?? 'all') as OrderStatus | 'all';
+const sort = (url.searchParams.get('sort') ?? 'newest') as
+	| 'newest'
+	| 'oldest'
+	| 'total-desc'
+	| 'total-asc';
+const page = Number(url.searchParams.get('page') ?? 1) || 1;
+
+const [result, settings] = await Promise.all([
+	listOrders({ query, status, sort, page, perPage: 10 }),
+	readSettings(),
+]);
+
+const tabs: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
+	{ value: 'all', label: 'همه', count: result.counts.all },
+	{ value: 'pending', label: 'در انتظار پرداخت', count: result.counts.pending },
+	{ value: 'processing', label: 'آماده‌سازی', count: result.counts.processing },
+	{ value: 'shipped', label: 'ارسال‌شده', count: result.counts.shipped },
+	{ value: 'delivered', label: 'تحویل‌شده', count: result.counts.delivered },
+	{ value: 'cancelled', label: 'لغو‌شده', count: result.counts.cancelled },
+];
+
+const tabHref = (value: OrderStatus | 'all') => {
+	const search = new URLSearchParams();
+	if (value !== 'all') search.set('status', value);
+	if (query) search.set('q', query);
+	if (sort !== 'newest') search.set('sort', sort);
+	const queryString = search.toString();
+	return queryString ? `/cms/orders?${queryString}` : '/cms/orders';
+};
+
+const totalItems = (order: (typeof result.items)[number]) =>
+	order.items.reduce((sum, item) => sum + item.quantity, 0);
+---
+
+<CmsLayout
+	title="سفارش‌ها"
+	subtitle={`${faNumber(result.counts.all)} سفارش ثبت شده — ${faNumber(result.counts.pending)} در انتظار پرداخت`}
+	breadcrumbs={[{ label: 'فروشگاه' }, { label: 'سفارش‌ها' }]}
+>
+	<section class="grid grid--stats">
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">در انتظار پرداخت</span>
+				<span class="kpi__icon" style="background:var(--amber-soft);color:var(--amber)">
+					<Icon name="clock" size={16} />
+				</span>
+			</div>
+			<strong class="kpi__value num">{faNumber(result.counts.pending)}</strong>
+			<span class="kpi__foot">نیازمند بررسی</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">در حال آماده‌سازی</span>
+				<span class="kpi__icon"><Icon name="layers" size={16} /></span>
+			</div>
+			<strong class="kpi__value num">{faNumber(result.counts.processing)}</strong>
+			<span class="kpi__foot">آمادهٔ بسته‌بندی</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">ارسال‌شده</span>
+				<span class="kpi__icon" style="background:var(--brand-soft);color:var(--brand-ink)">
+					<Icon name="trendUp" size={16} />
+				</span>
+			</div>
+			<strong class="kpi__value num">{faNumber(result.counts.shipped)}</strong>
+			<span class="kpi__foot">در مسیر مشتری</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">تحویل‌شده</span>
+				<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
+					<Icon name="check" size={16} />
+				</span>
+			</div>
+			<strong class="kpi__value num">{faNumber(result.counts.delivered)}</strong>
+			<span class="kpi__foot">تکمیل‌شده</span>
+		</article>
+	</section>
+
+	<section class="card">
+		<div class="card__head">
+			<div class="filterbar grow" style="overflow-x:auto">
+				<nav class="segmented" aria-label="پالایش وضعیت سفارش">
+					{tabs.map((tab) => (
+						<a href={tabHref(tab.value)} aria-current={status === tab.value ? 'page' : undefined}>
+							{tab.label}
+							<span class="segmented__count num">{faNumber(tab.count)}</span>
+						</a>
+					))}
+				</nav>
+			</div>
+
+			<form class="toolbar" method="get" action="/cms/orders">
+				{status !== 'all' && <input type="hidden" name="status" value={status} />}
+				<label class="search">
+					<span class="sr-only">جست‌وجوی سفارش</span>
+					<Icon name="search" size={16} />
+					<input
+						class="input"
+						type="search"
+						name="q"
+						value={query}
+						placeholder="شماره، نام یا تلفن…"
+						autocomplete="off"
+					/>
+				</label>
+				<select class="select" name="sort" aria-label="ترتیب">
+					<option value="newest" selected={sort === 'newest'}>تازه‌ترین</option>
+					<option value="oldest" selected={sort === 'oldest'}>قدیمی‌ترین</option>
+					<option value="total-desc" selected={sort === 'total-desc'}>بیشترین مبلغ</option>
+					<option value="total-asc" selected={sort === 'total-asc'}>کمترین مبلغ</option>
+				</select>
+				<button class="btn btn--outline btn--sm" type="submit">
+					<Icon name="filter" size={14} />
+					<span>اعمال</span>
+				</button>
+			</form>
+		</div>
+
+		{result.items.length ? (
+			<>
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th scope="col">سفارش</th>
+								<th scope="col">مشتری</th>
+								<th scope="col">اقلام</th>
+								<th scope="col">مبلغ</th>
+								<th scope="col">وضعیت</th>
+								<th scope="col">تاریخ</th>
+								<th scope="col"><span class="sr-only">عملیات</span></th>
+							</tr>
+						</thead>
+						<tbody>
+							{result.items.map((order) => (
+								<tr>
+									<td>
+										<a class="table__title ltr" href={`/cms/orders/${order.id}`} dir="ltr">
+											{order.number}
+										</a>
+										<span class="table__slug ltr">{order.id}</span>
+									</td>
+									<td>
+										<span class="cell-product__name">{order.customerName}</span>
+										<span class="cell-product__meta num">{order.phone}</span>
+									</td>
+									<td class="num">{faNumber(totalItems(order))} قلم</td>
+									<td class="num nowrap">{faMoney(order.total, settings.currency)}</td>
+									<td>
+										<span class={`badge badge--${orderStatusTone(order.status)}`}>
+											<span class="badge__dot" />
+											{orderStatusLabel(order.status)}
+										</span>
+									</td>
+									<td class="num nowrap">{faDate(order.createdAt)}</td>
+									<td>
+										<div class="table__actions">
+											<a class="btn btn--outline btn--sm" href={`/cms/orders/${order.id}`}>
+												<span>جزئیات</span>
+												<Icon name="arrow" size={14} />
+											</a>
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+
+				<Pagination
+					page={result.page}
+					pages={result.pages}
+					total={result.total}
+					perPage={result.perPage}
+					baseUrl="/cms/orders"
+					params={{ q: query, status: status === 'all' ? '' : status, sort }}
+					label="سفارش"
+				/>
+			</>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="receipt" size={22} /></span>
+				<span class="empty__title">سفارشی با این مشخصات پیدا نشد</span>
+				<span>پالایهٔ وضعیت را بردارید یا عبارت دیگری جست‌وجو کنید.</span>
+			</div>
+		)}
+	</section>
+</CmsLayout>

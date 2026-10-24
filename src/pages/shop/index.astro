@@ -1,0 +1,144 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import { faMoney, faNumber } from '../../lib/cms/fa';
+import { readSettings } from '../../lib/cms/settings';
+import { listPublicProducts } from '../../lib/commerce/products';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, products, cart] = await Promise.all([
+	readSettings(),
+	listPublicProducts(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+
+const featured = products.filter((product) => product.featured);
+const rest = products.filter((product) => !product.featured);
+const initial = (name: string) => name.trim().charAt(0);
+const shopClosed = !settings.commerceEnabled;
+---
+
+<ShopLayout
+	title={settings.shopTitle}
+	description={settings.shopDescription}
+	cartCount={cart.count}
+>
+	{shopClosed ? (
+		<div class="empty">
+			<h2>فروشگاه موقتاً بسته است</h2>
+			<p>برای اطلاع از بازگشایی، مجله را دنبال کنید.</p>
+		</div>
+	) : (
+		<>
+			<section class="shop-hero">
+				<span class="shop-hero__eyebrow">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+					</svg>
+					{faNumber(products.length)} محصول آمادهٔ خرید
+				</span>
+				<h1>{settings.shopTitle}</h1>
+				<p>{settings.shopDescription}</p>
+			</section>
+
+			{products.length ? (
+				<>
+					{featured.length > 0 && (
+						<section class="shop-section" aria-labelledby="featured-title">
+							<div class="shop-section__head">
+								<h2 id="featured-title">پیشنهاد ویژه</h2>
+								<span class="hint">دستچین‌شده توسط تیم ما</span>
+							</div>
+
+							<div class="shop-grid">
+								{featured.map((product) => (
+									<article class="shop-card">
+										<a href={`/shop/${product.slug}`} class="shop-card__media" aria-hidden="true" tabindex="-1">
+											{product.image ? (
+												<img src={product.image} alt="" loading="lazy" />
+											) : (
+												initial(product.name)
+											)}
+											<span class="shop-card__flag">ویژه</span>
+										</a>
+										<div class="shop-card__body">
+											<span class="shop-card__category">{product.category}</span>
+											<a class="shop-card__name" href={`/shop/${product.slug}`}>
+												{product.name}
+											</a>
+											<p class="shop-card__desc">{product.description}</p>
+											<div class="shop-card__foot">
+												<span class="price">
+													<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
+													{product.compareAtPrice && (
+														<span class="price__was num">
+															{faMoney(product.compareAtPrice, settings.currency)}
+														</span>
+													)}
+												</span>
+												<a class="btn btn--outline" href={`/shop/${product.slug}`}>
+													مشاهده
+												</a>
+											</div>
+										</div>
+									</article>
+								))}
+							</div>
+						</section>
+					)}
+
+					<section class="shop-section" aria-labelledby="all-title">
+						<div class="shop-section__head">
+							<h2 id="all-title">همهٔ محصولات</h2>
+							<span class="hint">ارسال سریع — پشتیبانی فارسی</span>
+						</div>
+
+						<div class="shop-grid">
+							{(featured.length ? rest : products).map((product) => (
+								<article class="shop-card">
+									<a href={`/shop/${product.slug}`} class="shop-card__media" aria-hidden="true" tabindex="-1">
+										{product.image ? (
+											<img src={product.image} alt="" loading="lazy" />
+										) : (
+											initial(product.name)
+										)}
+									</a>
+									<div class="shop-card__body">
+										<span class="shop-card__category">{product.category}</span>
+										<a class="shop-card__name" href={`/shop/${product.slug}`}>
+											{product.name}
+										</a>
+										<p class="shop-card__desc">{product.description}</p>
+										<div class="shop-card__foot">
+											<span class="price">
+												<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
+												{product.compareAtPrice && (
+													<span class="price__was num">
+														{faMoney(product.compareAtPrice, settings.currency)}
+													</span>
+												)}
+											</span>
+											{product.stock > 0 ? (
+												<a class="btn btn--primary" href={`/shop/${product.slug}`}>
+													خرید
+												</a>
+											) : (
+												<span class="badge badge--danger">ناموجود</span>
+											)}
+										</div>
+									</div>
+								</article>
+							))}
+						</div>
+					</section>
+				</>
+			) : (
+				<div class="empty">
+					<h2>هنوز محصولی برای فروش نیست</h2>
+					<p>به‌زودی محصولات تازه اضافه می‌شود.</p>
+				</div>
+			)}
+		</>
+	)}
+</ShopLayout>

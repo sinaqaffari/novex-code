@@ -27,6 +27,58 @@ const sampleDate = new Date();
 				<section class="card">
 					<div class="card__head">
 						<div>
+							<h2 class="card__title">ماژول فروشگاه</h2>
+							<p class="card__hint">
+								با خاموش‌کردن این ماژول، بخش فروشگاه از منو و داشبورد پنهان می‌شود.
+							</p>
+						</div>
+						<span class:list={['badge', settings.commerceEnabled ? 'badge--success' : 'badge--neutral']}>
+							{settings.commerceEnabled ? 'فعال' : 'خاموش'}
+						</span>
+					</div>
+					<div class="card__body stack">
+						<div class="switch-row">
+							<span class="switch-row__text">
+								<strong>فروشگاه فعال باشد</strong>
+								<span class="hint" style="display:block">
+									صفحه‌های /shop، محصولات، سفارش‌ها و کدهای تخفیف
+								</span>
+							</span>
+							<label class="switch">
+								<input type="hidden" name="commerceEnabled" value="false" />
+								<input
+									type="checkbox"
+									name="commerceEnabled"
+									value="true"
+									checked={settings.commerceEnabled}
+								/>
+								<span class="switch__track" aria-hidden="true"></span>
+							</label>
+						</div>
+
+						<div class="field-row">
+							<label class="field">
+								<span class="label">واحد پول</span>
+								<input class="input" type="text" name="currency" value={settings.currency} />
+							</label>
+							<label class="field">
+								<span class="label">نام فروشگاه</span>
+								<input class="input" type="text" name="shopTitle" value={settings.shopTitle} />
+							</label>
+						</div>
+
+						<label class="field">
+							<span class="label">توضیح فروشگاه</span>
+							<textarea class="textarea" name="shopDescription" rows="2" maxlength="240"
+								>{settings.shopDescription}</textarea
+							>
+						</label>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__head">
+						<div>
 							<h2 class="card__title">اطلاعات سایت</h2>
 							<p class="card__hint">در سرصفحه، عنوان مرورگر و نقشهٔ سایت استفاده می‌شود.</p>
 						</div>

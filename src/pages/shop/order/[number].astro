@@ -1,0 +1,165 @@
+---
+import ShopLayout from '../../../layouts/ShopLayout.astro';
+import { faDate, faDateTime, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { getOrder, SHIPPING } from '../../../lib/commerce/orders';
+import { isRevenue, orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const { number = '' } = Astro.params;
+const order = await getOrder(number);
+const settings = await readSettings();
+
+const phone = (Astro.url.searchParams.get('phone') ?? '').replace(/\D/g, '');
+const lastOrder = Astro.cookies.get('novex_last_order')?.value ?? '';
+const [lastNumber, lastPhone] = lastOrder.split(':');
+
+const ownsOrder = Boolean(
+	order &&
+		((lastNumber === order.number && lastPhone === order.phone) ||
+			(phone && phone === order.phone.replace(/\D/g, ''))),
+);
+
+const statusSteps = ['pending', 'paid', 'processing', 'shipped', 'delivered'] as const;
+const stepIndex = order ? statusSteps.indexOf(order.status as (typeof statusSteps)[number]) : -1;
+const terminal = order ? order.status === 'cancelled' || order.status === 'refunded' : false;
+---
+
+<ShopLayout title={order && ownsOrder ? `سفارش ${order.number}` : 'پیگیری سفارش'}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<span>پیگیری سفارش</span>
+	</nav>
+
+	{!order ? (
+		<div class="empty">
+			<h2>سفارشی با این شماره پیدا نشد</h2>
+			<p class="num">{number}</p>
+			<p style="margin-top:1rem"><a class="btn btn--outline" href="/shop/track">جست‌وجوی دوباره</a></p>
+		</div>
+	) : !ownsOrder ? (
+		<div class="panel" style="max-width:460px;margin:2rem auto">
+			<div class="panel__head">تأیید هویت سفارش</div>
+			<form method="get" class="panel__body" style="display:grid;gap:0.7rem">
+				<p class="hint">
+					برای دیدن جزئیات سفارش <span class="num">{order.number}</span>، شمارهٔ تماسی که با آن خرید
+					کرده‌اید را وارد کنید.
+				</p>
+				<div class="field">
+					<label class="label" for="phone">شمارهٔ تماس</label>
+					<input class="input" id="phone" name="phone" required inputmode="tel" dir="ltr" />
+				</div>
+				<button class="btn btn--primary" type="submit">نمایش سفارش</button>
+			</form>
+		</div>
+	) : (
+		<>
+			<h1 class="page-title">سفارش <span class="num">{order.number}</span></h1>
+			<p class="hint" style="margin-top:0.3rem">
+				ثبت‌شده در {faDateTime(order.createdAt)} — مبلغ {faMoney(order.total, settings.currency)}
+			</p>
+
+			<div class="cart-layout">
+				<div style="display:grid;gap:1rem">
+					<div class="panel">
+						<div class="panel__head">
+							<span>وضعیت سفارش</span>
+							<span class={`badge badge--${orderStatusTone(order.status)}`}>
+								{orderStatusLabel(order.status)}
+							</span>
+						</div>
+						<div class="panel__body">
+							{terminal ? (
+								<p class="notice notice--error">
+									این سفارش {order.status === 'cancelled' ? 'لغو' : 'مرجوع'} شده است. در صورت
+									نیاز با پشتیبانی تماس بگیرید.
+								</p>
+							) : (
+								<ol style="display:grid;gap:0.55rem;margin:0;padding-inline-start:1.1rem">
+									{statusSteps.map((step, index) => (
+										<li style={index <= stepIndex ? 'font-weight:700' : 'color:var(--muted)'}>
+											{orderStatusLabel(step)}
+											{index === stepIndex && ' — مرحلهٔ جاری'}
+											{index < stepIndex && ' ✓'}
+										</li>
+									))}
+								</ol>
+							)}
+							<p class="hint" style="margin-top:0.7rem">
+								آخرین به‌روزرسانی: {faDateTime(order.updatedAt)}
+							</p>
+						</div>
+					</div>
+
+					<div class="panel">
+						<div class="panel__head">اقلام سفارش</div>
+						{order.items.map((item) => (
+							<div class="cart-line">
+								<div class="cart-line__body">
+									<span class="cart-line__name">{item.name}</span>
+									<p class="cart-line__meta num">
+										{item.sku} — {faMoney(item.price, settings.currency)} × {faNumber(item.quantity)}
+									</p>
+								</div>
+								<strong class="num">{faMoney(item.price * item.quantity, settings.currency)}</strong>
+							</div>
+						))}
+					</div>
+				</div>
+
+				<aside style="display:grid;gap:1rem">
+					<div class="panel">
+						<div class="panel__head">صورت‌حساب</div>
+						<div class="panel__body totals">
+							<div class="totals__row">
+								<span>جمع کالاها</span>
+								<span class="num">{faMoney(order.subtotal, settings.currency)}</span>
+							</div>
+							<div class="totals__row">
+								<span>ارسال</span>
+								<span class="num">
+									{order.shipping === 0 ? 'رایگان' : faMoney(order.shipping, settings.currency)}
+								</span>
+							</div>
+							{order.discount > 0 && (
+								<div class="totals__row" style="color:var(--success)">
+									<span>تخفیف {order.discountCode ? `(${order.discountCode})` : ''}</span>
+									<span class="num">− {faMoney(order.discount, settings.currency)}</span>
+								</div>
+							)}
+							<div class="totals__row totals__row--grand">
+								<span>مبلغ نهایی</span>
+								<span class="num">{faMoney(order.total, settings.currency)}</span>
+							</div>
+							{!isRevenue(order.status) && (
+								<p class="hint">این سفارش در درآمد محاسبه نمی‌شود.</p>
+							)}
+						</div>
+					</div>
+
+					<div class="panel">
+						<div class="panel__head">اطلاعات تحویل</div>
+						<div class="panel__body hint" style="display:grid;gap:0.3rem">
+							<span>{order.customerName}</span>
+							<span class="num" dir="ltr">{order.phone}</span>
+							{order.email && <span dir="ltr">{order.email}</span>}
+							<span>{order.city} — {order.address}</span>
+							{order.note && <span>یادداشت: {order.note}</span>}
+							<span>تاریخ ثبت: {faDate(order.createdAt)}</span>
+						</div>
+					</div>
+
+					<div class="panel">
+						<div class="panel__body" style="display:grid;gap:0.5rem">
+							<a class="btn btn--primary btn--block" href="/shop">ادامهٔ خرید</a>
+							<a class="btn btn--ghost btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
+							<p class="hint">حداقل هزینهٔ ارسال {faMoney(SHIPPING.fee, settings.currency)} است.</p>
+						</div>
+					</div>
+				</aside>
+			</div>
+		</>
+	)}
+</ShopLayout>

@@ -1,0 +1,77 @@
+---
+import '@fontsource-variable/vazirmatn';
+import '../styles/shop.css';
+import { readSettings } from '../lib/cms/settings';
+
+interface Props {
+	title: string;
+	description?: string;
+	cartCount?: number;
+	bodyClass?: string;
+}
+
+const { title, description = '', cartCount = 0, bodyClass = '' } = Astro.props;
+const settings = await readSettings();
+const path = Astro.url.pathname;
+const isActive = (prefix: string) =>
+	prefix === '/' ? path === '/' : path === prefix || path.startsWith(`${prefix}/`);
+---
+
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<title>{title} | {settings.siteTitle}</title>
+		<meta name="description" content={description || settings.siteDescription} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description || settings.siteDescription} />
+		<meta property="og:type" content="website" />
+		<meta property="og:locale" content="fa_IR" />
+	</head>
+	<body class:list={['shop', bodyClass]}>
+		<a class="sr-only" href="#main">پرش به محتوای اصلی</a>
+
+		<header class="shop-header">
+			<div class="wrap shop-header__inner">
+				<a class="shop-brand" href="/">
+					<span class="shop-brand__mark" aria-hidden="true">ن</span>
+					<span>
+						{settings.siteTitle}
+						<span class="shop-brand__sub">{settings.siteDescription}</span>
+					</span>
+				</a>
+
+				<nav class="shop-nav" aria-label="ناوبری اصلی">
+					<a href="/" aria-current={isActive('/') ? 'page' : undefined}>خانه</a>
+					<a href="/blog" aria-current={isActive('/blog') ? 'page' : undefined}>مجله</a>
+					{settings.commerceEnabled && (
+						<a href="/shop" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>
+					)}
+					<a href="/about" aria-current={isActive('/about') ? 'page' : undefined}>درباره</a>
+					{settings.commerceEnabled && (
+						<a href="/shop/cart" class="cart-link">
+							سبد خرید
+							{cartCount > 0 && (
+								<span class="cart-link__count num">{cartCount.toLocaleString('fa-IR')}</span>
+							)}
+						</a>
+					)}
+				</nav>
+			</div>
+		</header>
+
+		<main id="main" class="wrap">
+			<slot />
+		</main>
+
+		<footer class="shop-footer">
+			<div class="wrap shop-footer__inner">
+				<span>© {new Date().getFullYear()} {settings.siteTitle} — تمام حقوق محفوظ است.</span>
+				<span>{settings.footerNote}</span>
+			</div>
+		</footer>
+	</body>
+</html>

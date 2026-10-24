@@ -1,0 +1,51 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+
+export const prerender = false;
+
+const cart = await hydrateCart(readCart(Astro.cookies));
+const number = Astro.url.searchParams.get('number')?.trim() ?? '';
+const phone = Astro.url.searchParams.get('phone')?.trim() ?? '';
+
+if (number && phone) {
+	return Astro.redirect(
+		`/shop/order/${encodeURIComponent(number)}?phone=${encodeURIComponent(phone)}`,
+		303,
+	);
+}
+---
+
+<ShopLayout title="پیگیری سفارش" cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<span>پیگیری سفارش</span>
+	</nav>
+
+	<div class="panel" style="max-width:480px;margin:2rem auto">
+		<div class="panel__head">پیگیری سفارش</div>
+		<form method="get" action="/shop/track" class="panel__body" style="display:grid;gap:0.8rem">
+			<p class="hint">
+				شمارهٔ سفارش و شمارهٔ تماس زمان خرید را وارد کنید تا وضعیت ارسال را ببینید.
+			</p>
+			<div class="field">
+				<label class="label" for="number">شمارهٔ سفارش</label>
+				<input
+					class="input"
+					id="number"
+					name="number"
+					required
+					placeholder="NVX-1040"
+					dir="ltr"
+					value={number}
+				/>
+			</div>
+			<div class="field">
+				<label class="label" for="phone">شمارهٔ تماس</label>
+				<input class="input" id="phone" name="phone" required inputmode="tel" dir="ltr" value={phone} />
+			</div>
+			<button class="btn btn--primary" type="submit">مشاهدهٔ وضعیت</button>
+		</form>
+	</div>
+</ShopLayout>

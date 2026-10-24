@@ -1,112 +1,99 @@
 ---
-import { Image } from 'astro:assets';
-import { getCollection } from 'astro:content';
-import BaseHead from '../../components/BaseHead.astro';
-import Footer from '../../components/Footer.astro';
-import FormattedDate from '../../components/FormattedDate.astro';
-import Header from '../../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import { publicImageSrc } from '../../lib/cms/public-image';
+import { faDate, faNumber, faReadingTime } from '../../lib/cms/fa';
+import { listPosts } from '../../lib/cms/posts';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
 
-const posts = (await getCollection('blog'))
-	.filter((post) => !post.data.draft)
-	.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+export const prerender = false;
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const activeTag = (Astro.url.searchParams.get('tag') ?? '').trim();
+
+const cart = await hydrateCart(readCart(Astro.cookies));
+const posts = (await listPosts())
+	.filter((post) => !post.draft && post.id.endsWith('.md'))
+	.filter((post) => (activeTag ? post.tags.includes(activeTag) : true))
+	.filter((post) =>
+		query
+			? `${post.title} ${post.description}`.toLowerCase().includes(query.toLowerCase())
+			: true,
+	);
+
+const tags = [...new Set((await listPosts()).flatMap((post) => post.tags))].slice(0, 12);
+const [lead, ...rest] = posts;
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-		<style>
-			main {
-				width: 960px;
-			}
-			ul {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 2rem;
-				list-style-type: none;
-				margin: 0;
-				padding: 0;
-			}
-			ul li {
-				width: calc(50% - 1rem);
-			}
-			ul li * {
-				text-decoration: none;
-				transition: 0.2s ease;
-			}
-			ul li:first-child {
-				width: 100%;
-				margin-bottom: 1rem;
-				text-align: center;
-			}
-			ul li:first-child img {
-				width: 100%;
-			}
-			ul li:first-child .title {
-				font-size: 2.369rem;
-			}
-			ul li img {
-				margin-bottom: 0.5rem;
-				border-radius: 12px;
-			}
-			ul li a {
-				display: block;
-			}
-			.title {
-				margin: 0;
-				color: rgb(var(--black));
-				line-height: 1;
-			}
-			.date {
-				margin: 0;
-				color: rgb(var(--gray));
-			}
-			ul li a:hover h4,
-			ul li a:hover .date {
-				color: rgb(var(--accent));
-			}
-			ul a:hover img {
-				box-shadow: var(--box-shadow);
-			}
-			@media (max-width: 720px) {
-				ul {
-					gap: 0.5em;
-				}
-				ul li {
-					width: 100%;
-					text-align: center;
-				}
-				ul li:first-child {
-					margin-bottom: 0;
-				}
-				ul li:first-child .title {
-					font-size: 1.563em;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<Header />
-		<main>
-			<section>
-				<ul>
-					{posts.map((post) => (
-						<li>
-							<a href={`/blog/${post.id}/`}>
-								{post.data.heroImage && (
-									<Image width={720} height={360} src={post.data.heroImage} alt="" />
-								)}
-								<h4 class="title">{post.data.title}</h4>
-								<p class="date">
-									<FormattedDate date={post.data.pubDate} />
-								</p>
-							</a>
-						</li>
-					))}
-				</ul>
-			</section>
-		</main>
-		<Footer />
-	</body>
-</html>
+<SiteLayout title="مجله" description="نوشته‌های تازه دربارهٔ محصول، طراحی و توسعه" cartCount={cart.count}>
+	<section class="shop-hero">
+		<span class="shop-hero__eyebrow">مجلهٔ نووکس‌کد</span>
+		<h1>یادداشت‌هایی از تیم ما</h1>
+		<p>
+			تجربه‌های واقعی از ساخت محصول، نگهداری پنل مدیریت فارسی و هر چیزی که به کار شما
+			می‌آید — بدون تعارف.
+		</p>
+	</section>
+
+	<form method="get" class="toolbar" style="display:flex;gap:0.5rem;margin-bottom:1rem">
+		<label class="sr-only" for="q">جست‌وجو در مجله</label>
+		<input class="input" id="q" name="q" value={query} placeholder="جست‌وجو در نوشته‌ها…" />
+		{activeTag && <input type="hidden" name="tag" value={activeTag} />}
+		<button class="btn btn--outline" type="submit">جست‌وجو</button>
+	</form>
+
+	{tags.length > 0 && (
+		<div class="tag-row">
+			<a class="tag" href="/blog" aria-current={!activeTag ? 'page' : undefined}>همه</a>
+			{tags.map((tag) => (
+				<a
+					class="tag"
+					href={`/blog?tag=${encodeURIComponent(tag)}`}
+					aria-current={activeTag === tag ? 'page' : undefined}
+				>{tag}</a>
+			))}
+		</div>
+	)}
+
+	{posts.length === 0 ? (
+		<div class="empty">
+			<h2>نوشته‌ای پیدا نشد</h2>
+			<p>عبارت دیگری را جست‌وجو کنید یا همهٔ نوشته‌ها را ببینید.</p>
+			<p style="margin-top:1rem"><a class="btn btn--outline" href="/blog">همهٔ نوشته‌ها</a></p>
+		</div>
+	) : (
+		<div class="blog-layout">
+			<a class="blog-lead" href={`/blog/${lead.slug}`}>
+				<div class="blog-lead__media" aria-hidden="true">
+					{publicImageSrc(lead.heroImage) ? <img src={publicImageSrc(lead.heroImage)} alt="" /> : <span>{lead.title.charAt(0)}</span>}
+				</div>
+				<div class="blog-lead__body">
+					<span class="hint num">
+						{faDate(lead.pubDate)} — {faReadingTime(lead.words)}
+					</span>
+					<h2>{lead.title}</h2>
+					<p class="shop-card__desc" style="-webkit-line-clamp:3">{lead.description}</p>
+					<span class="btn btn--outline" style="align-self:flex-start">ادامهٔ مطلب</span>
+				</div>
+			</a>
+
+			<div class="blog-list">
+				{rest.map((post) => (
+					<a class="blog-item" href={`/blog/${post.slug}`}>
+						<div class="blog-item__media" aria-hidden="true">
+							{publicImageSrc(post.heroImage) ? <img src={publicImageSrc(post.heroImage)} alt="" /> : <span>{post.title.charAt(0)}</span>}
+						</div>
+						<div>
+							<span class="hint num">{faDate(post.pubDate)} — {faReadingTime(post.words)}</span>
+							<h3>{post.title}</h3>
+							<p class="shop-card__desc">{post.description}</p>
+						</div>
+					</a>
+				))}
+			</div>
+		</div>
+	)}
+
+	<p class="hint" style="padding-bottom:2rem">
+		{faNumber(posts.length)} نوشته در این فهرست — نوشته‌های تازه از پنل مدیریت منتشر می‌شوند.
+	</p>
+</SiteLayout>

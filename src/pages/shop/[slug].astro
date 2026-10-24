@@ -1,0 +1,125 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import { faMoney, faNumber } from '../../lib/cms/fa';
+import { readSettings } from '../../lib/cms/settings';
+import { getProduct } from '../../lib/commerce/products';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { SHIPPING } from '../../lib/commerce/orders';
+
+export const prerender = false;
+
+const { slug = '' } = Astro.params;
+const product = await getProduct(slug);
+
+if (!product || product.status !== 'active') {
+	return Astro.redirect('/shop');
+}
+
+const [settings, cart] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+
+const onSale =
+	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+const percentOff = onSale
+	? Math.round(((product.compareAtPrice! - product.price) / product.compareAtPrice!) * 100)
+	: 0;
+const soldOut = product.stock === 0;
+const errorMessage = Astro.url.searchParams.get('error') ?? '';
+const added = Astro.url.searchParams.get('added') === '1';
+---
+
+<ShopLayout title={product.name} description={product.description.slice(0, 150)} cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a>
+		<span aria-hidden="true">/</span>
+		<span>{product.name}</span>
+	</nav>
+
+	<div class="product-detail">
+		<div class="product-detail__media">
+			{product.image ? (
+				<img src={product.image} alt={product.name} />
+			) : (
+				product.name.charAt(0)
+			)}
+		</div>
+
+		<div>
+			<div class="buy-box__row" style="gap:0.4rem">
+				<span class="badge">{product.category}</span>
+				{onSale && <span class="badge badge--warning num">{faNumber(percentOff)}٪ تخفیف</span>}
+				{soldOut ? (
+					<span class="badge badge--danger">ناموجود</span>
+				) : product.stock <= 3 ? (
+					<span class="badge badge--warning num">فقط {faNumber(product.stock)} عدد باقی مانده</span>
+				) : (
+					<span class="badge badge--success">موجود در انبار</span>
+				)}
+			</div>
+
+			<h1>{product.name}</h1>
+			<p class="product-detail__desc">{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
+
+			<div class="buy-box">
+				<div class="buy-box__row" style="justify-content:space-between">
+					<span class="price">
+						<span class="price__now num" style="font-size:1.3rem">
+							{faMoney(product.price, settings.currency)}
+						</span>
+						{onSale && (
+							<span class="price__was num">{faMoney(product.compareAtPrice!, settings.currency)}</span>
+						)}
+					</span>
+					<span class="hint num">کد کالا: {product.sku}</span>
+				</div>
+
+				{errorMessage && <p class="notice notice--error">{errorMessage}</p>}
+				{added && <p class="notice notice--success">محصول به سبد خرید اضافه شد.</p>}
+
+				{soldOut ? (
+					<p class="notice">این محصول فعلاً ناموجود است — برای اطلاع از شارژ موجودی به مجله سر بزنید.</p>
+				) : (
+					<form method="post" action="/shop/api/cart" class="buy-box__row">
+						<input type="hidden" name="action" value="add" />
+						<input type="hidden" name="productId" value={product.id} />
+						<input
+							type="hidden"
+							name="redirect"
+							value={`/shop/${product.slug}?added=1`}
+						/>
+						<label class="sr-only" for="quantity">تعداد</label>
+						<div class="qty">
+							<input
+								id="quantity"
+								name="quantity"
+								type="number"
+								min="1"
+								max={product.stock}
+								value="1"
+								inputmode="numeric"
+							/>
+						</div>
+						<button class="btn btn--primary" type="submit">افزودن به سبد خرید</button>
+						{cart.count > 0 && (
+							<a class="btn btn--outline" href="/shop/cart">مشاهدهٔ سبد</a>
+						)}
+					</form>
+				)}
+
+				<ul class="hint" style="margin:0;padding-inline-start:1.1rem;display:grid;gap:0.2rem">
+					<li>
+						{product.price >= SHIPPING.freeThreshold
+							? 'ارسال این محصول رایگان است.'
+							: `هزینهٔ ارسال ${faMoney(SHIPPING.fee, settings.currency)} — برای سفارش‌های بالای ${faMoney(SHIPPING.freeThreshold, settings.currency)} رایگان.`}
+					</li>
+					<li>پرداخت امن و پیگیری سفارش با شمارهٔ سفارش.</li>
+					<li>پشتیبانی فارسی در روزهای کاری.</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</ShopLayout>

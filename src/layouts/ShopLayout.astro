@@ -1,0 +1,15 @@
+---
+import SiteLayout from './SiteLayout.astro';
+
+interface Props {
+	title: string;
+	description?: string;
+	cartCount?: number;
+}
+
+const { title, description = '', cartCount = 0 } = Astro.props;
+---
+
+<SiteLayout title={title} description={description} cartCount={cartCount} bodyClass="shop--store">
+	<slot />
+</SiteLayout>

@@ -23,5 +23,6 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
-# CMS runtime data (site settings are edited from /cms)
+# CMS runtime data (settings and store data are edited from /cms)
 data/cms-settings.json
+data/commerce.json

@@ -1,0 +1,239 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import Pagination from '../../../components/cms/Pagination.astro';
+import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { listProducts } from '../../../lib/commerce/products';
+import { productStatusLabel, productStatusTone, type ProductStatus } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const url = Astro.url;
+const query = url.searchParams.get('q') ?? '';
+const status = (url.searchParams.get('status') ?? 'all') as ProductStatus | 'all';
+const category = url.searchParams.get('category') ?? '';
+const sort = (url.searchParams.get('sort') ?? 'newest') as
+	| 'newest'
+	| 'price-asc'
+	| 'price-desc'
+	| 'stock-asc'
+	| 'name';
+const page = Number(url.searchParams.get('page') ?? 1) || 1;
+
+const [result, settings] = await Promise.all([
+	listProducts({ query, status, category, sort, page, perPage: 10 }),
+	readSettings(),
+]);
+
+const statusTabs: Array<{ value: ProductStatus | 'all'; label: string; count: number }> = [
+	{ value: 'all', label: 'همه', count: result.counts.all },
+	{ value: 'active', label: 'فعال', count: result.counts.active },
+	{ value: 'draft', label: 'پیش‌نویس', count: result.counts.draft },
+	{ value: 'archived', label: 'بایگانی', count: result.counts.archived },
+];
+
+const tabHref = (value: ProductStatus | 'all') => {
+	const search = new URLSearchParams();
+	if (value !== 'all') search.set('status', value);
+	if (query) search.set('q', query);
+	if (category) search.set('category', category);
+	if (sort !== 'newest') search.set('sort', sort);
+	const queryString = search.toString();
+	return queryString ? `/cms/products?${queryString}` : '/cms/products';
+};
+
+const initial = (name: string) => name.trim().charAt(0);
+---
+
+<CmsLayout
+	title="محصولات"
+	subtitle={`${faNumber(result.counts.all)} محصول — ${faNumber(result.counts.active)} فعال، ${faNumber(result.counts.draft)} پیش‌نویس`}
+	breadcrumbs={[{ label: 'فروشگاه' }, { label: 'محصولات' }]}
+>
+	<Fragment slot="actions">
+		<a class="btn btn--primary btn--sm" href="/cms/products/new">
+			<Icon name="plus" size={15} />
+			<span>محصول تازه</span>
+		</a>
+	</Fragment>
+
+	<section class="card">
+		<div class="card__head">
+			<div class="filterbar grow">
+				<nav class="segmented" aria-label="پالایش وضعیت محصول">
+					{statusTabs.map((tab) => (
+						<a
+							href={tabHref(tab.value)}
+							aria-current={status === tab.value ? 'page' : undefined}
+						>
+							{tab.label}
+							<span class="segmented__count num">{faNumber(tab.count)}</span>
+						</a>
+					))}
+				</nav>
+			</div>
+
+			<form class="toolbar" method="get" action="/cms/products">
+				{status !== 'all' && <input type="hidden" name="status" value={status} />}
+				<label class="search">
+					<span class="sr-only">جست‌وجوی محصول</span>
+					<Icon name="search" size={16} />
+					<input
+						class="input"
+						type="search"
+						name="q"
+						value={query}
+						placeholder="نام، SKU یا دسته…"
+						autocomplete="off"
+					/>
+				</label>
+
+				<select class="select" name="category" aria-label="دسته‌بندی">
+					<option value="">همهٔ دسته‌ها</option>
+					{result.categories.map((item) => (
+						<option value={item} selected={item === category}>
+							{item}
+						</option>
+					))}
+				</select>
+
+				<select class="select" name="sort" aria-label="ترتیب">
+					<option value="newest" selected={sort === 'newest'}>تازه‌ترین</option>
+					<option value="price-desc" selected={sort === 'price-desc'}>گران‌ترین</option>
+					<option value="price-asc" selected={sort === 'price-asc'}>ارزان‌ترین</option>
+					<option value="stock-asc" selected={sort === 'stock-asc'}>کم‌ترین موجودی</option>
+					<option value="name" selected={sort === 'name'}>الفبا</option>
+				</select>
+
+				<button class="btn btn--outline btn--sm" type="submit">
+					<Icon name="filter" size={14} />
+					<span>اعمال</span>
+				</button>
+			</form>
+		</div>
+
+		{result.items.length ? (
+			<>
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th scope="col">محصول</th>
+								<th scope="col">دسته</th>
+								<th scope="col">قیمت</th>
+								<th scope="col">موجودی</th>
+								<th scope="col">وضعیت</th>
+								<th scope="col">به‌روزرسانی</th>
+								<th scope="col"><span class="sr-only">عملیات</span></th>
+							</tr>
+						</thead>
+						<tbody>
+							{result.items.map((product) => (
+								<tr>
+									<td>
+										<div class="cell-product">
+											<span class="thumb">
+												{product.image ? (
+													<img src={product.image} alt="" loading="lazy" />
+												) : (
+													initial(product.name)
+												)}
+											</span>
+											<span style="min-width:0">
+												<a class="cell-product__name" href={`/cms/products/${product.id}`}>
+													{product.name}
+												</a>
+												<span class="cell-product__meta ltr">{product.sku}</span>
+											</span>
+										</div>
+									</td>
+									<td>
+										<span class="badge badge--neutral">{product.category}</span>
+									</td>
+									<td class="num nowrap">
+										{faMoney(product.price, settings.currency)}
+										{product.compareAtPrice && (
+											<span class="price__was num" style="display:block">
+												{faMoney(product.compareAtPrice, settings.currency)}
+											</span>
+										)}
+									</td>
+									<td>
+										<span
+											class:list={[
+												'stock',
+												product.stock === 0 && 'stock--out',
+												product.stock > 0 && product.stock <= 5 && 'stock--low',
+											]}
+										>
+											{product.stock === 0 ? 'ناموجود' : `${faNumber(product.stock)} عدد`}
+										</span>
+									</td>
+									<td>
+										<span class={`badge badge--${productStatusTone(product.status)}`}>
+											<span class="badge__dot" />
+											{productStatusLabel(product.status)}
+										</span>
+										{product.featured && (
+											<span class="badge badge--brand" style="margin-inline-start:.3rem">
+												ویژه
+											</span>
+										)}
+									</td>
+									<td class="num nowrap">{faDate(product.updatedAt)}</td>
+									<td>
+										<div class="table__actions">
+											<a
+												class="btn btn--ghost btn--sm"
+												href={`/shop/${product.slug}`}
+												target="_blank"
+												rel="noreferrer"
+												aria-label={`مشاهدهٔ ${product.name} در فروشگاه`}
+											>
+												<Icon name="eye" size={15} />
+											</a>
+											<a class="btn btn--outline btn--sm" href={`/cms/products/${product.id}`}>
+												<Icon name="edit" size={14} />
+												<span>ویرایش</span>
+											</a>
+											<form
+												method="post"
+												action={`/cms/api/products/${product.id}?action=delete`}
+												data-confirm={`محصول «${product.name}» حذف شود؟`}
+											>
+												<button class="btn btn--ghost btn--sm" type="submit" aria-label="حذف محصول">
+													<Icon name="trash" size={15} />
+												</button>
+											</form>
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+
+				<Pagination
+					page={result.page}
+					pages={result.pages}
+					total={result.total}
+					perPage={result.perPage}
+					baseUrl="/cms/products"
+					params={{ q: query, status: status === 'all' ? '' : status, category, sort }}
+					label="محصول"
+				/>
+			</>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="box" size={22} /></span>
+				<span class="empty__title">محصولی پیدا نشد</span>
+				<span>پالایه‌ها را تغییر دهید یا اولین محصول را بسازید.</span>
+				<a class="btn btn--primary" href="/cms/products/new" style="margin-top:.6rem">
+					<Icon name="plus" size={15} />
+					<span>محصول تازه</span>
+				</a>
+			</div>
+		)}
+	</section>
+</CmsLayout>

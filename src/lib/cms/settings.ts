@@ -30,6 +30,11 @@ export interface SiteSettings {
 	enableRss: boolean;
 	enableComments: boolean;
 	maintenanceMode: boolean;
+	/** ماژول فروشگاه: منو، داشبورد و صفحه‌های تجارت را روشن می‌کند. */
+	commerceEnabled: boolean;
+	currency: string;
+	shopTitle: string;
+	shopDescription: string;
 	social: {
 		github: string;
 		telegram: string;
@@ -58,6 +63,10 @@ export const defaultSettings: SiteSettings = {
 	enableRss: true,
 	enableComments: false,
 	maintenanceMode: false,
+	commerceEnabled: true,
+	currency: 'تومان',
+	shopTitle: 'فروشگاه نووکس‌کد',
+	shopDescription: 'ابزارهای فارسی برای ساخت وب‌سایت و فروشگاه — قالب، کیت رابط کاربری و دورهٔ آموزشی.',
 	social: {
 		github: 'https://github.com/sinaqaffari',
 		telegram: '',
@@ -117,6 +126,12 @@ export async function writeSettings(payload: Record<string, unknown>): Promise<S
 		enableRss: asBoolean(payload.enableRss ?? current.enableRss),
 		enableComments: asBoolean(payload.enableComments ?? current.enableComments),
 		maintenanceMode: asBoolean(payload.maintenanceMode ?? current.maintenanceMode),
+		commerceEnabled: asBoolean(payload.commerceEnabled ?? current.commerceEnabled),
+		currency: asText(payload.currency, current.currency).trim() || defaultSettings.currency,
+		shopTitle: asText(payload.shopTitle, current.shopTitle).trim() || defaultSettings.shopTitle,
+		shopDescription:
+			asText(payload.shopDescription, current.shopDescription).trim() ||
+			defaultSettings.shopDescription,
 		social: {
 			github: asText(payload['social.github'], current.social.github).trim(),
 			telegram: asText(payload['social.telegram'], current.social.telegram).trim(),

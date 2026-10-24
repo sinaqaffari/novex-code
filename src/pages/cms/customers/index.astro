@@ -1,0 +1,138 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { listCustomers } from '../../../lib/commerce/orders';
+
+export const prerender = false;
+
+const query = Astro.url.searchParams.get('q') ?? '';
+const [customers, settings] = await Promise.all([listCustomers(query), readSettings()]);
+
+const totalSpent = customers.reduce((sum, customer) => sum + customer.totalSpent, 0);
+const repeat = customers.filter((customer) => customer.ordersCount > 1).length;
+---
+
+<CmsLayout
+	title="مشتریان"
+	subtitle={`${faNumber(customers.length)} مشتری — ${faNumber(repeat)} مشتری بازگشتی`}
+	breadcrumbs={[{ label: 'فروشگاه' }, { label: 'مشتریان' }]}
+>
+	<section class="grid grid--stats">
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">کل مشتریان</span>
+				<span class="kpi__icon"><Icon name="users" size={16} /></span>
+			</div>
+			<strong class="kpi__value num">{faNumber(customers.length)}</strong>
+			<span class="kpi__foot">ثبت‌شده در فروشگاه</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">مشتری بازگشتی</span>
+				<span class="kpi__icon" style="background:var(--success-soft);color:var(--success)">
+					<Icon name="refresh" size={16} />
+				</span>
+			</div>
+			<strong class="kpi__value num">{faNumber(repeat)}</strong>
+			<span class="kpi__foot">بیش از یک سفارش</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">ارزش کل خرید</span>
+				<span class="kpi__icon" style="background:var(--brand-soft);color:var(--brand-ink)">
+					<Icon name="chart" size={16} />
+				</span>
+			</div>
+			<strong class="kpi__value num" style="font-size:1.2rem">
+				{faMoney(totalSpent, settings.currency)}
+			</strong>
+			<span class="kpi__foot">مجموع سفارش‌های درآمدی</span>
+		</article>
+		<article class="kpi">
+			<div class="kpi__head">
+				<span class="kpi__label">میانگین خرید</span>
+				<span class="kpi__icon"><Icon name="tag" size={16} /></span>
+			</div>
+			<strong class="kpi__value num" style="font-size:1.2rem">
+				{faMoney(customers.length ? Math.round(totalSpent / customers.length) : 0, settings.currency)}
+			</strong>
+			<span class="kpi__foot">به ازای هر مشتری</span>
+		</article>
+	</section>
+
+	<section class="card">
+		<div class="card__head">
+			<div class="grow">
+				<h2 class="card__title">فهرست مشتریان</h2>
+				<p class="card__hint">مرتب‌شده بر اساس بیشترین خرید</p>
+			</div>
+			<form class="toolbar" method="get" action="/cms/customers">
+				<label class="search">
+					<span class="sr-only">جست‌وجوی مشتری</span>
+					<Icon name="search" size={16} />
+					<input
+						class="input"
+						type="search"
+						name="q"
+						value={query}
+						placeholder="نام، ایمیل یا شهر…"
+						autocomplete="off"
+					/>
+				</label>
+				<button class="btn btn--outline btn--sm" type="submit">
+					<Icon name="search" size={14} />
+					<span>جست‌وجو</span>
+				</button>
+			</form>
+		</div>
+
+		{customers.length ? (
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">مشتری</th>
+							<th scope="col">تلفن</th>
+							<th scope="col">شهر</th>
+							<th scope="col">سفارش‌ها</th>
+							<th scope="col">مجموع خرید</th>
+							<th scope="col">آخرین سفارش</th>
+							<th scope="col">عضویت</th>
+						</tr>
+					</thead>
+					<tbody>
+						{customers.map((customer) => (
+							<tr>
+								<td>
+									<div class="cell-product">
+										<span class="thumb">{customer.name.trim().charAt(0)}</span>
+										<span style="min-width:0">
+											<span class="cell-product__name">{customer.name}</span>
+											<span class="cell-product__meta ltr">{customer.email}</span>
+										</span>
+									</div>
+								</td>
+								<td class="num ltr">{customer.phone}</td>
+								<td>{customer.city}</td>
+								<td class="num">{faNumber(customer.ordersCount)}</td>
+								<td class="num nowrap">{faMoney(customer.totalSpent, settings.currency)}</td>
+								<td class="num nowrap">
+									{customer.lastOrderAt ? faDate(customer.lastOrderAt) : '—'}
+								</td>
+								<td class="num nowrap">{faDate(customer.createdAt)}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="users" size={22} /></span>
+				<span class="empty__title">مشتری‌ای پیدا نشد</span>
+				<span>با ثبت اولین سفارش، مشتری به‌صورت خودکار ساخته می‌شود.</span>
+			</div>
+		)}
+	</section>
+</CmsLayout>

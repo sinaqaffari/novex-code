@@ -8,6 +8,7 @@
 
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { AppError as CmsError } from '../errors';
 import {
 	asString,
 	type Frontmatter,
@@ -15,6 +16,8 @@ import {
 	parseTags,
 	serializeFrontmatter,
 } from './frontmatter';
+
+export { CmsError };
 
 export const BLOG_DIR = path.resolve(process.cwd(), 'src/content/blog');
 
@@ -65,16 +68,7 @@ export type PostInput = Partial<
 	tags?: string | string[];
 };
 
-export class CmsError extends Error {
-	constructor(
-		message: string,
-		readonly field?: string,
-		readonly status = 400,
-	) {
-		super(message);
-		this.name = 'CmsError';
-	}
-}
+
 
 const persianDigits = /[\u06F0-\u06F9]/g;
 const arabicDigits = /[\u0660-\u0669]/g;

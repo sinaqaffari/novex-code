@@ -121,3 +121,36 @@ export function faReadingTime(words: number): string {
 export function toPersianDigits(input: string): string {
 	return input.replace(/[0-9]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
 }
+
+const moneyFormatter = new Intl.NumberFormat(FA_LOCALE, { maximumFractionDigits: 0 });
+
+/** ۱٬۲۵۰٬۰۰۰ تومان */
+export function faMoney(amount: number, currency = 'تومان'): string {
+	if (!Number.isFinite(amount)) return '—';
+	return `${moneyFormatter.format(Math.round(amount))}\u00A0${currency}`;
+}
+
+/** ۱۲٫۵ میلیون تومان — برای کارت‌های خلاصه */
+export function faCompactMoney(amount: number, currency = 'تومان'): string {
+	if (!Number.isFinite(amount)) return '—';
+	const abs = Math.abs(amount);
+	if (abs >= 1_000_000_000) {
+		return `${decimalFormatter.format(Math.round((amount / 1_000_000_000) * 10) / 10)}\u00A0میلیارد ${currency}`;
+	}
+	if (abs >= 1_000_000) {
+		return `${decimalFormatter.format(Math.round((amount / 1_000_000) * 10) / 10)}\u00A0میلیون ${currency}`;
+	}
+	if (abs >= 1_000) {
+		return `${decimalFormatter.format(Math.round((amount / 1_000) * 10) / 10)}\u00A0هزار ${currency}`;
+	}
+	return faMoney(amount, currency);
+}
+
+/** ۲۵٪ */
+export function faPercent(value: number): string {
+	if (!Number.isFinite(value)) return '—';
+	return `${decimalFormatter.format(Math.round(value * 10) / 10)}٪`;
+}
+
+/** ۲۵٪ — alias خوانا برای جدول‌ها */
+export const faRate = faPercent;

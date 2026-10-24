@@ -38,6 +38,8 @@ export interface MediaItem {
 	/** Path relative to the blog folder — what a post's `heroImage` expects. */
 	reference: string;
 	previewUrl: string;
+	/** Public URL (served by `/media/...`) — safe to use in storefront content. */
+	publicUrl: string;
 	bytes: number;
 	modifiedAt: string;
 	extension: string;
@@ -74,6 +76,11 @@ export function previewUrlFor(absolutePath: string): string {
 	return `/cms/media/file/${relative}`;
 }
 
+export function publicUrlFor(absolutePath: string): string {
+	const relative = path.relative(ASSETS_DIR, absolutePath).split(path.sep).join('/');
+	return `/media/${relative}`;
+}
+
 async function collect(directory: string, builtin: boolean): Promise<MediaItem[]> {
 	let entries;
 	try {
@@ -93,6 +100,7 @@ async function collect(directory: string, builtin: boolean): Promise<MediaItem[]
 					name: entry.name,
 					reference: toReference(absolute),
 					previewUrl: previewUrlFor(absolute),
+					publicUrl: publicUrlFor(absolute),
 					bytes: info.size,
 					modifiedAt: info.mtime.toISOString(),
 					extension: extensionOf(entry.name),
@@ -146,6 +154,7 @@ export async function saveUpload(file: File): Promise<MediaItem> {
 		name,
 		reference: toReference(absolute),
 		previewUrl: previewUrlFor(absolute),
+		publicUrl: publicUrlFor(absolute),
 		bytes: info.size,
 		modifiedAt: info.mtime.toISOString(),
 		extension,

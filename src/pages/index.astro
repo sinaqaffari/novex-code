@@ -1,59 +1,99 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { publicImageSrc } from '../lib/cms/public-image';
+import { faDate, faMoney, faReadingTime } from '../lib/cms/fa';
+import { readSettings } from '../lib/cms/settings';
+import { listPosts } from '../lib/cms/posts';
+import { listPublicProducts } from '../lib/commerce/products';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
+const posts = (await listPosts()).filter((post) => !post.draft && post.id.endsWith('.md')).slice(0, 3);
+const products = settings.commerceEnabled ? (await listPublicProducts()).slice(0, 3) : [];
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-	</head>
-	<body>
-		<Header />
-		<main>
-			<h1>🧑‍🚀 Hello, Astronaut!</h1>
-			<p>
-				Welcome to the official <a href="https://astro.build/">Astro</a> blog starter template. This
-				template serves as a lightweight, minimally-styled starting point for anyone looking to
-				build a personal website, blog, or portfolio with Astro.
-			</p>
-			<p>
-				This template comes with a few integrations already configured in your{' '}
-				<code>astro.config.mjs</code> file. You can customize your setup with{' '}
-				<a href="https://astro.build/integrations">Astro Integrations</a> to add tools like
-				Tailwind, React, or Vue to your project.
-			</p>
-			<p>Here are a few ideas on how to get started with the template:</p>
+<SiteLayout title={settings.heroTitle} description={settings.siteDescription} cartCount={cart.count} bodyClass="home">
+	<section class="home-hero">
+		<div>
+			<span class="shop-hero__eyebrow">مجله + فروشگاه، در یک پنل</span>
+			<h1>{settings.heroTitle}</h1>
+			<p>{settings.heroSubtitle}</p>
+			<div class="home-hero__actions">
+				<a class="btn btn--primary" href={settings.commerceEnabled ? '/shop' : '/blog'}>
+					{settings.commerceEnabled ? 'دیدن محصولات' : 'خواندن مجله'}
+				</a>
+				<a class="btn btn--outline" href="/blog">تازه‌های مجله</a>
+			</div>
+		</div>
+
+		<aside class="home-hero__card" aria-label="دربارهٔ این سایت">
+			<span class="hint">پنل مدیریت فارسی، بدون وابستگی به سرویس خارجی</span>
+			<h2>محتوای فارسی، از پایه راست‌به‌چپ</h2>
 			<ul>
-				<li>
-					Edit this page in <code>src/pages/index.astro</code>
-				</li>
-				<li>
-					Edit the site header items in <code>src/components/Header.astro</code>
-				</li>
-				<li>
-					Add your name to the footer in <code>src/components/Footer.astro</code>
-				</li>
-				<li>
-					Check out the included blog posts in <code>src/content/blog/</code>
-				</li>
-				<li>
-					Customize the blog post page layout in <code>src/layouts/BlogPost.astro</code>
-				</li>
+				<li>نوشته‌ها، رسانه و تنظیمات سایت از پنل `/cms`</li>
+				<li>تاریخ شمسی و ارقام فارسی در همه‌جا</li>
+				<li>سفارش‌ها، مشتریان و کدهای تخفیف در همان پنل</li>
 			</ul>
-			<p>
-				Have fun! If you get stuck, remember to{' '}
-				<a href="https://docs.astro.build/">read the docs</a> or{' '}
-				<a href="https://astro.build/chat">join us on Discord</a> to ask questions.
-			</p>
-			<p>
-				Looking for a blog template with a bit more personality? Check out{' '}
-				<a href="https://github.com/Charca/astro-blog-template">astro-blog-template</a> by{' '}
-				<a href="https://twitter.com/Charca">Maxi Ferreira</a>.
-			</p>
-		</main>
-		<Footer />
-	</body>
-</html>
+			<a class="btn btn--ghost" href="/about">بیشتر بدانید ←</a>
+		</aside>
+	</section>
+
+	{products.length > 0 && (
+		<section class="shop-section">
+			<div class="shop-section__head">
+				<h2>تازه‌های فروشگاه</h2>
+				<a class="hint" href="/shop">همهٔ محصولات ←</a>
+			</div>
+			<div class="shop-grid">
+				{products.map((product) => (
+					<a class="shop-card" href={`/shop/${product.slug}`}>
+						<div class="shop-card__media" aria-hidden="true">
+							{product.image ? (
+								<img src={product.image} alt="" loading="lazy" />
+							) : (
+								product.name.charAt(0)
+							)}
+						</div>
+						<div class="shop-card__body">
+							<span class="shop-card__category">{product.category}</span>
+							<span class="shop-card__name">{product.name}</span>
+							<div class="shop-card__foot">
+								<span class="price__now num">{faMoney(product.price, settings.currency)}</span>
+								<span class="btn btn--outline">مشاهده</span>
+							</div>
+						</div>
+					</a>
+				))}
+			</div>
+		</section>
+	)}
+
+	<section class="shop-section">
+		<div class="shop-section__head">
+			<h2>از مجله</h2>
+			<a class="hint" href="/blog">همهٔ نوشته‌ها ←</a>
+		</div>
+
+		{posts.length ? (
+			<div class="blog-list">
+				{posts.map((post) => (
+					<a class="blog-item" href={`/blog/${post.slug}`}>
+						<div class="blog-item__media" aria-hidden="true">
+							{publicImageSrc(post.heroImage) ? <img src={publicImageSrc(post.heroImage)} alt="" /> : <span>{post.title.charAt(0)}</span>}
+						</div>
+						<div>
+							<span class="hint num">{faDate(post.pubDate)} — {faReadingTime(post.words)}</span>
+							<h3>{post.title}</h3>
+							<p class="shop-card__desc">{post.description}</p>
+						</div>
+					</a>
+				))}
+			</div>
+		) : (
+			<p class="hint">هنوز نوشته‌ای منتشر نشده است.</p>
+		)}
+	</section>
+</SiteLayout>

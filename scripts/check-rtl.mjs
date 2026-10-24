@@ -19,11 +19,28 @@ import process from 'node:process';
 const root = process.cwd();
 const scannedDirs = [
 	'src/pages/cms',
+	'src/pages/shop',
+	'src/pages/blog',
 	'src/components/cms',
 	'src/lib/cms',
+	'src/lib/commerce',
+	'src/layouts',
 	'src/styles/cms.css',
+	'src/styles/shop.css',
+	'src/pages/index.astro',
+	'src/pages/about.astro',
 ];
-const layoutFile = 'src/components/cms/CmsLayout.astro';
+
+/** هر گروه از صفحه‌ها باید از چیدمان درست خودش استفاده کند. */
+const layoutContracts = [
+	{ prefix: 'src/pages/cms', layout: 'CmsLayout', file: 'src/components/cms/CmsLayout.astro' },
+	{
+		prefix: 'src/pages/shop',
+		layout: 'ShopLayout',
+		file: 'src/layouts/ShopLayout.astro',
+	},
+	{ prefix: 'src/pages/blog', layout: 'SiteLayout', file: 'src/layouts/SiteLayout.astro' },
+];
 
 const failures = [];
 const warnings = [];
@@ -102,7 +119,9 @@ function stripComments(source) {
 		.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
 			comment.includes('rtl-check-ignore') ? ' rtl-check-ignore ' : '',
 		)
-		.replace(/<!--[\s\S]*?-->/g, '');
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/\/\/[^\n]*rtl-check-ignore[^\n]*/g, ' rtl-check-ignore ');
+	
 }
 
 const files = [];
@@ -137,12 +156,19 @@ for (const file of files) {
 	});
 
 	if (file.endsWith('.astro')) {
-		if (!/[پچژگکی‌]/.test(source) && relative.includes('src/pages/cms')) {
+		if (!/[پچژگکی‌]/.test(source) && relative.startsWith('src/pages')) {
 			failures.push(`${relative} — هیچ متن فارسی‌ای ندارد؛ رابط کاربری باید فارسی باشد.`);
 		}
 
-		if (relative.includes('src/pages/cms') && !source.includes('CmsLayout')) {
-			failures.push(`${relative} — از CmsLayout استفاده نمی‌کند؛ dir=\"rtl\" تضمین نمی‌شود.`);
+		for (const contract of layoutContracts) {
+			if (!relative.startsWith(contract.prefix)) continue;
+			if (/\/api\//.test(relative)) break;
+			if (!source.includes(contract.layout)) {
+				failures.push(
+					`${relative} — از ${contract.layout} استفاده نمی‌کند؛ dir=\"rtl\" تضمین نمی‌شود.`,
+				);
+			}
+			break;
 		}
 
 		const textNodes = [...source.matchAll(/>([^<>{}]+)</g)].map((match) => match[1].trim());
@@ -158,25 +184,35 @@ for (const file of files) {
 	}
 }
 
-// The root element must declare both language and direction.
-const layout = await readFile(path.join(root, layoutFile), 'utf8');
-if (!/<html[^>]*\blang="fa"/.test(layout)) {
-	failures.push(`${layoutFile} — ویژگی lang="fa" روی <html> تنظیم نشده است.`);
-}
-if (!/<html[^>]*\bdir="rtl"/.test(layout)) {
-	failures.push(`${layoutFile} — ویژگی dir="rtl" روی <html> تنظیم نشده است.`);
-}
-if (!layout.includes("'@fontsource-variable/vazirmatn'")) {
-	warnings.push(`${layoutFile} — قلم وزیرمتن بارگذاری نشده است.`);
+// The root element of every layout must declare both language and direction.
+for (const layoutFile of [
+	'src/components/cms/CmsLayout.astro',
+	'src/layouts/SiteLayout.astro',
+]) {
+	const layout = await readFile(path.join(root, layoutFile), 'utf8');
+	if (!/<html[^>]*\blang="fa"/.test(layout)) {
+		failures.push(`${layoutFile} — ویژگی lang="fa" روی <html> تنظیم نشده است.`);
+	}
+	if (!/<html[^>]*\bdir="rtl"/.test(layout)) {
+		failures.push(`${layoutFile} — ویژگی dir="rtl" روی <html> تنظیم نشده است.`);
+	}
+	if (!layout.includes("'@fontsource-variable/vazirmatn'")) {
+		warnings.push(`${layoutFile} — قلم وزیرمتن بارگذاری نشده است.`);
+	}
 }
 
-// A couple of global checks on the stylesheet.
-const styles = await readFile(path.join(root, 'src/styles/cms.css'), 'utf8');
-if (!/html\s*{[^}]*direction:\s*rtl/.test(styles)) {
-	failures.push('src/styles/cms.css — direction: rtl روی html تنظیم نشده است.');
-}
-if (!/Vazirmatn/.test(styles)) {
-	failures.push('src/styles/cms.css — خانوادهٔ قلم فارسی (Vazirmatn) تعریف نشده است.');
+// A couple of global checks on the stylesheets.
+for (const [stylesheet, directionRule] of [
+	['src/styles/cms.css', /html\s*{[^}]*direction:\s*rtl/],
+	['src/styles/shop.css', /html\s*{[^}]*direction:\s*rtl/],
+]) {
+	const styles = await readFile(path.join(root, stylesheet), 'utf8');
+	if (!directionRule.test(styles)) {
+		failures.push(`${stylesheet} — direction: rtl روی html تنظیم نشده است.`);
+	}
+	if (!/Vazirmatn/.test(styles)) {
+		failures.push(`${stylesheet} — خانوادهٔ قلم فارسی (Vazirmatn) تعریف نشده است.`);
+	}
 }
 
 const report = (title, items, stream) => {
