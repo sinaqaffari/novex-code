@@ -1,0 +1,21 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import PostEditor from '../../../components/cms/PostEditor.astro';
+import { listMedia } from '../../../lib/cms/media';
+
+export const prerender = false;
+
+const media = await listMedia();
+---
+
+<CmsLayout title="نوشتهٔ تازه" subtitle="یک مقالهٔ جدید بسازید — میتوانید آن را پیشنویس نگه دارید و بعداً منتشر کنید.">
+	<Fragment slot="actions">
+		<a class="btn btn--outline btn--sm" href="/cms/posts">
+			<Icon name="arrow" size={15} />
+			<span>بازگشت به فهرست</span>
+		</a>
+	</Fragment>
+
+	<PostEditor mode="new" media={media} />
+</CmsLayout>

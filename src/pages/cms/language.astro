@@ -1,0 +1,200 @@
+---
+// rtl-check-ignore-file — این صفحه عمداً الگوهای نادرست (مثل text-align:left) را
+// برای آموزش نمایش می‌دهد؛ بنابراین از بررسی ویژگی‌های فیزیکی مستثناست.
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { faDate, faDateTime, faNumber } from '../../lib/cms/fa';
+import { readSettings } from '../../lib/cms/settings';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const now = new Date();
+
+const rules = [
+	{
+		title: 'جهت سند در سطح ریشه',
+		detail: 'تگ <html> با lang="fa" و dir="rtl" رندر می‌شود؛ همهٔ صفحه‌های پنل این قرارداد را به ارث می‌برند.',
+	},
+	{
+		title: 'فقط ویژگی‌های منطقی CSS',
+		detail: 'به‌جای margin-left/right و text-align:left از margin-inline، padding-inline-start و text-align:start استفاده شده است.',
+	},
+	{
+		title: 'قلم فارسی وزیرمتن',
+		detail: 'قلم متغیر Vazirmatn به‌صورت self-hosted بارگذاری می‌شود و ارتفاع خط برای متن فارسی تنظیم شده است.',
+	},
+	{
+		title: 'ارقام و تقویم فارسی',
+		detail: 'همهٔ شمارنده‌ها با Intl.NumberFormat فارسی و تاریخ‌ها با تقویم هجری شمسی (fa-IR-u-ca-persian) قالب می‌شوند.',
+	},
+	{
+		title: 'متن لاتین جدا می‌شود',
+		detail: 'نامک، نشانی، ایمیل و کد با dir="ltr" و unicode-bidi:isolate نمایش داده می‌شوند تا ترتیب کاراکترها به‌هم نریزد.',
+	},
+	{
+		title: 'آیکون‌ها و چیدمان آینه‌ای',
+		detail: 'نوار کناری در سمت راست، فلش‌ها و نشانه‌های ناوبری هم‌جهت با متن راست‌به‌چپ هستند.',
+	},
+	{
+		title: 'پیام‌ها و برچسب‌ها فارسی',
+		detail: 'همهٔ خطاها، تأییدها، دکمه‌ها و حالت‌های خالی به فارسی نوشته شده‌اند؛ حتی پیام تأیید حذف.',
+	},
+	{
+		title: 'قالب‌بندی متن فارسی',
+		detail: 'ویرایشگر، نیم‌فاصله، گیومهٔ فارسی «…» و جهت درست بلوک‌های کد را در پیش‌نمایش رعایت می‌کند.',
+	},
+];
+---
+
+<CmsLayout
+	title="زبان و نمایش"
+	subtitle="پنل مدیریت این پروژه فارسی و راست‌به‌چپ است؛ این صفحه قرارداد طراحی و راهنمای نگهداری آن است."
+>
+	<Fragment slot="actions">
+		<a class="btn btn--outline btn--sm" href="/cms/settings">
+			<Icon name="settings" size={15} />
+			<span>تنظیمات نمایش</span>
+		</a>
+	</Fragment>
+
+	<section class="card">
+		<div class="card__body">
+			<div class="row row--between" style="align-items:flex-start;gap:1.5rem">
+				<div class="stack" style="gap:.5rem;max-width:62ch">
+					<span class="badge badge--brand">fa — RTL</span>
+					<h2 style="font-size:1.35rem">فارسی بنویس، راست‌به‌چپ بخوان.</h2>
+					<p class="muted" style="font-size:.9rem;line-height:2">
+						تمام رابط کاربری پنل با فرض زبان فارسی و جهت راست‌به‌چپ ساخته شده است. چیدمان با
+						ویژگی‌های منطقی CSS نوشته می‌شود، تاریخ‌ها با تقویم هجری شمسی و اعداد با ارقام فارسی
+						نمایش داده می‌شوند. هیچ‌جای پنل به چیدمان چپ‌به‌راست وابسته نیست.
+					</p>
+					<div class="row">
+						<span class="pill-hint">lang = fa</span>
+						<span class="pill-hint">dir = rtl</span>
+						<span class="pill-hint">font = Vazirmatn</span>
+						<span class="pill-hint">calendar = جلالی</span>
+					</div>
+				</div>
+				<div class="hero-preview" style="min-width:220px;max-width:280px">
+					<span style="font-size:2rem;font-weight:800;line-height:1.4">سلام، دنیا</span>
+					<span class="hint">نمونهٔ قلم وزیرمتن در وزن ۸۰۰</span>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<div class="split">
+		<section class="card">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title">قواعد اجراشده</h2>
+					<p class="card__hint">چیزی که در کد پنل تضمین شده است</p>
+				</div>
+			</div>
+			<div class="card__body stack" style="gap:1rem">
+				{rules.map((rule, index) => (
+					<div class="row" style="align-items:flex-start;gap:.75rem;flex-wrap:nowrap">
+						<span class="stat__icon" style="position:static;flex:none;margin-top:.15rem">
+							<Icon name="check" size={16} />
+						</span>
+						<div class="stack" style="gap:.15rem">
+							<strong style="font-size:.9rem">
+								{faNumber(index + 1)}. {rule.title}
+							</strong>
+							<span class="hint">{rule.detail}</span>
+						</div>
+					</div>
+				))}
+			</div>
+		</section>
+
+		<div class="stack">
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">نمونهٔ نمایش</h2>
+						<p class="card__hint">همان‌طور که در پنل دیده می‌شود</p>
+					</div>
+				</div>
+				<div class="card__body stack" style="gap:.6rem">
+					<div class="row row--between">
+						<span class="muted">تاریخ امروز</span>
+						<span class="num">{faDate(now, 'long')}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">تاریخ و ساعت</span>
+						<span class="num">{faDateTime(now)}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">عدد</span>
+						<span class="num">{faNumber(1404)}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">منطقهٔ زمانی</span>
+						<span class="ltr">{settings.timezone}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">نمونهٔ متن لاتین</span>
+						<code class="ltr">/blog/persian-typography</code>
+					</div>
+					<div class="row row--between">
+						<span class="muted">ارقام فارسی در جمله</span>
+						<span>امسال {faNumber(1404)} است.</span>
+					</div>
+				</div>
+			</section>
+
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">درست و نادرست</h2>
+						<p class="card__hint">برای همکارانی که بعداً کد را تغییر می‌دهند</p>
+					</div>
+				</div>
+				<div class="card__body">
+					<ul class="hint" style="margin:0;padding-inline-start:1.1rem;line-height:2.1">
+						<li>
+							<strong>درست:</strong> <code class="ltr">margin-inline-start: 1rem</code> — در RTL از
+							سمت راست فاصله می‌دهد.
+						</li>
+						<li>
+							<strong>نادرست:</strong> <code class="ltr">margin-left: 1rem</code> — همیشه از سمت چپ.
+						</li>
+						<li>
+							<strong>درست:</strong> <code class="ltr">text-align: start</code> — با جهت متن هم‌جهت
+							است.
+						</li>
+						<li>
+							<strong>نادرست:</strong> <code class="ltr">float: left</code> — در فارسی چیدمان را
+							می‌شکند.
+						</li>
+						<li>
+							<strong>درست:</strong> <code class="ltr">«نیم‌فاصله»</code> با نویسهٔ U+200C.
+						</li>
+					</ul>
+				</div>
+			</section>
+		</div>
+	</div>
+
+	<section class="card">
+		<div class="card__head">
+			<div>
+				<h2 class="card__title">اعتبارسنجی خودکار</h2>
+				<p class="card__hint">با اجرای <code class="ltr">npm run check:rtl</code> انجام می‌شود</p>
+			</div>
+		</div>
+		<div class="card__body stack" style="gap:.6rem">
+			<p class="hint">
+				اسکریپت بررسی، فایل‌های پنل را می‌کاود و مطمئن می‌شود ویژگی‌های فیزیکی CSS
+				(<code class="ltr">margin-left</code>، <code class="ltr">padding-right</code>،
+				<code class="ltr">text-align:left</code> و مانند آن) و رشته‌های انگلیسی جاافتاده در رابط
+				کاربری وجود ندارند.
+			</p>
+			<code class="ltr" style="display:block;padding:.7rem .9rem;background:var(--bg-accent);border-radius:8px">
+				$ npm run check:rtl
+			</code>
+		</div>
+	</section>
+</CmsLayout>

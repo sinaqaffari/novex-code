@@ -1,0 +1,280 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faDate, faFileSize, faNumber } from '../../../lib/cms/fa';
+import { ALLOWED_EXTENSIONS, listMedia } from '../../../lib/cms/media';
+
+export const prerender = false;
+
+const media = await listMedia();
+const uploads = media.filter((item) => !item.builtin);
+const builtin = media.filter((item) => item.builtin);
+const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
+---
+
+<CmsLayout
+	title="کتابخانهٔ رسانه"
+	subtitle={`${faNumber(media.length)} فایل — مجموع ${faFileSize(totalBytes)} — تصاویر در مسیر src/assets ذخیره می‌شوند.`}
+>
+	<Fragment slot="actions">
+		<label class="btn btn--primary btn--sm" for="media-input">
+			<Icon name="upload" size={15} />
+			<span>بارگذاری تصویر</span>
+		</label>
+	</Fragment>
+
+	<section class="stack">
+		<form
+			class="dropzone"
+			method="post"
+			action="/cms/api/media/upload"
+			enctype="multipart/form-data"
+			data-upload-form
+		>
+			<input
+				class="sr-only"
+				id="media-input"
+				type="file"
+				name="files"
+				accept={ALLOWED_EXTENSIONS.map((extension) => `.${extension}`).join(',')}
+				multiple
+				data-file-input
+			/>
+			<Icon name="image" size={20} />
+			<span data-dropzone-label>
+				تصاویر را اینجا رها کنید یا کلیک کنید — JPG، PNG، WebP، AVIF، GIF و SVG تا ۸ مگابایت
+			</span>
+			<button class="btn btn--outline btn--sm" type="submit" data-upload-submit hidden>
+				<span>شروع بارگذاری</span>
+			</button>
+		</form>
+
+		<div class="card">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title">بارگذاری‌های شما</h2>
+					<p class="card__hint">فایل‌های تازه در مسیر src/assets/uploads ذخیره می‌شوند.</p>
+				</div>
+				<label class="search">
+					<span class="sr-only">جست‌وجوی نام فایل</span>
+					<Icon name="search" size={16} />
+					<input class="input" type="search" placeholder="جست‌وجوی نام فایل…" data-media-search />
+				</label>
+			</div>
+
+			{uploads.length ? (
+				<div class="card__body">
+					<div class="media-grid" data-media-grid>
+						{uploads.map((item) => (
+							<figure class="media-tile" data-media-item data-name={item.name.toLowerCase()}>
+								<img
+									class="media-tile__thumb"
+									src={item.previewUrl}
+									alt={`پیش‌نمایش ${item.name}`}
+									loading="lazy"
+								/>
+								<figcaption class="media-tile__meta">
+									<span class="media-tile__name ltr" dir="ltr">{item.name}</span>
+									<span class="media-tile__size num">
+										{faFileSize(item.bytes)} — {faDate(item.modifiedAt)}
+									</span>
+								</figcaption>
+								<div class="media-tile__actions">
+									<button
+										class="btn btn--outline btn--sm grow"
+										type="button"
+										data-copy={item.reference}
+										title="رونوشت مسیر برای استفاده در نوشته"
+									>
+										<Icon name="copy" size={13} />
+										<span>رونوشت مسیر</span>
+									</button>
+									<form
+										method="post"
+										action={`/cms/api/media/${encodeURIComponent(item.name)}`}
+										data-confirm={`فایل «${item.name}» حذف شود؟`}
+									>
+										<button class="btn btn--danger btn--sm" type="submit" aria-label="حذف فایل">
+											<Icon name="trash" size={13} />
+										</button>
+									</form>
+								</div>
+							</figure>
+						))}
+					</div>
+					<div class="empty" data-media-empty hidden>
+						<span class="empty__icon"><Icon name="search" size={22} /></span>
+						<span class="empty__title">فایلی با این نام پیدا نشد</span>
+					</div>
+				</div>
+			) : (
+				<div class="empty">
+					<span class="empty__icon"><Icon name="image" size={22} /></span>
+					<span class="empty__title">هنوز فایلی بارگذاری نکرده‌اید</span>
+					<span>تصویر شاخص نوشته‌ها را از همین‌جا اضافه کنید.</span>
+				</div>
+			)}
+		</div>
+
+		<div class="card">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title">تصاویر همراه قالب</h2>
+					<p class="card__hint">فایل‌های موجود در src/assets که با پروژه نصب شده‌اند.</p>
+				</div>
+				<span class="badge badge--neutral">{faNumber(builtin.length)} فایل</span>
+			</div>
+			<div class="card__body">
+				<div class="media-grid">
+					{builtin.map((item) => (
+						<figure class="media-tile">
+							<span class="badge badge--neutral media-tile__badge">همراه قالب</span>
+							<img
+								class="media-tile__thumb"
+								src={item.previewUrl}
+								alt={`پیش‌نمایش ${item.name}`}
+								loading="lazy"
+							/>
+							<figcaption class="media-tile__meta">
+								<span class="media-tile__name ltr" dir="ltr">{item.name}</span>
+								<span class="media-tile__size num">{faFileSize(item.bytes)}</span>
+							</figcaption>
+							<div class="media-tile__actions">
+								<button class="btn btn--outline btn--sm grow" type="button" data-copy={item.reference}>
+									<Icon name="copy" size={13} />
+									<span>رونوشت مسیر</span>
+								</button>
+							</div>
+						</figure>
+					))}
+				</div>
+			</div>
+		</div>
+
+		<p class="hint">
+			برای استفاده در متن نوشته، مسیر فایل را رونوشت کنید و در مارک‌داون بگذارید:
+			<code class="ltr">![توضیح تصویر](../../assets/uploads/نام-فایل.jpg)</code>
+		</p>
+	</section>
+</CmsLayout>
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('[data-upload-form]');
+	const input = document.querySelector<HTMLInputElement>('[data-file-input]');
+	const submit = document.querySelector<HTMLButtonElement>('[data-upload-submit]');
+	const label = document.querySelector<HTMLElement>('[data-dropzone-label]');
+	const search = document.querySelector<HTMLInputElement>('[data-media-search]');
+	const items = [...document.querySelectorAll<HTMLElement>('[data-media-item]')];
+	const empty = document.querySelector<HTMLElement>('[data-media-empty]');
+	const defaultLabel = label?.textContent?.trim() ?? '';
+
+	const persianSize = (bytes: number) => {
+		const units = ['بایت', 'کیلوبایت', 'مگابایت'];
+		let value = bytes;
+		let unit = 0;
+		while (value >= 1024 && unit < units.length - 1) {
+			value /= 1024;
+			unit += 1;
+		}
+		return `${value.toFixed(unit === 0 ? 0 : 1).replace('.', '٫').replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])} ${units[unit]}`;
+	};
+
+	const showSelection = () => {
+		const files = [...(input?.files ?? [])];
+		if (!submit || !label) return;
+		submit.hidden = files.length === 0;
+		if (!files.length) {
+			label.textContent = defaultLabel;
+			return;
+		}
+		const total = files.reduce((sum, file) => sum + file.size, 0);
+		label.textContent = `${files.length.toLocaleString('fa-IR')} فایل انتخاب شد — مجموع ${persianSize(total)}`;
+	};
+
+	input?.addEventListener('change', showSelection);
+
+	form?.addEventListener('click', (event) => {
+		const target = event.target as HTMLElement;
+		if (target.closest('button') || target === input) return;
+		input?.click();
+	});
+
+	['dragenter', 'dragover'].forEach((type) => {
+		form?.addEventListener(type, (event) => {
+			event.preventDefault();
+			form.classList.add('is-active');
+		});
+	});
+
+	['dragleave', 'drop'].forEach((type) => {
+		form?.addEventListener(type, () => form.classList.remove('is-active'));
+	});
+
+	form?.addEventListener('drop', (event) => {
+		event.preventDefault();
+		if (!input) return;
+		const dropped = (event as DragEvent).dataTransfer?.files;
+		if (!dropped?.length) return;
+		const transfer = new DataTransfer();
+		for (const file of dropped) transfer.items.add(file);
+		input.files = transfer.files;
+		showSelection();
+	});
+
+	form?.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		if (!input?.files?.length || !submit) {
+			input?.click();
+			return;
+		}
+
+		submit.disabled = true;
+		if (label) label.textContent = 'در حال بارگذاری…';
+
+		try {
+			const response = await fetch(form.action, {
+				method: 'POST',
+				headers: { accept: 'application/json' },
+				body: new FormData(form),
+			});
+			const payload = (await response.json()) as { ok?: boolean; message?: string };
+			if (response.ok && payload.ok) {
+				window.location.assign('/cms/media?flash=uploaded');
+				return;
+			}
+			if (label) label.textContent = payload.message ?? 'بارگذاری ناموفق بود.';
+		} catch {
+			if (label) label.textContent = 'ارتباط با سرور برقرار نشد.';
+		} finally {
+			submit.disabled = false;
+		}
+	});
+
+	search?.addEventListener('input', () => {
+		const needle = search.value.trim().toLowerCase();
+		let visible = 0;
+		for (const item of items) {
+			const match = (item.dataset.name ?? '').includes(needle);
+			item.hidden = !match;
+			if (match) visible += 1;
+		}
+		if (empty) empty.hidden = visible > 0;
+	});
+
+	document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+		button.addEventListener('click', async () => {
+			const value = button.dataset.copy ?? '';
+			try {
+				await navigator.clipboard.writeText(value);
+				const original = button.querySelector('span')?.textContent ?? 'رونوشت مسیر';
+				const span = button.querySelector('span');
+				if (span) span.textContent = 'رونوشت شد ✓';
+				setTimeout(() => {
+					if (span) span.textContent = original;
+				}, 1800);
+			} catch {
+				window.prompt('مسیر فایل را رونوشت کنید:', value);
+			}
+		});
+	});
+</script>

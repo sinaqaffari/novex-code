@@ -1,0 +1,247 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { faDate, faNumber, faReadingTime, faRelative } from '../../lib/cms/fa';
+import { buildStats, listPosts } from '../../lib/cms/posts';
+import { listMedia } from '../../lib/cms/media';
+import { readSettings, TIMEZONES } from '../../lib/cms/settings';
+
+export const prerender = false;
+
+const [posts, media, settings] = await Promise.all([listPosts(), listMedia(), readSettings()]);
+const stats = buildStats(posts);
+const recent = posts.slice(0, 5);
+const uploads = media.filter((item) => !item.builtin).length;
+const timezoneLabel =
+	TIMEZONES.find((zone) => zone.value === settings.timezone)?.label ?? settings.timezone;
+
+const cards = [
+	{
+		label: 'کل نوشته‌ها',
+		value: faNumber(stats.total),
+		meta: `${faNumber(stats.published)} منتشرشده — ${faNumber(stats.drafts)} پیش‌نویس`,
+		icon: 'posts' as const,
+		tone: '',
+	},
+	{
+		label: 'واژه‌های نوشته‌شده',
+		value: faNumber(stats.words),
+		meta: `به‌طور میانگین ${faNumber(stats.total ? Math.round(stats.words / stats.total) : 0)} واژه در هر نوشته`,
+		icon: 'word' as const,
+		tone: 'stat--teal',
+	},
+	{
+		label: 'فایل‌های رسانه',
+		value: faNumber(media.length),
+		meta: `${faNumber(uploads)} فایل بارگذاری‌شده`,
+		icon: 'media' as const,
+		tone: 'stat--amber',
+	},
+	{
+		label: 'برچسب‌های فعال',
+		value: faNumber(stats.tags.length),
+		meta: stats.tags.length ? `پرکاربردترین: ${stats.tags[0].name}` : 'هنوز برچسبی ثبت نشده',
+		icon: 'tag' as const,
+		tone: 'stat--gray',
+	},
+];
+---
+
+<CmsLayout title="داشبورد" subtitle={`خلاصهٔ وضعیت محتوای ${settings.siteTitle} — به وقت ${timezoneLabel}`}>
+	<Fragment slot="actions">
+		<a class="btn btn--primary btn--sm" href="/cms/posts/new">
+			<Icon name="plus" size={15} />
+			<span>نوشتهٔ تازه</span>
+		</a>
+	</Fragment>
+
+	<section class="grid grid--stats" aria-label="آمار کلی">
+		{cards.map((card) => (
+			<article class={`stat ${card.tone}`}>
+				<span class="stat__icon"><Icon name={card.icon} size={18} /></span>
+				<span class="stat__label">{card.label}</span>
+				<strong class="stat__value num">{card.value}</strong>
+				<span class="stat__meta">{card.meta}</span>
+			</article>
+		))}
+	</section>
+
+	<div class="split">
+		<div class="stack">
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">آخرین نوشته‌ها</h2>
+						<p class="card__hint">پنج نوشتهٔ اخیر، بر پایهٔ تاریخ انتشار</p>
+					</div>
+					<a class="btn btn--ghost btn--sm" href="/cms/posts">
+						<span>همهٔ نوشته‌ها</span>
+						<Icon name="arrow" size={15} />
+					</a>
+				</div>
+
+				{recent.length ? (
+					<div class="card__body card__body--flush">
+						<div class="table-wrap">
+							<table class="table">
+								<thead>
+									<tr>
+										<th scope="col">عنوان</th>
+										<th scope="col">وضعیت</th>
+										<th scope="col">تاریخ انتشار</th>
+										<th scope="col">زمان مطالعه</th>
+										<th scope="col"><span class="sr-only">عملیات</span></th>
+									</tr>
+								</thead>
+								<tbody>
+									{recent.map((post) => (
+										<tr>
+											<td>
+												<a class="table__title" href={`/cms/posts/${post.id}`}>
+													{post.title}
+												</a>
+												<code class="table__slug ltr">/blog/{post.slug}</code>
+											</td>
+											<td>
+												{post.draft ? (
+													<span class="badge badge--warning">
+														<span class="badge__dot" />
+														پیش‌نویس
+													</span>
+												) : (
+													<span class="badge badge--success">
+														<span class="badge__dot" />
+														منتشرشده
+													</span>
+												)}
+											</td>
+											<td class="num">{faDate(post.pubDate)}</td>
+											<td class="num">{faReadingTime(post.words)}</td>
+											<td>
+												<div class="table__actions">
+													<a class="btn btn--outline btn--sm" href={`/cms/posts/${post.id}`}>
+														<Icon name="edit" size={14} />
+														<span>ویرایش</span>
+													</a>
+												</div>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				) : (
+					<div class="empty">
+						<span class="empty__icon"><Icon name="posts" size={22} /></span>
+						<span class="empty__title">هنوز نوشته‌ای ثبت نشده است</span>
+						<span>با دکمهٔ «نوشتهٔ تازه» اولین مقاله را بنویسید.</span>
+					</div>
+				)}
+			</section>
+
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">میان‌بُرهای روزمره</h2>
+						<p class="card__hint">کارهایی که بیشتر از همه به آن‌ها سر می‌زنید</p>
+					</div>
+				</div>
+				<div class="card__body">
+					<div class="row">
+						<a class="btn btn--outline" href="/cms/posts/new">
+							<Icon name="plus" size={15} />
+							<span>نوشتهٔ تازه</span>
+						</a>
+						<a class="btn btn--outline" href="/cms/media">
+							<Icon name="upload" size={15} />
+							<span>بارگذاری تصویر</span>
+						</a>
+						<a class="btn btn--outline" href="/cms/settings">
+							<Icon name="settings" size={15} />
+							<span>تنظیمات سایت</span>
+						</a>
+						<a class="btn btn--outline" href="/blog" target="_blank" rel="noreferrer">
+							<Icon name="external" size={15} />
+							<span>مشاهدهٔ مجله</span>
+						</a>
+					</div>
+				</div>
+			</section>
+		</div>
+
+		<div class="stack">
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">وضعیت زبان و چیدمان</h2>
+						<p class="card__hint">قرارداد ثابت پنل</p>
+					</div>
+				</div>
+				<div class="card__body stack" style="gap:.75rem">
+					<div class="row row--between">
+						<span class="muted">زبان پنل</span>
+						<span class="badge badge--brand">فارسی</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">جهت چیدمان</span>
+						<span class="badge badge--brand">راست‌به‌چپ (RTL)</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">تقویم</span>
+						<span class="badge">{settings.calendar === 'jalali' ? 'هجری شمسی' : 'میلادی'}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">ارقام</span>
+						<span class="badge">{settings.digits === 'persian' ? 'فارسی' : 'لاتین'}</span>
+					</div>
+					<div class="row row--between">
+						<span class="muted">قلم</span>
+						<span class="badge">وزیرمتن</span>
+					</div>
+				</div>
+			</section>
+
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">پرکاربردترین برچسب‌ها</h2>
+						<p class="card__hint">بر اساس تعداد نوشته</p>
+					</div>
+				</div>
+				<div class="card__body">
+					{stats.tags.length ? (
+						<ul class="tag-list">
+							{stats.tags.map((tag) => (
+								<li>
+									<a class="badge" href={`/cms/posts?tag=${encodeURIComponent(tag.name)}`}>
+										#{tag.name}
+										<span class="num">{faNumber(tag.count)}</span>
+									</a>
+								</li>
+							))}
+						</ul>
+					) : (
+						<p class="hint">با افزودن برچسب به نوشته‌ها، این بخش پر می‌شود.</p>
+					)}
+				</div>
+			</section>
+
+			{stats.latest && (
+				<section class="card">
+					<div class="card__head">
+						<h2 class="card__title">آخرین به‌روزرسانی</h2>
+					</div>
+					<div class="card__body stack" style="gap:.5rem">
+						<a href={`/cms/posts/${stats.latest.id}`} style="font-weight:600">
+							{stats.latest.title}
+						</a>
+						<span class="hint">
+							ویرایش {faRelative(stats.latest.modifiedAt)} — {faDate(stats.latest.pubDate, 'long')}
+						</span>
+					</div>
+				</section>
+			)}
+		</div>
+	</div>
+</CmsLayout>

@@ -1,17 +1,21 @@
 ---
-import { type CollectionEntry, getCollection, render } from 'astro:content';
+import { getEntry, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
 
-export async function getStaticPaths() {
-	const posts = await getCollection('blog');
-	return posts.map((post) => ({
-		params: { slug: post.id },
-		props: post,
-	}));
-}
-type Props = CollectionEntry<'blog'>;
+export const prerender = false;
 
-const post = Astro.props;
+// Posts are written by the CMS at runtime, so this route renders on demand
+// instead of being limited to the slugs that existed at build time.
+const slug = Astro.params.slug ?? '';
+const post = await getEntry('blog', slug);
+
+if (!post || post.data.draft) {
+	return new Response('<h1>نوشته پیدا نشد</h1>', {
+		status: 404,
+		headers: { 'content-type': 'text/html; charset=utf-8' },
+	});
+}
+
 const { Content } = await render(post);
 ---
 

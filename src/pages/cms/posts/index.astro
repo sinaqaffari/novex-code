@@ -1,0 +1,230 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faDate, faNumber, faReadingTime, faRelative } from '../../../lib/cms/fa';
+import { listPosts } from '../../../lib/cms/posts';
+
+export const prerender = false;
+
+const posts = await listPosts();
+const tagFilter = Astro.url.searchParams.get('tag') ?? '';
+const filtered = tagFilter
+	? posts.filter((post) => post.tags.some((tag) => tag === tagFilter))
+	: posts;
+
+const published = posts.filter((post) => !post.draft).length;
+const drafts = posts.length - published;
+---
+
+<CmsLayout
+	title="نوشته‌ها"
+	subtitle={`${faNumber(posts.length)} نوشته در مخزن محتوا — ${faNumber(published)} منتشرشده و ${faNumber(drafts)} پیش‌نویس`}
+>
+	<Fragment slot="actions">
+		<a class="btn btn--primary btn--sm" href="/cms/posts/new">
+			<Icon name="plus" size={15} />
+			<span>نوشتهٔ تازه</span>
+		</a>
+	</Fragment>
+
+	<section class="card">
+		<div class="card__head">
+			<div class="row grow" style="flex:1 1 320px">
+				<label class="search">
+					<span class="sr-only">جست‌وجو در نوشته‌ها</span>
+					<Icon name="search" size={16} />
+					<input
+						class="input"
+						type="search"
+						placeholder="جست‌وجو بر اساس عنوان، نامک یا برچسب…"
+						data-post-search
+						autocomplete="off"
+					/>
+				</label>
+
+				<div class="row" role="group" aria-label="پالایش بر اساس وضعیت">
+					<button class="btn btn--primary btn--sm" type="button" data-status-filter="all" aria-pressed="true">
+						همه
+					</button>
+					<button class="btn btn--outline btn--sm" type="button" data-status-filter="published" aria-pressed="false">
+						منتشرشده
+					</button>
+					<button class="btn btn--outline btn--sm" type="button" data-status-filter="draft" aria-pressed="false">
+						پیش‌نویس
+					</button>
+				</div>
+
+				{tagFilter && (
+					<a class="badge badge--brand" href="/cms/posts">
+						برچسب: {tagFilter} ✕
+					</a>
+				)}
+			</div>
+		</div>
+
+		{filtered.length ? (
+			<div class="card__body card__body--flush">
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th scope="col">عنوان</th>
+								<th scope="col">وضعیت</th>
+								<th scope="col">برچسب‌ها</th>
+								<th scope="col">انتشار</th>
+								<th scope="col">واژه‌ها</th>
+								<th scope="col">آخرین تغییر</th>
+								<th scope="col"><span class="sr-only">عملیات</span></th>
+							</tr>
+						</thead>
+						<tbody data-post-rows>
+							{filtered.map((post) => (
+								<tr
+									data-post-row
+									data-status={post.draft ? 'draft' : 'published'}
+									data-search={`${post.title} ${post.slug} ${post.tags.join(' ')}`.toLowerCase()}
+								>
+									<td>
+										<a class="table__title" href={`/cms/posts/${post.id}`}>{post.title}</a>
+										<code class="table__slug ltr">/blog/{post.slug}</code>
+									</td>
+									<td>
+										{post.draft ? (
+											<span class="badge badge--warning">
+												<span class="badge__dot" />
+												پیش‌نویس
+											</span>
+										) : (
+											<span class="badge badge--success">
+												<span class="badge__dot" />
+												منتشرشده
+											</span>
+										)}
+									</td>
+									<td>
+										{post.tags.length ? (
+											<ul class="tag-list">
+												{post.tags.slice(0, 3).map((tag) => (
+													<li class="badge badge--neutral">#{tag}</li>
+												))}
+											</ul>
+										) : (
+											<span class="muted">—</span>
+										)}
+									</td>
+									<td class="num" style="white-space:nowrap">{faDate(post.pubDate)}</td>
+									<td class="num" style="white-space:nowrap">
+										{faNumber(post.words)}
+										<span class="hint" style="display:block">{faReadingTime(post.words)}</span>
+									</td>
+									<td class="num" style="white-space:nowrap">{faRelative(post.modifiedAt)}</td>
+									<td>
+										<div class="table__actions">
+											<a
+												class="btn btn--ghost btn--sm"
+												href={`/blog/${post.slug}`}
+												target="_blank"
+												rel="noreferrer"
+												aria-label={`مشاهدهٔ ${post.title} در سایت`}
+											>
+												<Icon name="eye" size={15} />
+											</a>
+											<a class="btn btn--outline btn--sm" href={`/cms/posts/${post.id}`}>
+												<Icon name="edit" size={14} />
+												<span>ویرایش</span>
+											</a>
+											<form
+												method="post"
+												action={`/cms/api/posts/${post.id}?action=delete`}
+												data-confirm={`نوشتهٔ «${post.title}» برای همیشه حذف شود؟ این کار بازگشت‌پذیر نیست.`}
+											>
+												<button class="btn btn--ghost btn--sm" type="submit" aria-label="حذف نوشته">
+													<Icon name="trash" size={15} />
+												</button>
+											</form>
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+
+				<div class="empty" data-no-results hidden>
+					<span class="empty__icon"><Icon name="search" size={22} /></span>
+					<span class="empty__title">نتیجه‌ای پیدا نشد</span>
+					<span>عبارت دیگری را جست‌وجو کنید یا پالایهٔ وضعیت را بردارید.</span>
+				</div>
+			</div>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="posts" size={22} /></span>
+				<span class="empty__title">
+					{tagFilter ? `نوشته‌ای با برچسب «${tagFilter}» نیست` : 'هنوز نوشته‌ای ندارید'}
+				</span>
+				<span>اولین مقاله را بسازید؛ همه‌چیز از همین‌جا شروع می‌شود.</span>
+				<a class="btn btn--primary" href="/cms/posts/new" style="margin-top:.6rem">
+					<Icon name="plus" size={15} />
+					<span>نوشتهٔ تازه</span>
+				</a>
+			</div>
+		)}
+	</section>
+
+	<p class="hint">
+		نکته: نامک هر نوشته آدرس عمومی آن را می‌سازد (<code class="ltr">/blog/…</code>). تغییر نامک،
+		نشانی صفحه را عوض می‌کند؛ پس از تغییر، پیوندهای قدیمی را به‌روزرسانی کنید.
+	</p>
+</CmsLayout>
+
+<script>
+	const search = document.querySelector<HTMLInputElement>('[data-post-search]');
+	const rows = [...document.querySelectorAll<HTMLTableRowElement>('[data-post-row]')];
+	const noResults = document.querySelector<HTMLElement>('[data-no-results]');
+	const filters = [...document.querySelectorAll<HTMLButtonElement>('[data-status-filter]')];
+
+	let status: 'all' | 'published' | 'draft' = 'all';
+	let query = '';
+
+	const normalize = (value: string) =>
+		value
+			.toLowerCase()
+			.replace(/[يى]/g, 'ی')
+			.replace(/ك/g, 'ک')
+			.replace(/[\u064B-\u065F\u0670]/g, '');
+
+	const applyFilters = () => {
+		const needle = normalize(query.trim());
+		let visible = 0;
+
+		for (const row of rows) {
+			const haystack = normalize(row.dataset.search ?? '');
+			const matchesQuery = needle === '' || haystack.includes(needle);
+			const matchesStatus = status === 'all' || row.dataset.status === status;
+			const show = matchesQuery && matchesStatus;
+			row.hidden = !show;
+			if (show) visible += 1;
+		}
+
+		if (noResults) noResults.hidden = visible > 0;
+	};
+
+	search?.addEventListener('input', () => {
+		query = search.value;
+		applyFilters();
+	});
+
+	for (const button of filters) {
+		button.addEventListener('click', () => {
+			status = (button.dataset.statusFilter as typeof status) ?? 'all';
+			for (const other of filters) {
+				other.setAttribute('aria-pressed', String(other === button));
+				other.classList.toggle('btn--primary', other === button);
+				other.classList.toggle('btn--outline', other !== button);
+			}
+			applyFilters();
+		});
+	}
+
+	applyFilters();
+</script>

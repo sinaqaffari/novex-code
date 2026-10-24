@@ -1,0 +1,370 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { faDate, faNumber } from '../../lib/cms/fa';
+import { readSettings, TIMEZONES } from '../../lib/cms/settings';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const sampleDate = new Date();
+---
+
+<CmsLayout
+	title="تنظیمات سایت"
+	subtitle="متن‌های عمومی، نحوهٔ نمایش تاریخ و تنظیمات انتشار را از این‌جا مدیریت کنید."
+>
+	<Fragment slot="actions">
+		<a class="btn btn--outline btn--sm" href="/cms/language">
+			<Icon name="language" size={15} />
+			<span>سیاست زبان و چیدمان</span>
+		</a>
+	</Fragment>
+
+	<form method="post" action="/cms/api/settings" data-settings-form class="stack">
+		<div class="split">
+			<div class="stack">
+				<section class="card">
+					<div class="card__head">
+						<div>
+							<h2 class="card__title">اطلاعات سایت</h2>
+							<p class="card__hint">در سرصفحه، عنوان مرورگر و نقشهٔ سایت استفاده می‌شود.</p>
+						</div>
+					</div>
+					<div class="card__body stack">
+						<label class="field">
+							<span class="label">نام سایت</span>
+							<input class="input" type="text" name="siteTitle" value={settings.siteTitle} required />
+						</label>
+
+						<label class="field">
+							<span class="label">توضیح کوتاه</span>
+							<textarea class="textarea" name="siteDescription" rows="2" required maxlength="200"
+								>{settings.siteDescription}</textarea
+							>
+							<span class="hint">حدود ۱۵۰ نویسه برای توضیحات متا مناسب است.</span>
+						</label>
+
+						<div class="field-row">
+							<label class="field">
+								<span class="label">عنوان اصلی صفحهٔ نخست</span>
+								<input class="input" type="text" name="heroTitle" value={settings.heroTitle} />
+							</label>
+							<label class="field">
+								<span class="label">زیرعنوان صفحهٔ نخست</span>
+								<input class="input" type="text" name="heroSubtitle" value={settings.heroSubtitle} />
+							</label>
+						</div>
+
+						<label class="field">
+							<span class="label">متن پانویس</span>
+							<input class="input" type="text" name="footerNote" value={settings.footerNote} />
+						</label>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__head">
+						<div>
+							<h2 class="card__title">نویسنده</h2>
+							<p class="card__hint">در نوشته‌ها و فید RSS نمایش داده می‌شود.</p>
+						</div>
+					</div>
+					<div class="card__body">
+						<div class="field-row">
+							<label class="field">
+								<span class="label">نام و نام خانوادگی</span>
+								<input class="input" type="text" name="authorName" value={settings.authorName} />
+							</label>
+							<label class="field">
+								<span class="label">ایمیل</span>
+								<input
+									class="input ltr"
+									type="email"
+									name="authorEmail"
+									value={settings.authorEmail}
+									dir="ltr"
+								/>
+							</label>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__head">
+						<div>
+							<h2 class="card__title">شبکه‌های اجتماعی</h2>
+							<p class="card__hint">نشانی کامل با https وارد کنید؛ خالی بگذارید تا نمایش داده نشود.</p>
+						</div>
+					</div>
+					<div class="card__body">
+						<div class="field-row">
+							<label class="field">
+								<span class="label">گیت‌هاب</span>
+								<input
+									class="input ltr"
+									type="url"
+									name="social.github"
+									value={settings.social.github}
+									placeholder="https://github.com/username"
+									dir="ltr"
+								/>
+							</label>
+							<label class="field">
+								<span class="label">تلگرام</span>
+								<input
+									class="input ltr"
+									type="url"
+									name="social.telegram"
+									value={settings.social.telegram}
+									placeholder="https://t.me/channel"
+									dir="ltr"
+								/>
+							</label>
+							<label class="field">
+								<span class="label">اینستاگرام</span>
+								<input
+									class="input ltr"
+									type="url"
+									name="social.instagram"
+									value={settings.social.instagram}
+									placeholder="https://instagram.com/username"
+									dir="ltr"
+								/>
+							</label>
+							<label class="field">
+								<span class="label">لینکدین</span>
+								<input
+									class="input ltr"
+									type="url"
+									name="social.linkedin"
+									value={settings.social.linkedin}
+									placeholder="https://linkedin.com/in/username"
+									dir="ltr"
+								/>
+							</label>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<div class="stack">
+				<section class="card">
+					<div class="card__head">
+						<div>
+							<h2 class="card__title">نمایش تاریخ و عدد</h2>
+							<p class="card__hint">پیش‌فرض‌های فارسی پنل</p>
+						</div>
+					</div>
+					<div class="card__body stack">
+						<label class="field">
+							<span class="label">تقویم</span>
+							<select class="select" name="calendar">
+								<option value="jalali" selected={settings.calendar === 'jalali'}>
+									هجری شمسی (جلالی)
+								</option>
+								<option value="gregorian" selected={settings.calendar === 'gregorian'}>
+									میلادی
+								</option>
+							</select>
+						</label>
+
+						<label class="field">
+							<span class="label">سبک نمایش تاریخ</span>
+							<select class="select" name="dateStyle">
+								<option value="long" selected={settings.dateStyle === 'long'}>کامل (با روز هفته)</option>
+								<option value="medium" selected={settings.dateStyle === 'medium'}>میانه</option>
+								<option value="short" selected={settings.dateStyle === 'short'}>کوتاه</option>
+							</select>
+						</label>
+
+						<label class="field">
+							<span class="label">ارقام</span>
+							<select class="select" name="digits">
+								<option value="persian" selected={settings.digits === 'persian'}>
+									فارسی (۱۲۳)
+								</option>
+								<option value="latin" selected={settings.digits === 'latin'}>لاتین (123)</option>
+							</select>
+						</label>
+
+						<label class="field">
+							<span class="label">منطقهٔ زمانی</span>
+							<select class="select" name="timezone">
+								{TIMEZONES.map((zone) => (
+									<option value={zone.value} selected={settings.timezone === zone.value}>
+										{zone.label}
+									</option>
+								))}
+							</select>
+						</label>
+
+						<div class="alert alert--info" role="note">
+							<Icon name="info" size={16} />
+							<span>
+								نمونهٔ نمایش امروز: <strong>{faDate(sampleDate, 'long')}</strong> — عدد نمونه:{' '}
+								<strong class="num">{faNumber(1404)}</strong>
+							</span>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__head">
+						<div>
+							<h2 class="card__title">انتشار و رفتار</h2>
+							<p class="card__hint">گزینه‌های عمومی مجله</p>
+						</div>
+					</div>
+					<div class="card__body stack">
+						<label class="field">
+							<span class="label">تعداد نوشته در هر صفحه</span>
+							<input
+								class="input num"
+								type="number"
+								name="postsPerPage"
+								min="1"
+								max="50"
+								step="1"
+								value={settings.postsPerPage}
+							/>
+						</label>
+
+						<div class="switch-group">
+							<div class="switch-row">
+								<span class="switch-row__text">
+									<strong>نمایش نام نویسنده</strong>
+									<span class="hint" style="display:block">زیر عنوان هر نوشته</span>
+								</span>
+								<label class="switch">
+									<input type="hidden" name="showAuthor" value="false" />
+									<input type="checkbox" name="showAuthor" value="true" checked={settings.showAuthor} />
+									<span class="switch__track" aria-hidden="true"></span>
+								</label>
+							</div>
+
+							<div class="switch-row">
+								<span class="switch-row__text">
+									<strong>نمایش زمان مطالعه</strong>
+									<span class="hint" style="display:block">برآورد بر پایهٔ ۲۰۰ واژه در دقیقه</span>
+								</span>
+								<label class="switch">
+									<input type="hidden" name="showReadingTime" value="false" />
+									<input
+										type="checkbox"
+										name="showReadingTime"
+										value="true"
+										checked={settings.showReadingTime}
+									/>
+									<span class="switch__track" aria-hidden="true"></span>
+								</label>
+							</div>
+
+							<div class="switch-row">
+								<span class="switch-row__text">
+									<strong>فید RSS</strong>
+									<span class="hint" style="display:block">نشانی /rss.xml</span>
+								</span>
+								<label class="switch">
+									<input type="hidden" name="enableRss" value="false" />
+									<input type="checkbox" name="enableRss" value="true" checked={settings.enableRss} />
+									<span class="switch__track" aria-hidden="true"></span>
+								</label>
+							</div>
+
+							<div class="switch-row">
+								<span class="switch-row__text">
+									<strong>دیدگاه‌ها</strong>
+									<span class="hint" style="display:block">فعال‌سازی بخش نظرات خوانندگان</span>
+								</span>
+								<label class="switch">
+									<input type="hidden" name="enableComments" value="false" />
+									<input
+										type="checkbox"
+										name="enableComments"
+										value="true"
+										checked={settings.enableComments}
+									/>
+									<span class="switch__track" aria-hidden="true"></span>
+								</label>
+							</div>
+
+							<div class="switch-row">
+								<span class="switch-row__text">
+									<strong>حالت نگهداری</strong>
+									<span class="hint" style="display:block">نمایش پیام «به‌زودی بازمی‌گردیم»</span>
+								</span>
+								<label class="switch">
+									<input type="hidden" name="maintenanceMode" value="false" />
+									<input
+										type="checkbox"
+										name="maintenanceMode"
+										value="true"
+										checked={settings.maintenanceMode}
+									/>
+									<span class="switch__track" aria-hidden="true"></span>
+								</label>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__body">
+						<div class="row row--between">
+							<div class="stack" style="gap:.25rem">
+								<strong style="font-size:.9rem">زبان و جهت پنل</strong>
+								<span class="hint">فارسی و راست‌به‌چپ — قابل تغییر نیست.</span>
+							</div>
+							<span class="badge badge--brand">fa / RTL</span>
+						</div>
+					</div>
+				</section>
+
+				<div class="row row--between">
+					<button class="btn btn--primary" type="submit" data-settings-save>
+						<Icon name="save" size={16} />
+						<span>ذخیرهٔ تنظیمات</span>
+					</button>
+					<span class="hint">تغییرات در فایل <code class="ltr">data/cms-settings.json</code> ذخیره می‌شود.</span>
+				</div>
+			</div>
+		</div>
+	</form>
+</CmsLayout>
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('[data-settings-form]');
+	const button = document.querySelector<HTMLButtonElement>('[data-settings-save]');
+
+	form?.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		if (!form || !button) return;
+
+		const label = button.querySelector('span');
+		const original = label?.textContent ?? 'ذخیرهٔ تنظیمات';
+		button.disabled = true;
+		if (label) label.textContent = 'در حال ذخیره…';
+
+		try {
+			const response = await fetch(form.action, {
+				method: 'POST',
+				headers: { accept: 'application/json' },
+				body: new FormData(form),
+			});
+			const payload = (await response.json()) as { ok?: boolean; message?: string };
+			if (response.ok && payload.ok) {
+				window.location.assign('/cms/settings?flash=settings-saved');
+				return;
+			}
+			window.dispatchEvent(new CustomEvent('cms:error', { detail: payload }));
+		} catch {
+			window.dispatchEvent(
+				new CustomEvent('cms:error', { detail: { message: 'ارتباط با سرور برقرار نشد.' } }),
+			);
+		} finally {
+			button.disabled = false;
+			if (label) label.textContent = original;
+		}
+	});
+</script>

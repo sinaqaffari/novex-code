@@ -1,0 +1,249 @@
+---
+import '@fontsource-variable/vazirmatn';
+import '../../styles/cms.css';
+import Icon from './Icon.astro';
+import { ADMIN_NAME } from '../../lib/cms/auth';
+import { readSettings, TIMEZONES } from '../../lib/cms/settings';
+
+interface Props {
+	title: string;
+	subtitle?: string;
+	variant?: 'panel' | 'auth';
+	noIndex?: boolean;
+}
+
+const { title, subtitle, variant = 'panel' } = Astro.props;
+
+const settings = await readSettings();
+const pathname = Astro.url.pathname;
+
+const flashMap: Record<string, { tone: 'success' | 'error' | 'info'; text: string }> = {
+	created: { tone: 'success', text: 'نوشته با موفقیت ساخته شد.' },
+	saved: { tone: 'success', text: 'تغییرات ذخیره شد.' },
+	deleted: { tone: 'success', text: 'نوشته برای همیشه حذف شد.' },
+	duplicated: { tone: 'success', text: 'یک رونوشت پیش‌نویس از نوشته ساخته شد.' },
+	uploaded: { tone: 'success', text: 'تصویر با موفقیت بارگذاری شد.' },
+	'media-deleted': { tone: 'success', text: 'فایل از کتابخانه حذف شد.' },
+	'settings-saved': { tone: 'success', text: 'تنظیمات سایت به‌روزرسانی شد.' },
+};
+
+const flashKey = Astro.url.searchParams.get('flash') ?? '';
+const flash = flashMap[flashKey];
+const errorMessage = Astro.url.searchParams.get('error') ?? '';
+
+const navGroups = [
+	{
+		label: 'میزکار',
+		items: [
+			{ href: '/cms', label: 'داشبورد', icon: 'dashboard' as const, match: /^\/cms\/?$/ },
+			{
+				href: '/cms/posts',
+				label: 'نوشته‌ها',
+				icon: 'posts' as const,
+				match: /^\/cms\/posts(\/|$)/,
+			},
+			{
+				href: '/cms/media',
+				label: 'کتابخانهٔ رسانه',
+				icon: 'media' as const,
+				match: /^\/cms\/media/,
+			},
+		],
+	},
+	{
+		label: 'پیکربندی',
+		items: [
+			{
+				href: '/cms/settings',
+				label: 'تنظیمات سایت',
+				icon: 'settings' as const,
+				match: /^\/cms\/settings/,
+			},
+			{
+				href: '/cms/language',
+				label: 'زبان و نمایش',
+				icon: 'language' as const,
+				match: /^\/cms\/language/,
+			},
+		],
+	},
+];
+
+const isActive = (pattern: RegExp) => pattern.test(pathname);
+const timezoneLabel =
+	TIMEZONES.find((zone) => zone.value === settings.timezone)?.label ?? settings.timezone;
+const authorInitial = (settings.authorName || ADMIN_NAME || 'ن').trim().charAt(0);
+---
+
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<meta name="theme-color" content="#12162a" />
+		<meta name="robots" content="noindex, nofollow" />
+		<title>{title} | پنل مدیریت {settings.siteTitle}</title>
+		<meta name="description" content="پنل مدیریت محتوای فارسی نووکس‌کد — راست‌به‌چپ." />
+	</head>
+	<body class:list={['cms', `cms--${variant}`]}>
+		<a class="skip-link" href="#cms-main">پرش به محتوای اصلی</a>
+
+		{
+			variant === 'auth' ? (
+				<main id="cms-main" class="auth">
+					<slot />
+				</main>
+			) : (
+				<div class="shell">
+					<aside class="sidebar" id="cms-sidebar" aria-label="ناوبری پنل مدیریت">
+						<a class="brand" href="/cms">
+							<span class="brand__mark" aria-hidden="true">ن</span>
+							<span class="brand__text">
+								<span class="brand__title">{settings.siteTitle}</span>
+								<span class="brand__subtitle">پنل مدیریت محتوا</span>
+							</span>
+						</a>
+
+						{navGroups.map((group) => (
+							<div class="nav-group">
+								<span class="nav-group__label">{group.label}</span>
+								{group.items.map((item) => (
+									<a
+										class="nav-link"
+										href={item.href}
+										aria-current={isActive(item.match) ? 'page' : undefined}
+									>
+										<Icon name={item.icon} size={17} />
+										<span>{item.label}</span>
+									</a>
+								))}
+							</div>
+						))}
+
+						<div class="sidebar__footer">
+							<div class="user-card">
+								<span class="avatar" aria-hidden="true">{authorInitial}</span>
+								<span>
+									<span class="user-card__name">{settings.authorName || 'مدیر سایت'}</span>
+									<br />
+									<span class="user-card__role">مدیر ارشد محتوا</span>
+								</span>
+							</div>
+							<form class="logout-form" method="post" action="/cms/api/logout">
+								<button class="logout-button" type="submit">
+									<Icon name="logout" size={15} />
+									<span>خروج از حساب</span>
+								</button>
+							</form>
+						</div>
+					</aside>
+
+					<div class="sidebar-scrim" data-sidebar-close hidden />
+
+					<div class="main">
+						<header class="topbar">
+							<div class="topbar__titles grow">
+								<div class="row">
+									<button
+										class="btn btn--outline btn--icon sidebar-toggle"
+										type="button"
+										data-sidebar-toggle
+										aria-controls="cms-sidebar"
+										aria-expanded="false"
+										aria-label="نمایش منو"
+									>
+										<Icon name="menu" size={18} />
+									</button>
+									<h1 class="topbar__title">{title}</h1>
+								</div>
+								{subtitle && <p class="topbar__subtitle">{subtitle}</p>}
+							</div>
+							<div class="topbar__actions">
+								<slot name="actions" />
+								<a class="btn btn--outline btn--sm" href="/" target="_blank" rel="noreferrer">
+									<Icon name="external" size={15} />
+									<span>مشاهدهٔ سایت</span>
+								</a>
+							</div>
+						</header>
+
+						<main id="cms-main" class="content">
+							{flash && (
+								<div
+									class={`alert alert--${flash.tone}`}
+									role="status"
+									style="margin-block-end: 1.1rem"
+								>
+									<Icon name={flash.tone === 'success' ? 'check' : 'info'} size={17} />
+									<span>{flash.text}</span>
+								</div>
+							)}
+							{errorMessage && (
+								<div class="alert alert--error" role="alert" style="margin-block-end: 1.1rem">
+									<Icon name="alert" size={17} />
+									<span>{errorMessage}</span>
+								</div>
+							)}
+							<div class="stack">
+								<slot />
+							</div>
+						</main>
+
+						<footer class="panel-footer">
+							پنل مدیریت {settings.siteTitle} — نسخهٔ ۱٫۰ — همهٔ گزارش‌ها به وقت {timezoneLabel}{' '}
+							نمایش داده می‌شوند.
+						</footer>
+					</div>
+				</div>
+			)
+		}
+
+		<script>
+			const sidebar = document.getElementById('cms-sidebar');
+			const toggle = document.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
+			const scrim = document.querySelector<HTMLElement>('.sidebar-scrim');
+
+			const setSidebar = (open: boolean) => {
+				if (!sidebar) return;
+				sidebar.classList.toggle('is-open', open);
+				scrim?.classList.toggle('is-visible', open);
+				if (scrim) scrim.hidden = !open;
+				toggle?.setAttribute('aria-expanded', String(open));
+			};
+
+			toggle?.addEventListener('click', () => {
+				setSidebar(!sidebar?.classList.contains('is-open'));
+			});
+			scrim?.addEventListener('click', () => setSidebar(false));
+			document.querySelectorAll('.nav-link').forEach((link) => {
+				link.addEventListener('click', () => setSidebar(false));
+			});
+			document.addEventListener('keydown', (event) => {
+				if (event.key === 'Escape') setSidebar(false);
+			});
+
+			// Destructive actions always ask first — in Persian, of course.
+			document.querySelectorAll<HTMLFormElement>('form[data-confirm]').forEach((form) => {
+				form.addEventListener('submit', (event) => {
+					const message = form.dataset.confirm ?? 'آیا مطمئن هستید؟';
+					if (!window.confirm(message)) event.preventDefault();
+				});
+			});
+
+			// Progressive enhancement: show errors reported by API calls.
+			window.addEventListener('cms:error', (event) => {
+				const detail = (event as CustomEvent<{ message?: string }>).detail;
+				if (!detail?.message) return;
+				const box = document.createElement('div');
+				box.className = 'alert alert--error';
+				box.setAttribute('role', 'alert');
+				box.style.marginBlockEnd = '1.1rem';
+				box.textContent = detail.message;
+				const content = document.querySelector('.content .stack');
+				content?.prepend(box);
+				box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			});
+		</script>
+	</body>
+</html>

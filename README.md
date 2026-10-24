@@ -1,63 +1,103 @@
-# Astro Starter Kit: Blog
+# نووکس‌کد — مجله + پنل مدیریت فارسی
+
+پروژه بر پایهٔ [Astro](https://astro.build) است و شامل یک پنل مدیریت محتوای کامل، فارسی و
+راست‌به‌چپ می‌شود. پنل، نوشته‌ها و تنظیمات سایت را مستقیم روی فایل‌های مخزن مدیریت می‌کند؛
+بدون پایگاه‌داده و بدون سرویس خارجی.
+
+## اجرا
 
 ```sh
-npm create astro@latest -- --template blog
+npm install
+npm run dev      # http://localhost:4321  →  پنل: http://localhost:4321/cms
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+> نیازمند Node.js نسخهٔ **22.23.4** یا بالاتر (الزام خود Astro 7).
 
-Features:
+## پنل مدیریت (‎/cms‎)
 
-- ✅ Minimal styling (make it your own!)
-- ✅ 100/100 Lighthouse performance
-- ✅ SEO-friendly with canonical URLs and Open Graph data
-- ✅ Sitemap support
-- ✅ RSS Feed support
-- ✅ Markdown & MDX support
+| نشانی | کاربرد |
+| --- | --- |
+| `/cms` | داشبورد: آمار محتوا، آخرین نوشته‌ها، پرکاربردترین برچسب‌ها |
+| `/cms/posts` | فهرست نوشته‌ها با جست‌وجو و پالایش وضعیت |
+| `/cms/posts/new` | ساخت نوشتهٔ تازه |
+| `/cms/posts/<file>.md` | ویرایش نوشته با پیش‌نمایش زندهٔ مارک‌داون |
+| `/cms/media` | کتابخانهٔ رسانه و بارگذاری تصویر |
+| `/cms/settings` | تنظیمات سایت، تاریخ، ارقام و انتشار |
+| `/cms/language` | قرارداد زبان/چیدمان و راهنمای نگهداری RTL |
 
-## 🚀 Project Structure
+### ورود
 
-Inside of your Astro project, you'll see the following folders and files:
+پنل با یک حساب مدیر و کوکی امضاشده (HMAC) محافظت می‌شود:
+
+```sh
+cp .env.example .env
+# مقادیر پیش‌فرض توسعه:
+#   نام کاربری: admin
+#   گذرواژه:    novex-admin
+```
+
+برای محیط عملیاتی حتماً `CMS_USERNAME`، `CMS_PASSWORD_HASH` (هش scrypt) و
+`CMS_SESSION_SECRET` را تنظیم کنید. پس از پنج تلاش ناموفق، ورود برای پنج دقیقه قفل می‌شود.
+
+### راست‌به‌چپ و فارسی
+
+رعایت این قرارداد در کد و با اسکریپت بررسی می‌شود:
+
+- `<html lang="fa" dir="rtl">` در `src/components/cms/CmsLayout.astro`.
+- چیدمان فقط با ویژگی‌های منطقی CSS (`margin-inline`, `padding-inline-start`,
+  `text-align: start`, `inset-inline-*`).
+- قلم فارسی [وزیرمتن](https://github.com/rastikerdar/vazirmatn) به‌صورت self-hosted.
+- همهٔ عددها با `Intl.NumberFormat('fa-IR')` و همهٔ تاریخ‌ها با تقویم هجری شمسی
+  (`fa-IR-u-ca-persian`) در `src/lib/cms/fa.ts` قالب می‌شوند.
+- متن لاتین (نامک، نشانی، ایمیل، کد) با `dir="ltr"` و `unicode-bidi: isolate` جدا می‌شود.
+
+```sh
+npm run check:rtl     # بررسی خودکار؛ در صورت نقض قرارداد با کد خطا خارج می‌شود
+```
+
+اسکریپت، ویژگی‌های فیزیکی CSS، متن انگلیسی جاافتاده در رابط کاربری، صفحه‌های بدون
+`CmsLayout` و نبودِ قلم فارسی را تشخیص می‌دهد. اگر جایی عمداً به ویژگی فیزیکی نیاز بود،
+همان خط را با `rtl-check-ignore` علامت بزنید.
+
+### ساختار پنل
 
 ```text
-├── public/
-├── src/
-│   ├── assets/
-│   ├── components/
-│   ├── content/
-│   ├── layouts/
-│   └── pages/
-├── astro.config.mjs
-├── README.md
-├── package.json
-└── tsconfig.json
+src/
+├─ middleware.ts              # محافظت از /cms (صفحه‌ها، API و فایل‌های رسانه)
+├─ env.d.ts                   # نوع App.Locals.cmsSession
+├─ lib/cms/
+│  ├─ auth.ts                 # ورود، کوکی امضاشده، قفل تلاش‌های ناموفق
+│  ├─ posts.ts                # خواندن/نوشتن نوشته‌ها در src/content/blog
+│  ├─ frontmatter.ts          # خواندن و نوشتن YAML بدون وابستگی
+│  ├─ media.ts                # کتابخانهٔ رسانه در src/assets/uploads
+│  ├─ settings.ts             # تنظیمات در data/cms-settings.json
+│  ├─ fa.ts                   # قالب‌بندی فارسی (عدد، تاریخ جلالی، زمان مطالعه)
+│  ├─ http.ts / input.ts      # کمک‌کننده‌های درخواست/پاسخ
+├─ components/cms/            # CmsLayout، Icon، PostEditor
+├─ pages/cms/                 # صفحه‌ها و APIها (api/login، api/posts، api/media، …)
+└─ styles/cms.css             # سیستم طراحی RTL پنل
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+### انتشار محتوا
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+پنل فایل‌ها را بلافاصله روی دیسک می‌نویسد:
 
-The `src/content/` directory contains "collections" of related Markdown and MDX documents. Use `getCollection()` to retrieve posts from `src/content/blog/`, and type-check your frontmatter using an optional schema. See [Astro's Content Collections docs](https://docs.astro.build/en/guides/content-collections/) to learn more.
+- در حالت `npm run dev`، Astro تغییر فایل‌های محتوا را می‌بیند و صفحه‌های عمومی
+  (`/blog/...`) در چند لحظه به‌روز می‌شوند.
+- در استقرار عملیاتی (`output: 'server'`)، محتوای سایت از مخزن محتوایی خوانده می‌شود که
+  هنگام `npm run build` ساخته شده است؛ پس از انتشار یک نوشته، یک بازسازی/استقرار دوباره
+  (`npm run build`) لازم است — همان الگویی که CMSهای فایل‌محور مثل Decap و Tina دارند.
 
-Any static assets, like images, can be placed in the `public/` directory.
+## سایت
 
-## 🧞 Commands
+```sh
+npm run build     # ساخت خروجی سروری (adapter: node standalone)
+npm run preview   # پیش‌نمایش خروجی
+```
 
-All commands are run from the root of the project, from a terminal:
+صفحه‌های عمومی: `/`، `/blog`، `/blog/<slug>`، `/about`، `/rss.xml`. نوشته‌های
+`draft: true` در فهرست مجله و فید RSS نمایش داده نمی‌شوند.
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+## قالب اصلی
 
-## 👀 Want to learn more?
-
-Check out [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
-
-## Credit
-
-This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
+این پروژه از قالب وبلاگ Astro (بر پایهٔ Bear Blog، با مجوز MIT) شروع شده است.
