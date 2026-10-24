@@ -6,6 +6,8 @@ services:
     image: novex-code:latest
     container_name: novex-code
     restart: unless-stopped
+    # سیگنال‌ها و پروسه‌های یتیم را درست مدیریت می‌کند.
+    init: true
     ports:
       - '${PORT:-4321}:4321'
     environment:
