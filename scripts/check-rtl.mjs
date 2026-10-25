@@ -40,7 +40,7 @@ const layoutContracts = [
 		layout: 'ShopLayout',
 		file: 'src/layouts/ShopLayout.astro',
 	},
-	{ prefix: 'src/pages/blog', layout: 'SiteLayout', file: 'src/layouts/SiteLayout.astro' },
+	{ prefix: 'src/pages/blog', layout: 'ShopLayout', file: 'src/layouts/ShopLayout.astro' },
 ];
 
 const failures = [];
@@ -122,7 +122,7 @@ function stripComments(source) {
 		)
 		.replace(/<!--[\s\S]*?-->/g, '')
 		.replace(/\/\/[^\n]*rtl-check-ignore[^\n]*/g, ' rtl-check-ignore ');
-	
+
 }
 
 const files = [];

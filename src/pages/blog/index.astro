@@ -1,7 +1,12 @@
 ---
-import SiteLayout from '../../layouts/SiteLayout.astro';
-import { publicImageSrc } from '../../lib/cms/public-image';
-import { faDate, faNumber, faReadingTime } from '../../lib/cms/fa';
+/* ==========================================================================
+   نووکس‌کد — صفحهprincipal مجله (بازنگری شده)
+   چیدمان ادیتوریل، کارت‌های مقاله با پیش‌نمایش کد، نوار ابزار واحد.
+   ========================================================================== */
+
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import BlogPreview from '../../components/store/BlogPreview.astro';
+import { faDate, faNumber } from '../../lib/cms/fa';
 import { listPosts } from '../../lib/cms/posts';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
 
@@ -11,89 +16,246 @@ const query = (Astro.url.searchParams.get('q') ?? '').trim();
 const activeTag = (Astro.url.searchParams.get('tag') ?? '').trim();
 
 const cart = await hydrateCart(readCart(Astro.cookies));
-const posts = (await listPosts())
-	.filter((post) => !post.draft && post.id.endsWith('.md'))
-	.filter((post) => (activeTag ? post.tags.includes(activeTag) : true))
-	.filter((post) =>
-		query
-			? `${post.title} ${post.description}`.toLowerCase().includes(query.toLowerCase())
-			: true,
-	);
+const allPosts = await listPosts();
 
-const tags = [...new Set((await listPosts()).flatMap((post) => post.tags))].slice(0, 12);
+const posts = allPosts.filter((post) => !post.draft && post.id.endsWith('.md')).filter((post) =>
+	activeTag ? post.tags.includes(activeTag) : true
+).filter((post) =>
+	query ? `${post.title} ${post.description}`.toLowerCase().includes(query.toLowerCase()) : true
+);
+
+const tags = [...new Set(allPosts.flatMap((post) => post.tags))].slice(0, 12);
 const [lead, ...rest] = posts;
 ---
 
-<SiteLayout title="مجله" description="نوشته‌های تازه دربارهٔ محصول، طراحی و توسعه" cartCount={cart.count}>
-	<section class="shop-hero">
-		<span class="shop-hero__eyebrow">مجلهٔ نووکس‌کد</span>
-		<h1>یادداشت‌هایی از تیم ما</h1>
-		<p>
-			تجربه‌های واقعی از ساخت محصول، نگهداری پنل مدیریت فارسی و هر چیزی که به کار شما
-			می‌آید — بدون تعارف.
+<ShopLayout title="مجله" description="نوشته‌های تازه دربارهٔ محصول، طراحی و توسعه" cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر" style="margin-block:1rem 0">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span>مجله</span>
+	</nav>
+
+	<section class="blog-intro" style="margin-block-end:var(--space-10)">
+		<span class="blog-intro__eyebrow">مجلهٔ توسعه‌دهندگان</span>
+		<h1 class="blog-intro__title">یادداشت‌هایی از تیم ما</h1>
+		<p class="blog-intro__desc">
+			راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.
 		</p>
 	</section>
 
-	<form method="get" class="toolbar" style="display:flex;gap:0.5rem;margin-bottom:1rem">
-		<label class="sr-only" for="q">جست‌وجو در مجله</label>
-		<input class="input" id="q" name="q" value={query} placeholder="جست‌وجو در نوشته‌ها…" />
-		{activeTag && <input type="hidden" name="tag" value={activeTag} />}
-		<button class="btn btn--outline" type="submit">جست‌وجو</button>
-	</form>
-
-	{tags.length > 0 && (
-		<div class="tag-row">
-			<a class="tag" href="/blog" aria-current={!activeTag ? 'page' : undefined}>همه</a>
-			{tags.map((tag) => (
-				<a
-					class="tag"
-					href={`/blog?tag=${encodeURIComponent(tag)}`}
-					aria-current={activeTag === tag ? 'page' : undefined}
-				>{tag}</a>
-			))}
+	<form method="get" class="blog-toolbar" role="search" style="margin-block-end:var(--space-10)">
+		<div class="blog-toolbar__search">
+			<label class="sr-only" for="blogQ">جست‌وجو در مجله</label>
+			<input
+				id="blogQ"
+				name="q"
+				value={query}
+				placeholder="جست‌وجو در نوشته‌ها…"
+				aria-label="جست‌وجو در نوشته‌ها"
+				dir="auto"
+			/>
+			{activeTag && <input type="hidden" name="tag" value={activeTag} />}
+			<button type="submit" class="blog-toolbar__btn">جست‌وجو</button>
 		</div>
-	)}
 
-	{posts.length === 0 ? (
-		<div class="empty">
-			<h2>نوشته‌ای پیدا نشد</h2>
-			<p>عبارت دیگری را جست‌وجو کنید یا همهٔ نوشته‌ها را ببینید.</p>
-			<p style="margin-top:1rem"><a class="btn btn--outline" href="/blog">همهٔ نوشته‌ها</a></p>
-		</div>
-	) : (
-		<div class="blog-layout">
-			<a class="blog-lead" href={`/blog/${lead.slug}`}>
-				<div class="blog-lead__media" aria-hidden="true">
-					{publicImageSrc(lead.heroImage) ? <img src={publicImageSrc(lead.heroImage)} alt="" /> : <span>{lead.title.charAt(0)}</span>}
-				</div>
-				<div class="blog-lead__body">
-					<span class="hint num">
-						{faDate(lead.pubDate)} — {faReadingTime(lead.words)}
-					</span>
-					<h2>{lead.title}</h2>
-					<p class="shop-card__desc" style="-webkit-line-clamp:3">{lead.description}</p>
-					<span class="btn btn--outline" style="align-self:flex-start">ادامهٔ مطلب</span>
-				</div>
-			</a>
-
-			<div class="blog-list">
-				{rest.map((post) => (
-					<a class="blog-item" href={`/blog/${post.slug}`}>
-						<div class="blog-item__media" aria-hidden="true">
-							{publicImageSrc(post.heroImage) ? <img src={publicImageSrc(post.heroImage)} alt="" /> : <span>{post.title.charAt(0)}</span>}
-						</div>
-						<div>
-							<span class="hint num">{faDate(post.pubDate)} — {faReadingTime(post.words)}</span>
-							<h3>{post.title}</h3>
-							<p class="shop-card__desc">{post.description}</p>
-						</div>
+		{tags.length > 0 && (
+			<div class="blog-toolbar__tags">
+				<a href="/blog" class={`blog-toolbar__tag${!activeTag ? ' blog-toolbar__tag--active' : ''}`}>همه</a>
+				{tags.map((tag) => (
+					<a
+						href={`/blog?tag=${encodeURIComponent(tag)}`}
+						class={`blog-toolbar__tag${activeTag === tag ? ' blog-toolbar__tag--active' : ''}`}
+					>
+						{tag}
 					</a>
 				))}
+				{activeTag && (
+					<a href="/blog" class="blog-toolbar__tag blog-toolbar__tag--remove" title="حذف فیلتر">×</a>
+				)}
 			</div>
-		</div>
-	)}
+		)}
+	</form>
 
-	<p class="hint" style="padding-bottom:2rem">
-		{faNumber(posts.length)} نوشته در این فهرست — نوشته‌های تازه از پنل مدیریت منتشر می‌شوند.
-	</p>
-</SiteLayout>
+	{posts.length === 0 ? (
+		<div class="empty" style="max-width:520px;margin-inline:auto">
+			<h2 class="empty__title">نوشته‌ای پیدا نشد</h2>
+			<p class="empty__desc">عبارت دیگری را جست‌وجو کنید یا همهٔ نوشته‌ها را ببینید.</p>
+			<p style="margin-top:1.5rem"><a class="btn btn--outline" href="/blog">همهٔ نوشته‌ها</a></p>
+		</div>
+	) : (
+		<>
+			<div class="blog-grid">
+				{lead && (
+					<BlogPreview post={lead} featured />
+				)}
+				{rest.map((post) => (
+					<BlogPreview post={post} />
+				))}
+			</div>
+
+			<p class="hint" style="margin-block-start:var(--space-8);padding-block-end:var(--space-10)">
+				{faNumber(posts.length)} نوشته در این فهرست — نوشته‌های تازه از پنل مدیریت منتشر می‌شوند.
+			</p>
+		</>
+	)}
+</ShopLayout>
+
+<style>
+	.blog-intro__eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: var(--text-xs);
+		font-weight: var(--font-weight-semibold);
+		color: var(--brand-ink);
+		background: var(--brand-soft);
+		border: 1px solid var(--brand-line);
+		border-radius: var(--radius-full);
+		padding: 0.25rem 0.75rem;
+		margin-block-end: var(--space-3);
+	}
+
+	.blog-intro__title {
+		font-size: var(--text-2xl);
+		line-height: var(--line-height-tight);
+		margin-block: 0 0 var(--space-3);
+		color: var(--ink);
+	}
+
+	.blog-intro__desc {
+		font-size: var(--text-base);
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+		max-width: 48ch;
+		margin: 0;
+	}
+
+	.blog-toolbar {
+		display: grid;
+		gap: var(--space-4);
+		align-items: start;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: var(--space-5);
+	}
+
+	@media (min-width: 768px) {
+		.blog-toolbar {
+			grid-template-columns: 1fr auto;
+			align-items: center;
+		}
+	}
+
+	.blog-toolbar__search {
+		display: flex;
+		gap: var(--space-3);
+	}
+
+	.blog-toolbar__search input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.55rem 0.9rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font-family: inherit;
+		font-size: var(--text-base);
+		dir: auto;
+	}
+
+	.blog-toolbar__search input:focus {
+		outline: none;
+		border-color: var(--brand);
+		box-shadow: 0 0 0 2px var(--brand-soft);
+	}
+
+	.blog-toolbar__btn {
+		padding: 0.55rem 1rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font-family: inherit;
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-medium);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.blog-toolbar__btn:hover {
+		background: var(--surface-2);
+		border-color: var(--line-strong);
+	}
+
+	.blog-toolbar__tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.blog-toolbar__tag {
+		font-size: var(--text-sm);
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-full);
+		border: 1px solid var(--line);
+		background: var(--surface-2);
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+
+	.blog-toolbar__tag:hover {
+		border-color: var(--brand);
+		color: var(--brand);
+		background: var(--brand-soft);
+	}
+
+	.blog-toolbar__tag--active {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: #fff;
+	}
+
+	.blog-toolbar__tag--remove {
+		background: var(--danger-soft);
+		border-color: var(--danger-line);
+		color: var(--danger);
+		width: 1.8rem;
+		height: 1.8rem;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		font-size: var(--text-lg);
+		line-height: 1;
+	}
+
+	.blog-toolbar__tag--remove:hover {
+		background: var(--danger);
+		color: #fff;
+		border-color: var(--danger);
+	}
+
+	.blog-grid {
+		display: grid;
+		gap: var(--space-6);
+	}
+
+	@media (min-width: 768px) {
+		.blog-grid {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.blog-grid {
+			grid-template-columns: 1fr 1fr 1fr;
+		}
+	}
+
+	.hint {
+		font-size: var(--text-sm);
+		color: var(--muted);
+		text-align: start;
+	}
+</style>

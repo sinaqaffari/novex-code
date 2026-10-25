@@ -1,6 +1,12 @@
 ---
+/* ==========================================================================
+   نووکس‌کد — صفحه جزئیات مقاله مجله (بازنگری شده)
+   تجربهٔ خواندن ادیتوریل، بلوک کد راست‌به‌چپ، مقاله‌های مرتبط.
+   ========================================================================== */
+
 import { marked } from 'marked';
-import SiteLayout from '../../layouts/SiteLayout.astro';
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import BlogPreview from '../../components/store/BlogPreview.astro';
 import { publicImageSrc } from '../../lib/cms/public-image';
 import { faDate, faNumber, faReadingTime } from '../../lib/cms/fa';
 import { getPostDraft, listPosts } from '../../lib/cms/posts';
@@ -8,6 +14,7 @@ import { hydrateCart, readCart } from '../../lib/commerce/cart';
 import { readSettings } from '../../lib/cms/settings';
 
 export const prerender = false;
+
 marked.setOptions({ gfm: true, breaks: false });
 
 const { slug = '' } = Astro.params;
@@ -17,7 +24,7 @@ const summary = posts.find((post) => post.slug === slug && !post.draft && post.i
 if (!summary) {
 	return new Response(
 		`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>نوشته پیدا نشد</title></head><body style="font-family:Tahoma;padding:3rem;text-align:center"><h1>نوشته پیدا نشد</h1><p><a href="/blog">بازگشت به مجله</a></p></body></html>`,
-		{ status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
+		{ status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } }
 	);
 }
 
@@ -30,10 +37,22 @@ const [draft, settings, cart] = await Promise.all([
 const html = await marked.parse(draft.body);
 const related = posts
 	.filter((post) => post.id !== summary.id && !post.draft && post.tags.some((tag) => summary.tags.includes(tag)))
-	.slice(0, 2);
+	.slice(0, 3);
+
+const headingMatches = html.matchAll(/<h([23])[^>]*>(.*?)<\/h[23]>/gi);
+const toc = Array.from(headingMatches, (m) => ({
+	level: parseInt(m[1], 10),
+	text: m[2].replace(/<[^>]*>/g, ''),
+}));
+const hasAuthor = settings.showAuthor === true;
+const hasTags = draft.tags.length > 0;
+const hasHeroImage = !!publicImageSrc(draft.heroImage);
+const hasUpdated = !!draft.updatedDate;
+const hasDescription = !!draft.description;
+const hasToc = toc.length > 0;
 ---
 
-<SiteLayout
+<ShopLayout
 	title={draft.title}
 	description={draft.description}
 	cartCount={cart.count}
@@ -41,56 +60,410 @@ const related = posts
 	image={publicImageSrc(draft.heroImage)}
 	publishedAt={draft.pubDate}
 >
-	<article class="article">
-		<nav class="breadcrumbs" aria-label="مسیر">
-			<a href="/">خانه</a>
-			<span aria-hidden="true">/</span>
-			<a href="/blog">مجله</a>
-			<span aria-hidden="true">/</span>
-			<span>{draft.title}</span>
-		</nav>
+	<nav class="breadcrumbs" aria-label="مسیر" style="margin-block:1rem 0">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<a href="/blog">مجله</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">{draft.title}</span>
+	</nav>
 
+	<article class="article">
 		<header class="article__head">
-			<div class="tag-row" style="margin-bottom:0.6rem">
-				{draft.tags.map((tag) => <a class="tag" href={`/blog?tag=${encodeURIComponent(tag)}`}>{tag}</a>)}
+			<div class="article__tags">
+				{draft.tags.map((tag) => (
+					<a href={`/blog?tag=${encodeURIComponent(tag)}`} class="article__tag">
+						{tag}
+					</a>
+				))}
 			</div>
-			<h1>{draft.title}</h1>
-			<p class="article__meta num">
-				{faDate(draft.pubDate)}
-				{draft.updatedDate && ` — آخرین ویرایش ${faDate(draft.updatedDate)}`}
-				{` — ${faReadingTime(summary.words)}`}
-				{settings.showAuthor && ` — ${settings.authorName}`}
-			</p>
-			{draft.description && <p class="article__lede">{draft.description}</p>}
-			{publicImageSrc(draft.heroImage) && (
-				<img class="article__hero" src={publicImageSrc(draft.heroImage)} alt={draft.title} />
+			<h1 class="article__title">{draft.title}</h1>
+			<div class="article__meta">
+				<time class="article__date">{faDate(draft.pubDate)}</time>
+				{hasUpdated && <span class="article__separator">—</span><time class="article__date">آخرین ویرایش {faDate(draft.updatedDate)}</time>}
+				<span class="article__reading">— {faReadingTime(summary.words)} دقیقه مطالعه</span>
+				{hasAuthor && <span class="article__author">— {settings.authorName}</span>}
+			</div>
+			{hasDescription && <p class="article__lede">{draft.description}</p>}
+			{hasHeroImage ? (
+				<figure class="article__hero">
+					<img src={publicImageSrc(draft.heroImage)} alt={draft.title} loading="lazy" decoding="async" />
+				</figure>
+			) : (
+				<div class="article__hero article__hero--code">
+					<div class="blog-code-preview">
+						<div class="blog-code-preview__bar">
+							<div class="blog-code-preview__dot blog-code-preview__dot--red"></div>
+							<div class="blog-code-preview__dot blog-code-preview__dot--yellow"></div>
+							<div class="blog-code-preview__dot blog-code-preview__dot--green"></div>
+							<span class="blog-code-preview__lang">code</span>
+						</div>
+						<div class="blog-code-preview__lines">
+							<div class="blog-code-preview__line">
+								<span class="blog-code-preview__token blog-code-preview__token--keyword">function</span>
+								<span class="blog-code-preview__token blog-code-preview__token--space"> </span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">readPost</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">(</span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">slug</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">)</span>
+								<span class="blog-code-preview__token blog-code-preview__token--space"> </span>
+								<span class="blog-code-preview__token blog-code-preview__token--operator">&#123;</span>
+							</div>
+							<div class="blog-code-preview__line">
+								<span class="blog-code-preview__token blog-code-preview__token--indent"> </span>
+								<span class="blog-code-preview__token blog-code-preview__token--keyword">return</span>
+								<span class="blog-code-preview__token blog-code-preview__token--space"> </span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">db</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">.</span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">posts</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">.</span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">find</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">(</span>
+								<span class="blog-code-preview__token blog-code-preview__token--operator">&#123;</span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">slug</span>
+								<span class="blog-code-preview__token blog-code-preview__token--operator">:</span>
+								<span class="blog-code-preview__token blog-code-preview__token--space"> </span>
+								<span class="blog-code-preview__token blog-code-preview__token--name">slug</span>
+								<span class="blog-code-preview__token blog-code-preview__token--operator">&#125;</span>
+								<span class="blog-code-preview__token blog-code-preview__token--punctuation">)</span>
+								<span class="blog-code-preview__token blog-code-preview__token--operator">;</span>
+							</div>
+							<div class="blog-code-preview__line">
+								<span class="blog-code-preview__token blog-code-preview__token--operator">&#125;</span>
+							</div>
+						</div>
+					</div>
+				</div>
 			)}
 		</header>
 
-		<div class="prose" set:html={html} />
+		<div class="article__body">
+			{hasToc && (
+				<aside class="article__toc">
+					<h3 class="article__toc__title">فهرست مطالب</h3>
+					<ul class="article__toc__list">
+						{toc.map((item) => (
+							<li class={`article__toc__item article__toc__level-${item.level}`}>
+								<a href={`#item-${item.text.replace(/\s+/g, '-')}`}>{item.text}</a>
+							</li>
+						))}
+					</ul>
+				</aside>
+			)}
 
-		<footer class="article__foot">
-			<span class="hint num">{faNumber(summary.words)} واژه</span>
-			<a class="btn btn--outline" href="/blog">بازگشت به مجله</a>
-		</footer>
+			<div class="article__content prose" set:html={html} />
+
+			{!hasToc && <div class="article__spacer" style="height:4rem" />}
+		</div>
 	</article>
 
 	{related.length > 0 && (
-		<section class="shop-section">
-			<div class="shop-section__head">
+		<section class="article__related">
+			<div class="article__related__head">
 				<h2>مطالب مرتبط</h2>
 			</div>
-			<div class="shop-grid">
+			<div class="article__related__grid">
 				{related.map((post) => (
-					<a class="shop-card" href={`/blog/${post.slug}`}>
-						<div class="shop-card__body">
-							<span class="hint num">{faDate(post.pubDate)}</span>
-							<span class="shop-card__name">{post.title}</span>
-							<p class="shop-card__desc">{post.description}</p>
-						</div>
-					</a>
+					<BlogPreview post={post} />
 				))}
 			</div>
 		</section>
 	)}
-</SiteLayout>
+</ShopLayout>
+
+<style>
+	.article__head {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		margin-block-end: var(--space-10);
+	}
+
+	.article__tags {
+		display: flex;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+	}
+
+	.article__tag {
+		font-size: var(--text-xs);
+		font-weight: var(--font-weight-medium);
+		padding: 0.15rem 0.55rem;
+		border-radius: var(--radius-full);
+		border: 1px solid var(--line);
+		background: var(--surface-2);
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+
+	.article__tag:hover {
+		border-color: var(--brand);
+		color: var(--brand);
+		background: var(--brand-soft);
+	}
+
+	.article__title {
+		font-size: var(--text-2xl);
+		line-height: var(--line-height-tight);
+		margin-block: 0 0 var(--space-3);
+		color: var(--ink);
+		word-break: break-word;
+	}
+
+	.article__meta {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-2);
+		font-size: var(--text-sm);
+		color: var(--muted);
+		flex-wrap: wrap;
+	}
+
+	.article__separator {
+		color: var(--faint);
+		margin: 0 0.25rem;
+	}
+
+	.article__reading {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.article__author {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.article__lede {
+		font-size: var(--text-lg);
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+		margin-block-end: var(--space-6);
+		max-width: 48ch;
+	}
+
+	.article__hero {
+		margin: 0;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+		background: var(--surface-2);
+		display: grid;
+		place-items: center;
+		height: 24rem;
+	}
+
+	.article__hero img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.article__hero--code {
+		height: auto;
+		min-height: 24rem;
+	}
+
+	.article__hero--code .blog-code-preview {
+		height: 100%;
+		width: 100%;
+	}
+
+	.article__body {
+		display: grid;
+		gap: var(--space-8);
+	}
+
+	@media (min-width: 1024px) {
+		.article__body {
+			grid-template-columns: 280px 1fr;
+			align-items: start;
+		}
+	}
+
+	.article__toc {
+		position: sticky;
+		top: var(--space-6);
+	}
+
+	.article__toc__title {
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-semibold);
+		color: var(--ink);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		margin-block-end: var(--space-3);
+	}
+
+	.article__toc__list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.article__toc__item {
+		font-size: var(--text-sm);
+	}
+
+	.article__toc__level-2 {
+		padding-inline-start: 0;
+	}
+
+	.article__toc__level-3 {
+		padding-inline-start: 1rem;
+	}
+
+	.article__toc__item a {
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+
+	.article__toc__item a:hover {
+		color: var(--brand);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.article__content {
+		font-size: var(--text-base);
+		line-height: var(--line-height-relaxed);
+		color: var(--ink);
+	}
+
+	.article__content h1,
+	.article__content h2,
+	.article__content h3,
+	.article__content h4 {
+		font-weight: var(--font-weight-bold);
+		color: var(--ink);
+		margin-block-start: var(--space-8);
+		margin-block-end: var(--space-3);
+		line-height: var(--line-height-tight);
+	}
+
+	.article__content h1 {
+		font-size: var(--text-xl);
+	}
+
+	.article__content h2 {
+		font-size: var(--text-lg);
+	}
+
+	.article__content h3 {
+		font-size: var(--text-base);
+	}
+
+	.article__content h4 {
+		font-size: var(--text-sm);
+	}
+
+	.article__content p {
+		margin-block-end: var(--space-4);
+	}
+
+	.article__content a {
+		color: var(--brand);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.article__content ul,
+	.article__content ol {
+		margin-block-end: var(--space-4);
+		padding-inline-end: 1.5rem;
+	}
+
+	.article__content li {
+		margin-block-end: 0.5rem;
+	}
+
+	.article__content blockquote {
+		border-inline-start: 3px solid var(--line);
+		padding-inline-start: var(--space-4);
+		margin-block: var(--space-4) 0;
+		color: var(--ink-soft);
+		font-style: italic;
+	}
+
+	.article__content pre {
+		background: #0f172a;
+		border: 1px solid #1e293b;
+		border-radius: var(--radius);
+		padding: var(--space-5);
+		overflow-x: auto;
+		margin-block-end: var(--space-4);
+	}
+
+	.article__content pre code {
+		background: transparent;
+		border: none;
+		padding: 0;
+		color: #e2e8f0;
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
+		line-height: 1.6;
+		direction: ltr;
+		unicode-bidi: isolate;
+	}
+
+	.article__content code:not(pre code) {
+		background: var(--surface-2);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		padding: 0.15em 0.35em;
+		font-family: var(--font-mono);
+		font-size: 0.85em;
+		direction: ltr;
+		unicode-bidi: isolate;
+	}
+
+	.article__foot {
+		margin-block-start: var(--space-10);
+		padding-block-start: var(--space-6);
+		border-block-start: 1px solid var(--line);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+	}
+
+	.article__related {
+		margin-block-start: var(--space-12);
+	}
+
+	.article__related__head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-block-end: var(--space-6);
+	}
+
+	.article__related__head h2 {
+		font-size: var(--text-xl);
+		color: var(--ink);
+		margin: 0;
+	}
+
+	.article__related__grid {
+		display: grid;
+		gap: var(--space-6);
+	}
+
+	@media (min-width: 768px) {
+		.article__related__grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	@media (max-width: 1024px) {
+		.article__toc {
+			display: none;
+		}
+		.article__body {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

@@ -29,3 +29,9 @@ data/commerce.json
 
 # وضعیت افزونه‌ها (فعال/غیرفعال و تنظیمات)
 data/plugins.json
+
+# CMS accounts and test backups contain runtime credentials/password hashes
+data/users.json*
+
+# Editor-generated backup copies
+*.bak
