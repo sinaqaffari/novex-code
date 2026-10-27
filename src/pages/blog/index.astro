@@ -1,138 +1,261 @@
 ---
+/* ==========================================================================
+   نووکس‌کد — صفحهprincipal مجله (بازنگری شده)
+   چیدمان ادیتوریل، کارت‌های مقاله با پیش‌نمایش کد، نوار ابزار واحد.
+   ========================================================================== */
+
 import ShopLayout from '../../layouts/ShopLayout.astro';
 import BlogPreview from '../../components/store/BlogPreview.astro';
-import { faDate, faNumber } from '../../lib/cms/fa';
-import { getPostDraft, listPosts } from '../../lib/cms/posts';
-import { readSettings } from '../../lib/cms/settings';
+import { faNumber } from '../../lib/cms/fa';
+import { listPosts } from '../../lib/cms/posts';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
 
 export const prerender = false;
 
 const query = (Astro.url.searchParams.get('q') ?? '').trim();
 const activeTag = (Astro.url.searchParams.get('tag') ?? '').trim();
-const [allPosts, settings] = await Promise.all([listPosts(), readSettings()]);
-const publishedPosts = allPosts.filter((post) => !post.draft && post.id.toLowerCase().endsWith('.md'));
 
-function normalize(value: string): string {
-	return value.toLowerCase().replace(/[يى]/g, 'ی').replace(/ك/g, 'ک');
-}
+const cart = await hydrateCart(readCart(Astro.cookies));
+const allPosts = await listPosts();
 
-const normalizedQuery = normalize(query);
-const searchEntries = normalizedQuery
-	? await Promise.all(publishedPosts.map(async (post) => {
-			const draft = await getPostDraft(post.id);
-			return { id: post.id, text: normalize(`${draft.title} ${draft.description} ${draft.tags.join(' ')} ${draft.body}`) };
-	  }))
-	: [];
-const matchingIds = new Set(searchEntries.filter((entry) => entry.text.includes(normalizedQuery)).map((entry) => entry.id));
-const posts = publishedPosts.filter((post) => (!activeTag || post.tags.includes(activeTag)) && (!normalizedQuery || matchingIds.has(post.id)));
+const posts = allPosts.filter((post) => !post.draft && post.id.endsWith('.md')).filter((post) =>
+	activeTag ? post.tags.includes(activeTag) : true
+).filter((post) =>
+	query ? `${post.title} ${post.description}`.toLowerCase().includes(query.toLowerCase()) : true
+);
 
-const categoryCounts = new Map<string, number>();
-for (const post of publishedPosts) {
-	for (const tag of post.tags) categoryCounts.set(tag, (categoryCounts.get(tag) ?? 0) + 1);
-}
-const categories = [...categoryCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'fa'));
-const [featuredPost, ...recentPosts] = posts;
-const sidebarRecent = publishedPosts.filter((post) => post.id !== featuredPost?.id).slice(0, 3);
-
-function tagUrl(tag: string): string {
-	const params = new URLSearchParams();
-	if (query) params.set('q', query);
-	if (tag) params.set('tag', tag);
-	const search = params.toString();
-	return search ? `/blog?${search}` : '/blog';
-}
+const tags = [...new Set(allPosts.flatMap((post) => post.tags))].slice(0, 12);
+const [lead, ...rest] = posts;
 ---
 
-<ShopLayout title="مجله توسعه‌دهندگان" description="راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.">
-	<header class="blog-intro">
-		<div class="blog-intro__copy">
-			<span class="blog-intro__eyebrow">یادداشت‌های فنی برای سازندگان وب</span>
-			<h1 class="blog-intro__title">مجله توسعه‌دهندگان</h1>
-			<p class="blog-intro__desc">راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.</p>
+<ShopLayout title="مجله" description="نوشته‌های تازه دربارهٔ محصول، طراحی و توسعه" cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر" style="margin-block:1rem 0">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span>مجله</span>
+	</nav>
+
+	<section class="blog-intro" style="margin-block-end:var(--space-10)">
+		<span class="blog-intro__eyebrow">مجلهٔ توسعه‌دهندگان</span>
+		<h1 class="blog-intro__title">یادداشت‌هایی از تیم ما</h1>
+		<p class="blog-intro__desc">
+			راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.
+		</p>
+	</section>
+
+	<form method="get" class="blog-toolbar" role="search" style="margin-block-end:var(--space-10)">
+		<div class="blog-toolbar__search">
+			<label class="sr-only" for="blogQ">جست‌وجو در مجله</label>
+			<input
+				id="blogQ"
+				name="q"
+				value={query}
+				placeholder="جست‌وجو در نوشته‌ها…"
+				aria-label="جست‌وجو در نوشته‌ها"
+				dir="auto"
+			/>
+			{activeTag && <input type="hidden" name="tag" value={activeTag} />}
+			<button type="submit" class="blog-toolbar__btn">جست‌وجو</button>
 		</div>
-		<div class="blog-intro__count"><strong>{faNumber(publishedPosts.length)}</strong> نوشتهٔ منتشرشده</div>
-	</header>
 
-	<div class="editorial-layout">
-		<section class="editorial-main" aria-label="نوشته‌های مجله">
-			{featuredPost ? (
-				<>
-					<div class="story-feature">
-						<BlogPreview post={featuredPost} featured />
-					</div>
-					<div class="story-section-head">
-						<h2>{query || activeTag ? 'نتیجه‌های جست‌وجو' : 'نوشته‌های تازه'}</h2>
-						<span>{faNumber(posts.length)} نوشته</span>
-					</div>
-					{recentPosts.length > 0 ? (
-						<div class="story-grid">
-							{recentPosts.map((post) => <BlogPreview post={post} />)}
-						</div>
-					) : (
-						<p class="hint">همین نوشته در فهرست فعلی قرار دارد.</p>
-					)}
-				</>
-			) : (
-				<div class="empty-state">
-					<h2>نوشته‌ای پیدا نشد</h2>
-					<p>عبارت دیگری را جست‌وجو کنید یا فیلتر موضوع را بردارید.</p>
-					<a class="btn btn--primary empty-state__action" href="/blog">نمایش همهٔ نوشته‌ها</a>
-				</div>
-			)}
-		</section>
+		{tags.length > 0 && (
+			<div class="blog-toolbar__tags">
+				<a href="/blog" class={`blog-toolbar__tag${!activeTag ? ' blog-toolbar__tag--active' : ''}`}>همه</a>
+				{tags.map((tag) => (
+					<a
+						href={`/blog?tag=${encodeURIComponent(tag)}`}
+						class={`blog-toolbar__tag${activeTag === tag ? ' blog-toolbar__tag--active' : ''}`}
+					>
+						{tag}
+					</a>
+				))}
+				{activeTag && (
+					<a href="/blog" class="blog-toolbar__tag blog-toolbar__tag--remove" title="حذف فیلتر">×</a>
+				)}
+			</div>
+		)}
+	</form>
 
-		<aside class="editorial-sidebar" aria-label="ابزارها و راهنماهای مجله">
-			<section class="sidebar-block">
-				<h2 class="sidebar-block__title">جست‌وجو در نوشته‌ها</h2>
-				<form class="blog-search" action="/blog" method="get" role="search">
-					<label class="sr-only" for="blog-search">عبارت جست‌وجو</label>
-					<input class="input" id="blog-search" type="search" name="q" value={query} placeholder="موضوع یا واژه…" />
-					{activeTag ? <input type="hidden" name="tag" value={activeTag} /> : null}
-					<button class="btn" type="submit">جست‌وجو</button>
-				</form>
-				{query || activeTag ? <a class="sidebar-reset" href="/blog">پاک‌کردن جست‌وجو و فیلتر</a> : null}
-			</section>
+	{posts.length === 0 ? (
+		<div class="empty" style="max-width:520px;margin-inline:auto">
+			<h2 class="empty__title">نوشته‌ای پیدا نشد</h2>
+			<p class="empty__desc">عبارت دیگری را جست‌وجو کنید یا همهٔ نوشته‌ها را ببینید.</p>
+			<p style="margin-top:1.5rem"><a class="btn btn--outline" href="/blog">همهٔ نوشته‌ها</a></p>
+		</div>
+	) : (
+		<>
+			<div class="blog-grid">
+				{lead && (
+					<BlogPreview post={lead} featured />
+				)}
+				{rest.map((post) => (
+					<BlogPreview post={post} />
+				))}
+			</div>
 
-			{categories.length > 0 ? (
-				<section class="sidebar-block">
-					<h2 class="sidebar-block__title">موضوع‌ها</h2>
-					<ul class="category-list">
-						{categories.map(([tag, count]) => (
-							<li>
-								<a href={tagUrl(tag)} aria-current={activeTag === tag ? 'true' : undefined}>
-									<span>{tag}</span><span class="category-list__count">{faNumber(count)}</span>
-								</a>
-							</li>
-						))}
-					</ul>
-				</section>
-			) : null}
-
-			{sidebarRecent.length > 0 ? (
-				<section class="sidebar-block">
-					<h2 class="sidebar-block__title">تازه‌های مجله</h2>
-					<ul class="latest-list">
-						{sidebarRecent.map((post) => (
-							<li>
-								<a href={`/blog/${post.slug}`}>
-									<span>{post.title}</span>
-									<time class="latest-list__date" datetime={post.pubDate}>{faDate(post.pubDate)}</time>
-								</a>
-							</li>
-						))}
-					</ul>
-				</section>
-			) : null}
-
-			<section class="sidebar-block">
-				<h2 class="sidebar-block__title">منابع توسعه</h2>
-				<p class="sidebar-note">راهنماهای عملی و ابزارهای همین پروژه — بدون آمار ساختگی یا خبرنامهٔ غیرفعال.</p>
-				<ul class="resource-list">
-					{settings.commerceEnabled ? <li><a href="/shop"><span>قالب‌ها و ابزارهای آماده</span><span aria-hidden="true">←</span></a></li> : null}
-					<li><a href="/about"><span>دربارهٔ پلتفرم</span><span aria-hidden="true">←</span></a></li>
-					{settings.enableRss ? <li><a href="/rss.xml"><span>خوراک RSS</span><span aria-hidden="true">←</span></a></li> : null}
-				</ul>
-			</section>
-		</aside>
-	</div>
+			<p class="hint" style="margin-block-start:var(--space-8);padding-block-end:var(--space-10)">
+				{faNumber(posts.length)} نوشته در این فهرست — نوشته‌های تازه از پنل مدیریت منتشر می‌شوند.
+			</p>
+		</>
+	)}
 </ShopLayout>
+
+<style>
+	.blog-intro__eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: var(--text-xs);
+		font-weight: var(--font-weight-semibold);
+		color: var(--brand-ink);
+		background: var(--brand-soft);
+		border: 1px solid var(--brand-line);
+		border-radius: var(--radius-full);
+		padding: 0.25rem 0.75rem;
+		margin-block-end: var(--space-3);
+	}
+
+	.blog-intro__title {
+		font-size: var(--text-2xl);
+		line-height: var(--line-height-tight);
+		margin-block: 0 0 var(--space-3);
+		color: var(--ink);
+	}
+
+	.blog-intro__desc {
+		font-size: var(--text-base);
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+		max-width: 48ch;
+		margin: 0;
+	}
+
+	.blog-toolbar {
+		display: grid;
+		gap: var(--space-4);
+		align-items: start;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: var(--space-5);
+	}
+
+	@media (min-width: 768px) {
+		.blog-toolbar {
+			grid-template-columns: 1fr auto;
+			align-items: center;
+		}
+	}
+
+	.blog-toolbar__search {
+		display: flex;
+		gap: var(--space-3);
+	}
+
+	.blog-toolbar__search input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.55rem 0.9rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font-family: inherit;
+		font-size: var(--text-base);
+		dir: auto;
+	}
+
+	.blog-toolbar__search input:focus {
+		outline: none;
+		border-color: var(--brand);
+		box-shadow: 0 0 0 2px var(--brand-soft);
+	}
+
+	.blog-toolbar__btn {
+		padding: 0.55rem 1rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font-family: inherit;
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-medium);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.blog-toolbar__btn:hover {
+		background: var(--surface-2);
+		border-color: var(--line-strong);
+	}
+
+	.blog-toolbar__tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.blog-toolbar__tag {
+		font-size: var(--text-sm);
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-full);
+		border: 1px solid var(--line);
+		background: var(--surface-2);
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+
+	.blog-toolbar__tag:hover {
+		border-color: var(--brand);
+		color: var(--brand);
+		background: var(--brand-soft);
+	}
+
+	.blog-toolbar__tag--active {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: #fff;
+	}
+
+	.blog-toolbar__tag--remove {
+		background: var(--danger-soft);
+		border-color: var(--danger-line);
+		color: var(--danger);
+		width: 1.8rem;
+		height: 1.8rem;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		font-size: var(--text-lg);
+		line-height: 1;
+	}
+
+	.blog-toolbar__tag--remove:hover {
+		background: var(--danger);
+		color: #fff;
+		border-color: var(--danger);
+	}
+
+	.blog-grid {
+		display: grid;
+		gap: var(--space-6);
+	}
+
+	@media (min-width: 768px) {
+		.blog-grid {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.blog-grid {
+			grid-template-columns: 1fr 1fr 1fr;
+		}
+	}
+
+	.hint {
+		font-size: var(--text-sm);
+		color: var(--muted);
+		text-align: start;
+	}
+</style>

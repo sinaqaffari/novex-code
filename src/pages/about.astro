@@ -1,46 +1,62 @@
 ---
 import ShopLayout from '../layouts/ShopLayout.astro';
-import { defaultSettings, readSettings } from '../lib/cms/settings';
+import { faNumber } from '../lib/cms/fa';
+import { readSettings } from '../lib/cms/settings';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
 
 export const prerender = false;
 
-const [settings, cart] = await Promise.all([
-	readSettings(),
-	hydrateCart(readCart(Astro.cookies)),
-]);
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
 ---
 
-<ShopLayout title="دربارهٔ نووکس‌کد" description={settings.siteDescription} cartCount={cart.count}>
-	<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><span aria-current="page">درباره</span></nav>
+<ShopLayout title="درباره" description={settings.siteDescription} cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span>درباره</span>
+	</nav>
 
-	<header class="about-intro">
-		<span class="about-intro__eyebrow">دربارهٔ پروژه</span>
-		<h1>{settings.siteTitle}</h1>
-		<p>{settings.siteDescription}</p>
-	</header>
+	<section class="shop-hero" style="padding:var(--space-10) 1rem var(--space-6)">
+		<span class="shop-hero__eyebrow">دربارهٔ ما</span>
+		<h1 style="font-size:var(--text-2xl);margin-block-end:var(--space-2)">{settings.siteTitle}</h1>
+		<p style="color:var(--ink-soft);max-width:48ch">{settings.siteDescription}</p>
+	</section>
 
-	<div class="prose about-content">
-		<p>نووکس‌کد یک وب‌سایت Astro با رابط فارسی و راست‌به‌چپ است. مجله از فایل‌های Markdown خوانده می‌شود و داده‌های فروشگاه و تنظیمات در فایل‌های محلی پروژه نگهداری می‌شوند.</p>
+	<div class="prose" style="padding-bottom:var(--space-10)">
+		<p>
+			این سایت با Astro ساخته شده و همهٔ محتوای آن — نوشته‌ها، تنظیمات و محصولات — از یک
+			پنل مدیریت فارسی و راست‌به‌چپ اداره می‌شود. هیچ سرویس خارجی، پایگاه‌دادهٔ مدیریت‌شده یا
+			حساب کاربری ابری لازم نیست؛ داده‌ها روی همان سروری می‌مانند که سایت روی آن اجرا می‌شود.
+		</p>
 
-		<h2>امکانات موجود</h2>
+		<h2>چرا این ساختار؟</h2>
+		<p>
+			پنل‌های مدیریت معمولاً یا بسیار سنگین‌اند یا برای زبان‌های چپ‌به‌راست ساخته شده‌اند.
+			این‌جا چیدمان از ابتدا با dir="rtl" و ویژگی‌های منطقی CSS نوشته شده — نه با وصله‌های
+			بعدی. اعداد فارسی، تاریخ هجری شمسی و قلم وزیرمتن بخشی از قرارداد هستند، نه افزونه.
+		</p>
+
+		<h2>امکانات</h2>
 		<ul>
-			<li>مجلهٔ عمومی با نوشته‌های منتشرشده و خوراک RSS در صورت فعال‌بودن آن.</li>
-			<li>فهرست محصولات فعال، سبد خرید، محاسبهٔ سفارش و مسیر پرداخت فروشگاه.</li>
-			<li>پیگیری سفارش با شمارهٔ سفارش و شمارهٔ تماس ثبت‌شده.</li>
-			<li>پنل مدیریت محتوا و فروشگاه، با دسترسی مبتنی بر نقش و مجوز.</li>
-			<li>فایل‌های Docker و Compose برای اجرای پروژه در محیط کانتینری.</li>
+			<li>مدیریت نوشته‌ها با ویرایشگر مارک‌داون و پیش‌نمایش زنده</li>
+			<li>کتابخانهٔ رسانه با بارگذاری تصویر و بهینه‌سازی</li>
+			<li>فروشگاه: محصولات، سفارش‌ها، مشتریان و کدهای تخفیف</li>
+			<li>داشبورد با شاخص‌های واقعی — نه اعداد تزئینی</li>
+			<li>اجرای کامل با Docker و بدون وابستگی به بیرون</li>
 		</ul>
 
-		<h2>دربارهٔ محصولات</h2>
-		<p>صفحهٔ محصول اطلاعات ثبت‌شده در فروشگاه را نمایش می‌دهد. نسخه، مجوز، مستندات، سازگاری و فهرست فایل‌ها برای محصولات فعلی ثبت نشده‌اند؛ بنابراین در صفحهٔ محصول نیز این جزئیات ادعا نمی‌شوند.</p>
+		<h2>تماس</h2>
+		<p>
+			برای ارتباط با تیم، از نشانی{' '}
+			<a href={`mailto:${settings.authorEmail}`} dir="ltr">{settings.authorEmail}</a>{' '}
+			استفاده کنید.
+		</p>
 
-		<h2>حساب کاربری و دانلود</h2>
-		<p>در حال حاضر حساب مشتری، سابقهٔ خرید و دانلود محافظت‌شده در وب‌سایت پیاده‌سازی نشده‌اند. پیگیری سفارش، تنها اطلاعات ثبت‌شدهٔ همان سفارش را نشان می‌دهد.</p>
-
-		<h2>پرداخت</h2>
-		<p>شروع و تأیید پرداخت به افزونه و تنظیمات درگاه وابسته است. پیش از استفادهٔ واقعی، وضعیت افزونه و تنظیمات محیط اجرا را بررسی کنید.</p>
-
-		{settings.authorEmail && settings.authorEmail !== defaultSettings.authorEmail ? <p>تماس: <a class="ltr" href={`mailto:${settings.authorEmail}`}>{settings.authorEmail}</a></p> : null}
+		<p class="hint">
+			{settings.commerceEnabled
+				? `فروشگاه فعال است — ارسال رایگان برای سفارش‌های بالای ${faNumber(1000000)} تومان.`
+				: 'ماژول فروشگاه در حال حاضر خاموش است؛ مجله در دسترس است.'}
+		</p>
 	</div>
 </ShopLayout>

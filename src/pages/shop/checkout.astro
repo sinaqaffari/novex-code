@@ -1,5 +1,4 @@
 ---
-import { randomUUID } from 'node:crypto';
 import ShopLayout from '../../layouts/ShopLayout.astro';
 import { faMoney, faNumber } from '../../lib/cms/fa';
 import { readSettings } from '../../lib/cms/settings';
@@ -7,81 +6,143 @@ import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart
 import { computeDiscount } from '../../lib/commerce/discounts';
 import { SHIPPING } from '../../lib/commerce/orders';
 import { readDatabase } from '../../lib/commerce/db';
-import { AppError } from '../../lib/errors';
 
 export const prerender = false;
 
-const checkoutCartLines = readCart(Astro.cookies);
-const checkoutIdempotencyKey = randomUUID();
-const [settings, cart] = await Promise.all([
-	readSettings(),
-	hydrateCart(checkoutCartLines),
-]);
-if (!settings.commerceEnabled) return Astro.redirect('/shop');
-if (cart.lines.length === 0) return Astro.redirect('/shop/cart');
-
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
 const code = readDiscountCode(Astro.cookies);
-const checkoutError = Astro.url.searchParams.get('error') ?? '';
+
+if (!settings.commerceEnabled) {
+	return Astro.redirect('/shop');
+}
+
+if (cart.lines.length === 0) {
+	return Astro.redirect('/shop/cart');
+}
+
 let discount = 0;
 let discountCode = '';
-let discountError = '';
 if (code) {
+	const db = await readDatabase();
 	try {
-		const db = await readDatabase();
 		const applied = computeDiscount(db, code, cart.subtotal);
 		if (applied) {
 			discount = applied.amount;
 			discountCode = applied.discount.code;
 		}
-	} catch (error) {
-		discountError = error instanceof AppError ? error.message : 'کد تخفیف در حال حاضر قابل اعمال نیست.';
+	} catch {
+		discount = 0;
 	}
 }
+
 const shipping = cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
 const total = Math.max(0, cart.subtotal - discount) + shipping;
 ---
 
-<ShopLayout title="تکمیل خرید" cartCount={cart.count} noindex>
-	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href="/shop/cart">سبد خرید</a><span aria-hidden="true">/</span><span aria-current="page">تکمیل خرید</span></nav>
+<ShopLayout title="تکمیل خرید" cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<a href="/shop/cart">سبد خرید</a>
+		<span aria-hidden="true">/</span>
+		<span>تکمیل خرید</span>
+	</nav>
 
-	<header class="page-heading"><div><span class="section__eyebrow">مرحلهٔ آخر پیش از ثبت سفارش</span><h1>اطلاعات تحویل</h1><p>مبلغ و موجودی در زمان ثبت سفارش دوباره از اطلاعات فروشگاه محاسبه می‌شوند.</p></div></header>
+	<h1 class="page-title">تکمیل خرید</h1>
 
 	<div class="cart-layout">
-		<form class="panel checkout-form" method="post" action="/shop/api/checkout" id="checkout-form">
-			<div class="panel__head">اطلاعات تماس و نشانی</div>
-			<div class="panel__body checkout-form__body">
-				{checkoutError ? <p class="notice notice--error" role="alert">{checkoutError}</p> : null}
-				{discountError ? <p class="notice notice--error" role="status">{discountError} — سفارش بدون این تخفیف محاسبه شده است.</p> : null}
+		<form class="panel" method="post" action="/shop/api/checkout" id="checkout-form">
+			<div class="panel__head">اطلاعات تحویل</div>
+			<div class="panel__body">
 				<div class="form-grid">
-					<div class="field field--full"><label class="label" for="customer-name">نام و نام خانوادگی</label><input class="input" id="customer-name" name="customerName" required maxlength="120" autocomplete="name" /></div>
-					<div class="field"><label class="label" for="customer-phone">شمارهٔ تماس</label><input class="input ltr" id="customer-phone" name="phone" required maxlength="20" inputmode="tel" autocomplete="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹" /></div>
-					<div class="field"><label class="label" for="customer-email">ایمیل <span class="muted">(اختیاری)</span></label><input class="input ltr" id="customer-email" name="email" type="email" maxlength="254" autocomplete="email" /></div>
-					<div class="field field--full"><label class="label" for="customer-city">شهر</label><input class="input" id="customer-city" name="city" required maxlength="60" autocomplete="address-level2" /></div>
-					<div class="field field--full"><label class="label" for="customer-address">نشانی کامل</label><textarea class="textarea" id="customer-address" name="address" required maxlength="400" autocomplete="street-address"></textarea></div>
-					<div class="field field--full"><label class="label" for="customer-note">یادداشت <span class="muted">(اختیاری)</span></label><textarea class="textarea" id="customer-note" name="note" maxlength="500"></textarea></div>
+					<div class="field field--full">
+						<label class="label" for="customerName">نام و نام خانوادگی</label>
+						<input class="input" id="customerName" name="customerName" required maxlength="120" autocomplete="name" />
+					</div>
+					<div class="field">
+						<label class="label" for="phone">شمارهٔ تماس</label>
+						<input
+							class="input"
+							id="phone"
+							name="phone"
+							required
+							inputmode="tel"
+							placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+							autocomplete="tel"
+							dir="ltr"
+						/>
+					</div>
+					<div class="field">
+						<label class="label" for="email">ایمیل (اختیاری)</label>
+						<input class="input" id="email" name="email" type="email" dir="ltr" autocomplete="email" />
+					</div>
+					<div class="field">
+						<label class="label" for="city">شهر</label>
+						<input class="input" id="city" name="city" required maxlength="60" autocomplete="address-level2" />
+					</div>
+					<div class="field field--full">
+						<label class="label" for="address">نشانی کامل</label>
+						<textarea
+							class="textarea"
+							id="address"
+							name="address"
+							required
+							maxlength="400"
+							autocomplete="street-address"
+						></textarea>
+					</div>
+					<div class="field field--full">
+						<label class="label" for="note">یادداشت برای ما (اختیاری)</label>
+						<textarea class="textarea" id="note" name="note" maxlength="500"></textarea>
+					</div>
 				</div>
-				<input type="hidden" name="idempotencyKey" value={checkoutIdempotencyKey} />
-				<input type="hidden" name="checkoutItems" value={JSON.stringify(checkoutCartLines)} />
-				<input type="hidden" name="discountCode" value={discountCode} />
-				<p class="hint checkout-form__hint">پس از ثبت، شمارهٔ سفارش برای پیگیری نمایش داده می‌شود. برای مشاهدهٔ وضعیت، شمارهٔ سفارش و شمارهٔ تماس را نگه دارید.</p>
+
+				<p class="hint" style="margin-top:0.8rem">
+					با ثبت سفارش، شمارهٔ پیگیری نمایش داده می‌شود — آن را نگه دارید.
+				</p>
 			</div>
 		</form>
 
-		<aside class="order-summary" aria-label="خلاصهٔ سفارش">
-			<section class="panel">
-				<div class="panel__head"><span>سفارش شما</span><span class="hint">{faNumber(cart.count)} کالا</span></div>
-				<div class="panel__body totals">
-					<ul class="checkout-items">
-						{cart.lines.map((line) => <li><span>{line.product.name} × {faNumber(line.quantity)}</span><strong class="num">{faMoney(line.total, settings.currency)}</strong></li>)}
-					</ul>
-					<div class="totals__row"><span>جمع کالاها</span><span class="num">{faMoney(cart.subtotal, settings.currency)}</span></div>
-					<div class="totals__row"><span>هزینهٔ ارسال</span><span class="num">{shipping === 0 ? 'رایگان' : faMoney(shipping, settings.currency)}</span></div>
-					{discount > 0 ? <div class="totals__row totals__row--discount"><span>تخفیف ({discountCode})</span><span class="num">− {faMoney(discount, settings.currency)}</span></div> : null}
-					<div class="totals__row totals__row--grand"><span>مبلغ قابل پرداخت</span><span class="num">{faMoney(total, settings.currency)}</span></div>
-					<button class="btn btn--primary btn--block" type="submit" form="checkout-form">ثبت سفارش و ادامهٔ پرداخت</button>
-					<a class="btn btn--quiet btn--block" href="/shop/cart">بازگشت به سبد خرید</a>
+		<aside class="order-summary">
+			<div class="panel">
+				<div class="panel__head">
+					<span>سفارش شما</span>
+					<span class="hint num">{faNumber(cart.count)} عدد</span>
 				</div>
-			</section>
+				<div class="panel__body totals">
+					{cart.lines.map((line) => (
+						<div class="totals__row">
+							<span>{line.product.name} × {faNumber(line.quantity)}</span>
+							<span class="num">{faMoney(line.total, settings.currency)}</span>
+						</div>
+					))}
+					<hr style="border:0;border-top:1px solid var(--line);margin:0.2rem 0" />
+					<div class="totals__row">
+						<span>جمع کالاها</span>
+						<span class="num">{faMoney(cart.subtotal, settings.currency)}</span>
+					</div>
+					<div class="totals__row">
+						<span>ارسال</span>
+						<span class="num">{shipping === 0 ? 'رایگان' : faMoney(shipping, settings.currency)}</span>
+					</div>
+					{discount > 0 && (
+						<div class="totals__row" style="color:var(--success)">
+							<span>تخفیف ({discountCode})</span>
+							<span class="num">− {faMoney(discount, settings.currency)}</span>
+						</div>
+					)}
+					<div class="totals__row totals__row--grand">
+						<span>قابل پرداخت</span>
+						<span class="num">{faMoney(total, settings.currency)}</span>
+					</div>
+					<input type="hidden" name="discountCode" value={discountCode} form="checkout-form" />
+					<button class="btn btn--primary btn--block" type="submit" form="checkout-form" style="margin-top:0.6rem">
+						ثبت سفارش
+					</button>
+					<a class="btn btn--ghost btn--block" href="/shop/cart">بازگشت به سبد</a>
+				</div>
+			</div>
 		</aside>
 	</div>
 </ShopLayout>
