@@ -1,0 +1,96 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import ProductArtwork from '../../components/store/ProductArtwork.astro';
+import { readSettings } from '../../lib/cms/settings';
+import { publicImageSrc } from '../../lib/cms/public-image';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { getProduct } from '../../lib/commerce/products';
+import { SHIPPING } from '../../lib/commerce/orders';
+import { faMoney, faNumber, faDate } from '../../lib/cms/fa';
+
+export const prerender = false;
+
+const { slug = '' } = Astro.params;
+const [product, settings, cart] = await Promise.all([
+	getProduct(slug),
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+
+if (!product || product.status !== 'active' || !settings.commerceEnabled) return Astro.redirect('/shop');
+
+const onSale = typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+const percentOff = onSale
+	? Math.round(((product.compareAtPrice! - product.price) / product.compareAtPrice!) * 100)
+	: 0;
+const soldOut = product.stock <= 0;
+const errorMessage = Astro.url.searchParams.get('error') ?? '';
+const added = Astro.url.searchParams.get('added') === '1';
+const hasImage = !!publicImageSrc(product.image);
+const shippingText = product.price >= SHIPPING.freeThreshold
+	? 'ارسال این کالا با توجه به قیمت فعلی آن رایگان است.'
+	: `هزینهٔ ارسال ${faMoney(SHIPPING.fee, settings.currency)} است؛ سفارش‌های بالای ${faMoney(SHIPPING.freeThreshold, settings.currency)} مشمول ارسال رایگان می‌شوند.`;
+---
+
+<ShopLayout title={product.name} description={product.description || settings.shopDescription} cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a><span aria-hidden="true">/</span><span aria-current="page">{product.name}</span></nav>
+
+	<header class="product-identity">
+		<div class="product-identity__eyebrow"><span>{product.category}</span><span class="ltr">{product.sku}</span></div>
+		<h1>{product.name}</h1>
+		{product.description ? <p class="product-identity__desc">{product.description}</p> : null}
+	</header>
+
+	<div class="product-detail-page">
+		<div class="product-media">
+			<div class="product-media__main"><ProductArtwork product={product} variant="detail" /></div>
+			<p class="product-gallery-note">{hasImage ? 'تصویر ثبت‌شده برای محصول' : 'پیش‌نمایش موضوعی است — تصویر اختصاصی محصول در اطلاعات فعلی ثبت نشده است.'}</p>
+		</div>
+
+		<aside class="purchase-panel" aria-label="خرید محصول">
+			<div class="purchase-panel__price">
+				{onSale ? <span class="product-price--was num">{faMoney(product.compareAtPrice!, settings.currency)}</span> : null}
+				<strong class="product-price--now num">{faMoney(product.price, settings.currency)}</strong>
+				{onSale ? <span class="badge badge--accent">{faNumber(percentOff)}٪ تخفیف</span> : null}
+			</div>
+			<p class={`purchase-panel__stock${soldOut ? ' purchase-panel__stock--empty' : ''}`}>
+				{soldOut ? 'این محصول در حال حاضر موجود نیست.' : `موجودی ثبت‌شده: ${faNumber(product.stock)}`}
+			</p>
+			{errorMessage ? <p class="notice notice--error" role="alert">{errorMessage}</p> : null}
+			{added ? <p class="notice notice--success" role="status">محصول به سبد خرید اضافه شد.</p> : null}
+			{!soldOut ? (
+				<form method="post" action="/shop/api/cart" class="buy-form">
+					<input type="hidden" name="action" value="add" />
+					<input type="hidden" name="productId" value={product.id} />
+					<input type="hidden" name="redirect" value={`/shop/${product.slug}?added=1`} />
+					<label class="sr-only" for="quantity">تعداد</label>
+					<div class="buy-form__controls">
+						<input class="qty-input" id="quantity" name="quantity" type="number" min="1" max={product.stock} value="1" inputmode="numeric" />
+						<button class="btn btn--primary" type="submit">افزودن به سبد</button>
+					</div>
+				</form>
+			) : null}
+			{cart.count > 0 ? <div class="purchase-panel__links"><a href="/shop/cart">مشاهدهٔ سبد خرید ({faNumber(cart.count)})</a></div> : null}
+			<p class="purchase-panel__shipping">{shippingText}</p>
+			<p class="purchase-panel__shipping">پرداخت و پیگیری سفارش از مسیرهای موجود فروشگاه انجام می‌شود.</p>
+		</aside>
+
+		<div class="product-details">
+			<section class="product-section" aria-labelledby="product-description-heading">
+				<h2 id="product-description-heading">دربارهٔ محصول</h2>
+				<p>{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
+			</section>
+
+			<section class="product-section" aria-labelledby="product-data-heading">
+				<h2 id="product-data-heading">مشخصات ثبت‌شده</h2>
+				<dl class="product-facts">
+					<div class="product-facts__row"><dt>دسته‌بندی</dt><dd>{product.category}</dd></div>
+					<div class="product-facts__row"><dt>کد کالا</dt><dd class="ltr">{product.sku}</dd></div>
+					<div class="product-facts__row"><dt>وضعیت</dt><dd>{soldOut ? 'ناموجود' : 'موجود'}</dd></div>
+					<div class="product-facts__row"><dt>آخرین به‌روزرسانی</dt><dd>{faDate(product.updatedAt)}</dd></div>
+				</dl>
+				<p class="product-missing">نسخه، مجوز، مستندات، سازگاری و فهرست فایل‌های محصول در داده‌های فعلی ثبت نشده‌اند.</p>
+			</section>
+		</div>
+	</div>
+</ShopLayout>

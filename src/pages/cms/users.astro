@@ -1,0 +1,162 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { listUsers } from '../../lib/cms/users';
+import { ROLE_LABELS, type Role } from '../../lib/cms/rbac';
+
+const users = await listUsers();
+const flashMessages: Record<string, string> = {
+	'user-created': 'کاربر تازه ساخته شد.',
+	'user-updated': 'تغییرات کاربر ذخیره شد.',
+	'user-deleted': 'کاربر حذف شد.',
+};
+const flash = Astro.url.searchParams.get('flash');
+const errorMessage = Astro.url.searchParams.get('error');
+
+const roleBadge = (role: string) => {
+	const labels: Record<string, { tone: string; label: string }> = {
+		admin: { tone: 'danger', label: 'مدیر کل' },
+		editor: { tone: 'brand', label: 'ویراستار' },
+		contributor: { tone: 'warning', label: 'مشارکت‌کننده' },
+		subscriber: { tone: 'neutral', label: 'مشترک' },
+	};
+	return labels[role] ?? { tone: 'neutral', label: role };
+};
+---
+
+<CmsLayout title="مدیریت کاربران" subtitle="ساخت، ویرایش و غیرفعال‌سازی حساب‌های پنل مدیریت">
+	{flash && flashMessages[flash] && <div class="alert alert--success" role="status">{flashMessages[flash]}</div>}
+	{errorMessage && <div class="alert alert--error" role="alert">{errorMessage}</div>}
+	<div class="stack">
+		<div class="card">
+			<div class="card__head">
+				<h2 class="card__title">لیست کاربران</h2>
+				<span class="badge badge--brand">{users.length} کاربر</span>
+			</div>
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col" style="width:30%">نام کاربری</th>
+							<th scope="col" style="width:20%">نقش</th>
+							<th scope="col" style="width:18%">وضعیت</th>
+							<th scope="col" style="width:20%">آخرین ورود</th>
+							<th scope="col" style="width:12%">عملیات</th>
+						</tr>
+					</thead>
+					<tbody>
+						{users.map((user) => (
+							<tr>
+								<td>
+									<strong>{user.username}</strong>
+									{user.username === 'admin' && <span class="badge badge--neutral" style="font-size:0.75rem;margin-inline-start:0.5rem">پیش‌فرض</span>}
+								</td>
+									<td><span class={`badge badge--${roleBadge(user.role).tone}`}>{roleBadge(user.role).label}</span></td>
+								<td>
+									<span class={user.isActive ? 'badge badge--success' : 'badge badge--danger'}>
+										{user.isActive ? 'فعال' : 'غیرفعال'}
+									</span>
+								</td>
+								<td class="num">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '—'}</td>
+								<td>
+									{user.username !== 'admin' && (
+										<>
+											<a class="btn btn--ghost btn--sm" href={`#edit-${user.id}`}>
+												<Icon name="users" size={14} />
+												ویرایش
+											</a>
+											<form method="post" action={`/cms/api/users/${user.id}`} style="display:inline" data-confirm="آیا مطمئن هستید که می‌خواهید این کاربر را حذف کنید؟">
+												<input type="hidden" name="_method" value="DELETE" />
+												<button class="btn btn--danger btn--sm" type="submit" style="padding:0.25rem 0.5rem;font-size:0.8rem">حذف</button>
+											</form>
+										</>
+									)}
+								</td>
+							</tr>
+						))}
+						{users.length === 0 && (
+							<tr>
+								<td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)">کاربری یافت نشد.</td>
+							</tr>
+						)}
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card__head">
+				<h2 class="card__title">ساخت کاربر جدید</h2>
+			</div>
+			<form method="post" action="/cms/api/users" class="stack" style="gap:1rem" novalidate>
+				<div class="form-group">
+					<label class="form-label">نام کاربری</label>
+					<input class="form-input" type="text" name="username" required placeholder="نویسندهٔ جدید" />
+				</div>
+				<div class="form-group">
+					<label class="form-label">گذرواژه</label>
+					<input class="form-input" type="password" name="password" required placeholder="••••••••" />
+				</div>
+				<div class="form-group">
+					<label class="form-label">نقش</label>
+					<select class="form-select" name="role">
+						<option value="contributor">مشارکت‌کننده</option>
+						<option value="editor">ویراستار</option>
+						<option value="subscriber">مشترک</option>
+					</select>
+					<p class="form-help">مدیر کل به پنل دسترسی کامل دارد.</p>
+				</div>
+				<div class="form-actions">
+					<button class="btn btn--primary" type="submit">ساخت کاربر</button>
+				</div>
+			</form>
+		</div>
+
+		{users.map((user) => (
+			<div id={`edit-${user.id}`} class="card" style="margin-block-start:1.5rem">
+				<div class="card__head">
+					<h2 class="card__title">ویرایش: {user.username}</h2>
+				</div>
+				<form method="post" action={`/cms/api/users/${user.id}`} class="stack" style="gap:1rem" novalidate>
+					<input type="hidden" name="_method" value="PATCH" />
+					<div class="form-group">
+						<label class="form-label">نقش</label>
+						<select class="form-select" name="role">
+							{(['admin', 'editor', 'contributor', 'subscriber'] as Role[]).map((role) => (
+								<option value={role} selected={user.role === role}>{ROLE_LABELS[role]}</option>
+							))}
+						</select>
+					</div>
+					<div class="form-group">
+										<label class="form-switch">
+											<input type="hidden" name="isActive" value="false" />
+											<input type="checkbox" name="isActive" value="true" {...(user.isActive ? { checked: true } : {})} />
+											<span>کاربر فعال است</span>
+										</label>
+					</div>
+					<div class="form-group">
+						<label class="form-label">گذرواژه جدید (اختیاری)</label>
+						<input class="form-input" type="password" name="password" placeholder="فقط اگر بخواهید تغییر دهید" />
+					</div>
+					<div class="form-actions">
+						<button class="btn btn--primary" type="submit">ذخیره تغییرات</button>
+					</div>
+				</form>
+			</div>
+		))}
+	</div>
+</CmsLayout>
+
+<style>
+	.form-switch {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.95rem;
+		color: var(--ink-soft);
+		cursor: pointer;
+	}
+	.form-switch input {
+		accent-color: var(--brand);
+	}
+</style>

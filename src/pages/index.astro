@@ -1,59 +1,91 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Footer from '../components/Footer.astro';
-import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import ShopLayout from '../layouts/ShopLayout.astro';
+import ProductCard from '../components/store/ProductCard.astro';
+import BlogPreview from '../components/store/BlogPreview.astro';
+import { readSettings } from '../lib/cms/settings';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+import { listPublicProducts } from '../lib/commerce/products';
+import { faNumber } from '../lib/cms/fa';
+import { listPosts } from '../lib/cms/posts';
+
+export const prerender = false;
+
+const [settings, cart, allPosts] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+	listPosts(),
+]);
+const products = settings.commerceEnabled ? await listPublicProducts() : [];
+const featuredProducts = products.filter((product) => product.featured);
+const regularProducts = products.filter((product) => !product.featured);
+const posts = allPosts.filter((post) => !post.draft && post.id.toLowerCase().endsWith('.md')).slice(0, 3);
+const categories = [...new Set(products.map((product) => product.category))];
+const description = settings.commerceEnabled ? settings.shopDescription : settings.siteDescription;
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-	</head>
-	<body>
-		<Header />
-		<main>
-			<h1>🧑‍🚀 Hello, Astronaut!</h1>
-			<p>
-				Welcome to the official <a href="https://astro.build/">Astro</a> blog starter template. This
-				template serves as a lightweight, minimally-styled starting point for anyone looking to
-				build a personal website, blog, or portfolio with Astro.
-			</p>
-			<p>
-				This template comes with a few integrations already configured in your{' '}
-				<code>astro.config.mjs</code> file. You can customize your setup with{' '}
-				<a href="https://astro.build/integrations">Astro Integrations</a> to add tools like
-				Tailwind, React, or Vue to your project.
-			</p>
-			<p>Here are a few ideas on how to get started with the template:</p>
-			<ul>
-				<li>
-					Edit this page in <code>src/pages/index.astro</code>
-				</li>
-				<li>
-					Edit the site header items in <code>src/components/Header.astro</code>
-				</li>
-				<li>
-					Add your name to the footer in <code>src/components/Footer.astro</code>
-				</li>
-				<li>
-					Check out the included blog posts in <code>src/content/blog/</code>
-				</li>
-				<li>
-					Customize the blog post page layout in <code>src/layouts/BlogPost.astro</code>
-				</li>
-			</ul>
-			<p>
-				Have fun! If you get stuck, remember to{' '}
-				<a href="https://docs.astro.build/">read the docs</a> or{' '}
-				<a href="https://astro.build/chat">join us on Discord</a> to ask questions.
-			</p>
-			<p>
-				Looking for a blog template with a bit more personality? Check out{' '}
-				<a href="https://github.com/Charca/astro-blog-template">astro-blog-template</a> by{' '}
-				<a href="https://twitter.com/Charca">Maxi Ferreira</a>.
-			</p>
-		</main>
-		<Footer />
-	</body>
-</html>
+<ShopLayout title={settings.siteTitle} description={description} cartCount={cart.count}>
+	<section class="home-intro" aria-labelledby="home-title">
+		<div class="home-intro__copy">
+			<span class="home-intro__label">{settings.commerceEnabled ? settings.shopTitle : settings.siteTitle}</span>
+			<h1 id="home-title">{settings.heroTitle}</h1>
+			<p>{settings.commerceEnabled ? settings.shopDescription : settings.heroSubtitle}</p>
+		</div>
+		<div class="home-intro__actions">
+			{settings.commerceEnabled ? <a class="btn btn--primary" href="/shop">رفتن به فروشگاه</a> : null}
+			<a class="btn" href="/blog">خواندن مجله</a>
+		</div>
+	</section>
+
+	{settings.commerceEnabled && categories.length > 0 ? (
+		<nav class="category-nav" aria-label="دسته‌بندی‌های موجود">
+			{categories.map((category) => (
+				<a class="category-chip" href={`/shop?category=${encodeURIComponent(category)}`}>
+					{category}<span class="category-chip__count">{faNumber(products.filter((product) => product.category === category).length)}</span>
+				</a>
+			))}
+			<a class="category-chip category-chip--all" href="/shop">همهٔ محصولات <span aria-hidden="true">←</span></a>
+		</nav>
+	) : null}
+
+	{settings.commerceEnabled ? (
+		<section class="home-products" aria-labelledby="featured-products-heading">
+			<div class="section__head">
+				<div>
+					<span class="section__eyebrow">محصولات ثبت‌شده در فروشگاه</span>
+					<h2 id="featured-products-heading">محصولات منتخب</h2>
+					<p>اطلاعات، قیمت و موجودی از فهرست فعلی فروشگاه خوانده می‌شود.</p>
+				</div>
+				<a class="section__link" href="/shop">مشاهدهٔ فروشگاه <span aria-hidden="true">←</span></a>
+			</div>
+			{featuredProducts.length > 0 ? (
+				<div class="product-grid product-grid--home">
+					{featuredProducts.map((product) => <ProductCard product={product} currency={settings.currency} />)}
+				</div>
+			) : (
+				<div class="empty-state"><h2>محصول منتخب ثبت نشده است</h2><p>فهرست کامل فروشگاه را برای محصولات فعال ببینید.</p><a class="btn empty-state__action" href="/shop">مشاهدهٔ فروشگاه</a></div>
+			)}
+		</section>
+	) : null}
+
+	{settings.commerceEnabled && regularProducts.length > 0 ? (
+		<section class="section" aria-labelledby="more-products-heading">
+			<div class="section__head">
+				<div><span class="section__eyebrow">از فهرست فعال فروشگاه</span><h2 id="more-products-heading">محصولات دیگر</h2></div>
+				<a class="section__link" href="/shop">مرور همه <span aria-hidden="true">←</span></a>
+			</div>
+			<div class="product-grid product-grid--home">{regularProducts.map((product) => <ProductCard product={product} currency={settings.currency} />)}</div>
+		</section>
+	) : null}
+
+	{posts.length > 0 ? (
+		<section class="home-journal" aria-labelledby="home-journal-heading">
+			<div class="section__head">
+				<div><span class="section__eyebrow">مقاله‌ها و راهنماهای منتشرشده</span><h2 id="home-journal-heading">از مجله</h2></div>
+				<a class="section__link" href="/blog">همهٔ نوشته‌ها <span aria-hidden="true">←</span></a>
+			</div>
+			<div class="story-grid story-grid--home">{posts.map((post) => <BlogPreview post={post} compact />)}</div>
+		</section>
+	) : (
+		<section class="home-journal empty-state"><h2>هنوز نوشته‌ای منتشر نشده است</h2><p>نوشته‌های تازه پس از انتشار در مجله نمایش داده می‌شوند.</p></section>
+	)}
+</ShopLayout>

@@ -1,0 +1,118 @@
+---
+/* Compact public header. Order lookup is shown instead of a fictional customer account. */
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { faNumber } from '../../lib/cms/fa';
+
+interface Props {
+	cartCount?: number;
+}
+
+const { cartCount } = Astro.props;
+const settings = await readSettings();
+const resolvedCartCount = cartCount ?? (await hydrateCart(readCart(Astro.cookies))).count;
+const isActive = (prefix: string) =>
+	prefix === '/' ? Astro.url.pathname === '/' : Astro.url.pathname === prefix || Astro.url.pathname.startsWith(`${prefix}/`);
+---
+
+<header class="header">
+	<div class="container header__inner">
+		<a class="brand" href="/" aria-label={settings.siteTitle}>
+			<span class="brand__mark" aria-hidden="true">
+				<svg viewBox="0 0 36 36" fill="none">
+					<path d="M8 28V8h5l10 13V8h5v20h-5L13 15v13H8Z" fill="currentColor" />
+					<path d="M6 32h24" stroke="currentColor" stroke-width="2" />
+				</svg>
+			</span>
+			<span class="brand__text">
+				<span class="brand__name">{settings.siteTitle}</span>
+				<span class="brand__sub">ابزار ساخت وب فارسی</span>
+			</span>
+		</a>
+
+		<nav class="nav" aria-label="ناوبری اصلی">
+			<a href="/" class="nav__link" aria-current={isActive('/') ? 'page' : undefined}>خانه</a>
+			{settings.commerceEnabled && <a href="/shop" class="nav__link" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>}
+			<a href="/blog" class="nav__link" aria-current={isActive('/blog') ? 'page' : undefined}>مجله</a>
+			<a href="/about" class="nav__link" aria-current={isActive('/about') ? 'page' : undefined}>درباره</a>
+		</nav>
+
+		<div class="header__actions">
+			<details class="header-search">
+				<summary class="icon-button" aria-label="جست‌وجو">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						<circle cx="10.8" cy="10.8" r="6.8" />
+						<path d="m16 16 5 5" />
+					</svg>
+				</summary>
+				<div class="header-search__panel" dir="rtl">
+					<p class="header-search__heading">جست‌وجو در نووکس‌کد</p>
+					{settings.commerceEnabled && (
+						<form class="header-search__form" action="/shop" method="get" role="search">
+							<label class="sr-only" for="headerProductSearch">جست‌وجو در محصولات</label>
+							<input class="input" id="headerProductSearch" type="search" name="q" placeholder="نام محصول…" />
+							<button class="btn btn--sm" type="submit">محصولات</button>
+						</form>
+					)}
+					<form class="header-search__form" action="/blog" method="get" role="search">
+						<label class="sr-only" for="headerArticleSearch">جست‌وجو در نوشته‌ها</label>
+						<input class="input" id="headerArticleSearch" type="search" name="q" placeholder="موضوع یا راهنما…" />
+						<button class="btn btn--sm" type="submit">مجله</button>
+					</form>
+				</div>
+			</details>
+
+			{settings.commerceEnabled ? (
+				<a class="header__action header__action--track" href="/shop/track" aria-label="پیگیری سفارش">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+						<path d="M4 7h11l3 4v6H4z" /><path d="M15 7v4h3M8 17a2 2 0 1 0 0 .01M16 17a2 2 0 1 0 0 .01" />
+					</svg>
+					<span class="header__action-label">پیگیری</span>
+				</a>
+			) : null}
+
+			{settings.commerceEnabled && (
+				<a class="header__action header__action--cart" href="/shop/cart" aria-label={`سبد خرید، ${faNumber(resolvedCartCount)} کالا`}>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+						<path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 1.9-1.4L21 9H6" />
+						<circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" />
+					</svg>
+					<span class="header__action-label">سبد</span>
+					{resolvedCartCount > 0 && <span class="cart-count num">{faNumber(resolvedCartCount)}</span>}
+				</a>
+			)}
+
+			<button class="menu-toggle" aria-expanded="false" aria-controls="mobile-menu" aria-label="باز کردن منو">
+				<span class="menu-toggle__bar" aria-hidden="true"></span>
+				<span class="menu-toggle__bar" aria-hidden="true"></span>
+				<span class="menu-toggle__bar" aria-hidden="true"></span>
+			</button>
+		</div>
+	</div>
+
+	<div class="mobile-menu" id="mobile-menu" hidden>
+		<div class="container mobile-menu__inner">
+			<nav class="mobile-nav" aria-label="منوی موبایل">
+				<a href="/" class="mobile-nav__link" aria-current={isActive('/') ? 'page' : undefined}>خانه</a>
+				{settings.commerceEnabled && <a href="/shop" class="mobile-nav__link" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>}
+				<a href="/blog" class="mobile-nav__link" aria-current={isActive('/blog') ? 'page' : undefined}>مجله</a>
+				<a href="/about" class="mobile-nav__link" aria-current={isActive('/about') ? 'page' : undefined}>درباره</a>
+				{settings.commerceEnabled ? <a href="/shop/track" class="mobile-nav__link" aria-current={isActive('/shop/track') ? 'page' : undefined}>پیگیری سفارش</a> : null}
+			</nav>
+		</div>
+	</div>
+</header>
+
+<script>
+	const toggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
+	const menu = document.getElementById('mobile-menu');
+
+	if (toggle && menu) {
+		toggle.addEventListener('click', () => {
+			const open = menu.hidden;
+			menu.hidden = !open;
+			toggle.setAttribute('aria-expanded', String(open));
+			toggle.setAttribute('aria-label', open ? 'بستن منو' : 'باز کردن منو');
+		});
+	}
+</script>

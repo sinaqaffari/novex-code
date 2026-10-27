@@ -1,0 +1,50 @@
+---
+/**
+ * صفحهٔ اختصاصی یک افزونه.
+ *
+ * نشانی: `/cms/plugins/<شناسهٔ افزونه>/<path>`
+ *
+ * صفحه‌ها را خود افزونه می‌سازد (تابع `pages[path]` در `index.ts`) و پنل فقط
+ * قالب، ناوبری و کنترل دسترسی را می‌دهد. هیچ افزونه‌ای نمی‌تواند جای صفحه‌های
+ * اصلی پنل را بگیرد.
+ */
+import CmsLayout from '../../../../components/cms/CmsLayout.astro';
+import { renderPluginPage } from '../../../../lib/plugins/registry';
+
+export const prerender = false;
+
+const pluginId = Astro.params.id ?? '';
+const pagePath = Astro.params.page ?? '';
+
+const backToPlugins = (message: string) =>
+	Astro.redirect(`/cms/plugins?error=${encodeURIComponent(message)}`);
+
+// خطای ساخت صفحه (مثلاً کمبود یک توانایی) نباید ۵۰۰ بدهد؛ پیام روشن در فهرست.
+const result = await renderPluginPage(pluginId, pagePath).catch((error: unknown) => {
+	console.error('[plugins] صفحهٔ افزونه ساخته نشد:', error);
+	return backToPlugins(error instanceof Error ? error.message : 'ساخت صفحهٔ افزونه ناموفق بود.');
+});
+
+if (!result) return backToPlugins('این صفحهٔ افزونه در دسترس نیست.');
+if (result instanceof Response) return result;
+
+const { manifest, page, html } = result;
+---
+
+<CmsLayout
+	title={page.title}
+	subtitle={page.description ?? manifest.name}
+	breadcrumbs={[
+		{ label: 'افزونه‌ها', href: '/cms/plugins' },
+		{ label: manifest.name, href: `/cms/plugins?plugin=${encodeURIComponent(pluginId)}&view=readme` },
+		{ label: page.title },
+	]}
+>
+	<Fragment slot="actions">
+		<a class="btn btn--sm" href={`/cms/plugins?plugin=${encodeURIComponent(pluginId)}&view=settings`}>
+			تنظیمات افزونه
+		</a>
+	</Fragment>
+
+	<Fragment set:html={html} />
+</CmsLayout>

@@ -1,0 +1,62 @@
+{
+	"name": "پیامک کاوه‌نگار",
+	"version": "1.0.0",
+	"description": "ارسال پیامک تاییدیه و اعلان از طریق پنل پیامک کاوه‌نگار (Kaveh Negar).",
+	"pluginUri": "https://example.com/plugins/kaveh-neg-sms",
+	"author": "تیم نووکس",
+	"authorUri": "https://example.com",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-kaveh-neg-sms",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"sms",
+		"kavenegar",
+		"notification",
+		"iran",
+		"admin"
+	],
+	"hooks": [],
+	"capabilities": [
+		"options:read",
+		"options:write",
+		"admin:page",
+		"secrets:read"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات پیامک کاوه‌نگار",
+				"description": "وضعیت کلید محیطی، شماره فرستنده و قالب‌های پیامک"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "apiKey",
+			"label": "کلید API کاوه‌نگار",
+			"type": "text",
+			"placeholder": "xxxxxxxxxxxxxxxx",
+			"help": "در متغیر محیطی اختصاصی افزونه تنظیم می‌شود؛ مقدار خام در پنل یا فایل JSON ذخیره نمی‌شود.",
+			"secret": true
+		},
+		{
+			"key": "senderNumber",
+			"label": "شماره فرستنده (خط عددی)",
+			"type": "text",
+			"placeholder": "30005000000000",
+			"help": "شماره خط عددی ثبت‌شده در کاوه‌نگار."
+		},
+		{
+			"key": "defaultTemplate",
+			"label": "قالب پیش‌فرض پیامک",
+			"type": "text",
+			"default": "کد تایید شما: {code}",
+			"help": "قالب پیامک برای ارسال کد تایید."
+		}
+	],
+	"id": "kaveh-neg-sms",
+	"apiVersion": 1
+}

@@ -1,0 +1,44 @@
+---
+import { publicImageSrc } from '../../lib/cms/public-image';
+import type { Product } from '../../lib/commerce/types';
+
+interface Props {
+	product: Pick<Product, 'name' | 'slug' | 'sku' | 'category' | 'description' | 'image'>;
+	variant?: 'card' | 'detail';
+}
+
+const { product, variant = 'card' } = Astro.props;
+const image = publicImageSrc(product.image);
+const slug = product.slug.toLowerCase();
+const artKind = slug.includes('astro')
+	? 'template'
+	: slug.includes('ui-kit')
+		? 'ui'
+		: slug.includes('typography')
+		? 'typography'
+		: slug.includes('handbook')
+		? 'book'
+		: 'template';
+const artClass = `product-art product-art--${artKind}${variant === 'detail' ? ' product-art--detail' : ''}`;
+const description = product.description.trim();
+const previewDescription = description.length > 160 ? `${description.slice(0, 159).trimEnd()}…` : description;
+---
+
+{image ? (
+	<img class={`product-art__image${variant === 'detail' ? ' product-art__image--detail' : ''}`} src={image} alt={product.name} loading={variant === 'detail' ? 'eager' : 'lazy'} decoding="async" />
+) : (
+	<div class={artClass} role="img" aria-label={`طرح نوشتاری محصول ${product.name}؛ تصویر اختصاصی ثبت نشده است`}>
+		<div class="product-art__chrome">
+			<span>{product.category}</span>
+			<span class="ltr">{product.sku}</span>
+		</div>
+		<div class="product-art__stage">
+			<div class="product-art__editorial" aria-hidden="true">
+				<strong class="product-art__title">{product.name}</strong>
+				{previewDescription ? <p class="product-art__description">{previewDescription}</p> : null}
+				<span class="product-art__rule"></span>
+			</div>
+		</div>
+		<span class="product-art__disclaimer">تصویر اختصاصی محصول ثبت نشده</span>
+	</div>
+)}

@@ -1,0 +1,122 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import ProductArtwork from '../../components/store/ProductArtwork.astro';
+import { faMoney, faNumber } from '../../lib/cms/fa';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
+import { computeDiscount } from '../../lib/commerce/discounts';
+import { SHIPPING } from '../../lib/commerce/orders';
+import { readDatabase } from '../../lib/commerce/db';
+import { AppError } from '../../lib/errors';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+const code = readDiscountCode(Astro.cookies);
+const cartError = Astro.url.searchParams.get('error') ?? '';
+let discount = 0;
+let discountCode = '';
+let discountError = '';
+
+if (settings.commerceEnabled && code && cart.subtotal > 0) {
+	try {
+		const db = await readDatabase();
+		const applied = computeDiscount(db, code, cart.subtotal);
+		if (applied) {
+			discount = applied.amount;
+			discountCode = applied.discount.code;
+		}
+	} catch (error) {
+		discountError = error instanceof AppError ? error.message : 'این کد تخفیف قابل استفاده نیست.';
+	}
+}
+
+const shipping = cart.subtotal === 0 || cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
+const total = Math.max(0, cart.subtotal - discount) + shipping;
+const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subtotal);
+---
+
+<ShopLayout title="سبد خرید" cartCount={cart.count} noindex>
+	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><span aria-current="page">سبد خرید</span></nav>
+
+	<header class="page-heading">
+		<div><span class="section__eyebrow">بررسی اقلام انتخاب‌شده</span><h1>سبد خرید</h1></div>
+		{cart.count > 0 ? <span class="page-heading__count">{faNumber(cart.count)} کالا</span> : null}
+	</header>
+
+	{cartError ? <p class="notice notice--error" role="alert">{cartError}</p> : null}
+
+	{!settings.commerceEnabled ? (
+		<section class="empty-state empty-state--page"><h2>فروشگاه موقتاً غیرفعال است</h2><p>امکان تغییر یا تکمیل سبد خرید در حال حاضر وجود ندارد.</p><a class="btn btn--primary empty-state__action" href="/blog">رفتن به مجله</a></section>
+	) : cart.lines.length === 0 ? (
+		<section class="empty-state empty-state--page">
+			<span class="empty-state__eyebrow">سبد خرید</span>
+			<h2>سبد شما خالی است</h2>
+			<p>محصولی به سبد اضافه نشده است.</p>
+			<a class="btn btn--primary empty-state__action" href="/shop">مرور محصولات</a>
+		</section>
+	) : (
+		<div class="cart-layout">
+			<section class="panel cart-layout__items" aria-labelledby="cart-items-heading">
+				<div class="panel__head"><h2 id="cart-items-heading">اقلام سفارش</h2><span class="hint">{faNumber(cart.count)} کالا</span></div>
+				{cart.lines.map((line) => (
+					<article class="cart-line">
+						<a class="cart-line__media" href={`/shop/${line.product.slug}`} aria-label={`مشاهدهٔ ${line.product.name}`}><ProductArtwork product={line.product} /></a>
+						<div class="cart-line__body">
+							<a class="cart-line__name" href={`/shop/${line.product.slug}`}>{line.product.name}</a>
+							<p class="cart-line__meta">{faMoney(line.product.price, settings.currency)} برای هر کالا</p>
+						</div>
+						<div class="cart-line__actions" aria-label={`تعداد ${line.product.name}`}>
+							<form method="post" action="/shop/api/cart">
+								<input type="hidden" name="action" value="quantity" /><input type="hidden" name="productId" value={line.product.id} /><input type="hidden" name="quantity" value={line.quantity - 1} />
+								<button class="btn btn--sm" type="submit" aria-label={`کاهش تعداد ${line.product.name}`}>−</button>
+							</form>
+							<span class="cart-line__quantity num">{faNumber(line.quantity)}</span>
+							<form method="post" action="/shop/api/cart">
+								<input type="hidden" name="action" value="quantity" /><input type="hidden" name="productId" value={line.product.id} /><input type="hidden" name="quantity" value={line.quantity + 1} />
+								<button class="btn btn--sm" type="submit" aria-label={`افزایش تعداد ${line.product.name}`} disabled={line.quantity >= line.product.stock}>+</button>
+							</form>
+							<form method="post" action="/shop/api/cart">
+								<input type="hidden" name="action" value="remove" /><input type="hidden" name="productId" value={line.product.id} />
+								<button class="btn btn--quiet btn--sm" type="submit">حذف</button>
+							</form>
+						</div>
+						<strong class="cart-line__total num">{faMoney(line.total, settings.currency)}</strong>
+					</article>
+				))}
+			</section>
+
+			<aside class="order-summary" aria-label="خلاصهٔ سبد خرید">
+				<section class="panel">
+					<div class="panel__head">خلاصهٔ پرداخت</div>
+					<div class="panel__body totals">
+						<div class="totals__row"><span>جمع کالاها</span><span class="num">{faMoney(cart.subtotal, settings.currency)}</span></div>
+						<div class="totals__row"><span>هزینهٔ ارسال</span><span class="num">{shipping === 0 ? 'رایگان' : faMoney(shipping, settings.currency)}</span></div>
+						{discount > 0 ? <div class="totals__row totals__row--discount"><span>تخفیف ({discountCode})</span><span class="num">− {faMoney(discount, settings.currency)}</span></div> : null}
+						<div class="totals__row totals__row--grand"><span>مبلغ قابل پرداخت</span><span class="num">{faMoney(total, settings.currency)}</span></div>
+						<a class="btn btn--primary btn--block" href="/shop/checkout">ادامهٔ خرید</a>
+						<p class="hint">{remainingForFreeShipping > 0 ? `${faMoney(remainingForFreeShipping, settings.currency)} تا رسیدن به حد ارسال رایگان باقی مانده است.` : 'هزینهٔ ارسال برای این سفارش رایگان است.'}</p>
+					</div>
+				</section>
+
+				<section class="panel">
+					<div class="panel__head">کد تخفیف</div>
+					<div class="panel__body coupon-panel">
+						{discountError ? <p class="notice notice--error" role="alert">{discountError}</p> : null}
+						<form method="post" action="/shop/api/cart" class="coupon-form">
+							<input type="hidden" name="action" value="discount" />
+							<label class="sr-only" for="discount-code">کد تخفیف</label>
+							<input class="input ltr" id="discount-code" name="code" value={discountCode || code} placeholder="کد تخفیف" autocomplete="off" />
+							<button class="btn btn--sm" type="submit">اعمال</button>
+						</form>
+						{discountCode ? <form method="post" action="/shop/api/cart"><input type="hidden" name="action" value="discount" /><input type="hidden" name="code" value="" /><button class="btn btn--quiet btn--sm" type="submit">حذف کد «{discountCode}»</button></form> : null}
+						<p class="hint">اعتبار کد هنگام ثبت سفارش دوباره بررسی می‌شود.</p>
+					</div>
+				</section>
+			</aside>
+		</div>
+	)}
+</ShopLayout>

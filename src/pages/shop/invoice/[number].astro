@@ -1,0 +1,68 @@
+---
+import ShopLayout from '../../../layouts/ShopLayout.astro';
+import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { getOrder } from '../../../lib/commerce/orders';
+import { orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
+import { ORDER_ACCESS_COOKIE, verifyOrderAccessToken } from '../../../lib/commerce/order-access';
+
+export const prerender = false;
+
+const number = Astro.params.number ?? '';
+const [order, settings] = await Promise.all([getOrder(number), readSettings()]);
+const ownsOrder = Boolean(order && verifyOrderAccessToken(
+	Astro.cookies.get(ORDER_ACCESS_COOKIE)?.value,
+	order.number,
+	order.phone,
+));
+---
+
+<ShopLayout title={order && ownsOrder ? `فاکتور ${order.number}` : 'فاکتور سفارش'} description="فاکتور سفارش فروشگاه" noindex>
+	<nav class="breadcrumbs no-print" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href="/shop/track">پیگیری سفارش</a>{order && ownsOrder ? <><span aria-hidden="true">/</span><span aria-current="page">فاکتور {order.number}</span></> : null}</nav>
+
+	{!order || !ownsOrder ? (
+		<section class="tracking-page no-print" aria-labelledby="invoice-access-heading">
+			<header class="tracking-page__intro"><span class="section__eyebrow">فاکتور فروشگاه</span><h1 id="invoice-access-heading">برای نمایش فاکتور، اطلاعات را تأیید کنید</h1><p>شمارهٔ سفارش و همان شمارهٔ تماسی را وارد کنید که هنگام خرید ثبت کرده‌اید.</p></header>
+			<form method="post" action="/shop/api/order-access" class="panel tracking-form"><div class="panel__body checkout-form__body">
+				<input type="hidden" name="number" value={number} /><input type="hidden" name="returnTo" value={`/shop/invoice/${encodeURIComponent(number)}`} />
+				<div class="field"><label class="label" for="invoice-phone">شمارهٔ تماس ثبت‌شده</label><input class="input ltr" id="invoice-phone" name="phone" required maxlength="20" inputmode="tel" autocomplete="tel" /></div>
+				<button class="btn btn--primary" type="submit">نمایش فاکتور</button>
+			</div></form>
+			<p class="tracking-page__note">شمارهٔ تماس برای بررسی به سرور ارسال می‌شود و در نشانی صفحه قرار نمی‌گیرد.</p>
+		</section>
+	) : (
+		<>
+			<div class="invoice-toolbar no-print">
+				<a class="btn btn--quiet btn--sm" href={`/shop/order/${encodeURIComponent(order.number)}`}>بازگشت به سفارش</a>
+				<button class="btn btn--primary btn--sm" type="button" data-print-invoice>چاپ فاکتور</button>
+			</div>
+
+			<article class="invoice" aria-labelledby="invoice-heading">
+				<header class="invoice__header">
+					<div><a class="invoice__brand" href="/">{settings.siteTitle}</a><p>{settings.shopDescription}</p></div>
+					<div class="invoice__meta"><h1 id="invoice-heading">فاکتور <span class="ltr">{order.number}</span></h1><dl><div><dt>تاریخ</dt><dd>{faDate(order.createdAt, 'long')}</dd></div><div><dt>وضعیت</dt><dd><span class={`badge badge--${orderStatusTone(order.status)}`}>{orderStatusLabel(order.status)}</span></dd></div></dl></div>
+				</header>
+
+				<section class="invoice__customer" aria-label="اطلاعات مشتری و تحویل">
+					<div><h2>مشتری</h2><p><strong>{order.customerName}</strong></p><p class="ltr">{order.phone}</p>{order.email ? <p class="ltr">{order.email}</p> : null}</div>
+					<div><h2>نشانی تحویل</h2><p>{order.city} — {order.address}</p>{order.note ? <p>یادداشت: {order.note}</p> : null}</div>
+				</section>
+
+				<div class="table-wrap invoice__table-wrap"><table class="table invoice__table"><thead><tr><th scope="col">محصول</th><th scope="col">کد</th><th scope="col">تعداد</th><th scope="col">قیمت واحد</th><th scope="col">مجموع</th></tr></thead><tbody>{order.items.map((item) => <tr><td>{item.name}</td><td class="ltr">{item.sku}</td><td class="num">{faNumber(item.quantity)}</td><td class="num">{faMoney(item.price, settings.currency)}</td><td class="num">{faMoney(item.price * item.quantity, settings.currency)}</td></tr>)}</tbody></table></div>
+
+				<dl class="invoice__totals">
+					<div><dt>جمع کالاها</dt><dd class="num">{faMoney(order.subtotal, settings.currency)}</dd></div>
+					<div><dt>هزینهٔ ارسال</dt><dd class="num">{order.shipping === 0 ? 'رایگان' : faMoney(order.shipping, settings.currency)}</dd></div>
+					{order.discount > 0 ? <div><dt>تخفیف{order.discountCode ? ` (${order.discountCode})` : ''}</dt><dd class="num">− {faMoney(order.discount, settings.currency)}</dd></div> : null}
+					<div class="invoice__totals--grand"><dt>مبلغ نهایی</dt><dd class="num">{faMoney(order.total, settings.currency)}</dd></div>
+				</dl>
+				<footer class="invoice__footer">فاکتور صادرشده از فروشگاه {settings.siteTitle}.</footer>
+			</article>
+		</>
+	)}
+</ShopLayout>
+
+<script>
+	const printButton = document.querySelector<HTMLButtonElement>('[data-print-invoice]');
+	printButton?.addEventListener('click', () => window.print());
+</script>

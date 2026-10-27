@@ -1,0 +1,114 @@
+---
+import ShopLayout from '../../../layouts/ShopLayout.astro';
+import { faDateTime, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { getOrder, SHIPPING } from '../../../lib/commerce/orders';
+import { orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
+import { ORDER_ACCESS_COOKIE, verifyOrderAccessToken } from '../../../lib/commerce/order-access';
+
+export const prerender = false;
+
+const number = Astro.params.number ?? '';
+const [order, settings] = await Promise.all([getOrder(number), readSettings()]);
+const verified = Boolean(order && verifyOrderAccessToken(
+	Astro.cookies.get(ORDER_ACCESS_COOKIE)?.value,
+	order.number,
+	order.phone,
+));
+const terminal = order?.status === 'cancelled' || order?.status === 'refunded';
+const steps = ['pending', 'paid', 'processing', 'shipped', 'delivered'] as const;
+const activeStep = order ? steps.indexOf(order.status as (typeof steps)[number]) : -1;
+const paymentStatus = Astro.url.searchParams.get('payment') ?? '';
+const hasPaymentError = Astro.url.searchParams.has('error');
+const paymentNotice = hasPaymentError
+	? { tone: 'error', text: 'در بازگشت از درگاه مشکلی پیش آمد؛ وضعیت سفارش را بررسی کنید.' }
+	: paymentStatus === 'success'
+		? { tone: 'success', text: 'پرداخت از سوی درگاه تأیید و در سفارش ثبت شد.' }
+		: paymentStatus === 'failed'
+			? { tone: 'error', text: 'این سفارش لغو شده است؛ برای بررسی وضعیت پرداخت با پشتیبانی تماس بگیرید.' }
+			: paymentStatus === 'not-confirmed'
+				? { tone: 'plain', text: 'در بازگشت از درگاه، پرداخت موفق تأیید نشد. سفارش همچنان در انتظار است؛ اگر مبلغی کسر شده، دوباره پرداخت نکنید و وضعیت را با پشتیبانی بررسی کنید.' }
+			: paymentStatus === 'unknown' || order?.paymentState === 'unknown'
+				? { tone: 'error', text: 'نتیجهٔ پرداخت هنوز قابل تأیید نیست. برای جلوگیری از پرداخت تکراری، دوباره پرداخت نکنید و با پشتیبانی تماس بگیرید.' }
+				: paymentStatus === 'processing' || order?.paymentState === 'initiating' || order?.paymentState === 'verifying'
+					? { tone: 'plain', text: 'درخواست پرداخت در حال بررسی است؛ این صفحه را کمی بعد دوباره ببینید.' }
+					: order?.paymentState === 'not-configured'
+						? { tone: 'plain', text: 'سفارش ثبت شد، اما درگاه پرداخت آنلاین برای این فروشگاه فعال نیست.' }
+						: null;
+---
+
+<ShopLayout title={order && verified ? `سفارش ${order.number}` : 'پیگیری سفارش'} noindex>
+	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href="/shop/track">پیگیری سفارش</a>{order && verified ? <><span aria-hidden="true">/</span><span aria-current="page">{order.number}</span></> : null}</nav>
+
+	{!order || !verified ? (
+		<section class="tracking-page" aria-labelledby="order-access-heading">
+			<header class="tracking-page__intro"><span class="section__eyebrow">تأیید سفارش</span><h1 id="order-access-heading">برای دیدن وضعیت سفارش، اطلاعات را تأیید کنید</h1><p>شمارهٔ سفارش و همان شمارهٔ تماسی را وارد کنید که هنگام خرید ثبت کرده‌اید.</p></header>
+			<form method="post" action="/shop/api/order-access" class="panel tracking-form">
+				<div class="panel__body checkout-form__body">
+					<input type="hidden" name="number" value={number} />
+					<input type="hidden" name="returnTo" value={`/shop/order/${encodeURIComponent(number)}`} />
+					<div class="field"><label class="label" for="order-phone">شمارهٔ تماس ثبت‌شده</label><input class="input ltr" id="order-phone" name="phone" required maxlength="20" inputmode="tel" autocomplete="tel" /></div>
+					<button class="btn btn--primary" type="submit">نمایش سفارش</button>
+				</div>
+			</form>
+			<p class="tracking-page__note">شمارهٔ تماس برای بررسی به سرور ارسال می‌شود و در نشانی صفحه قرار نمی‌گیرد.</p>
+		</section>
+	) : (
+		<>
+			<header class="page-heading page-heading--order">
+				<div><span class="section__eyebrow">جزئیات سفارش</span><h1>سفارش <span class="ltr">{order.number}</span></h1><p>ثبت‌شده در {faDateTime(order.createdAt)} — مبلغ {faMoney(order.total, settings.currency)}</p></div>
+				<span class={`badge badge--${orderStatusTone(order.status)}`}>{orderStatusLabel(order.status)}</span>
+			</header>
+
+			{paymentNotice ? <p class:list={['notice', paymentNotice.tone === 'error' && 'notice--error', paymentNotice.tone === 'success' && 'notice--success', 'order-payment-message']} role={paymentNotice.tone === 'error' ? 'alert' : 'status'}>{paymentNotice.text}</p> : null}
+
+			<div class="cart-layout order-layout">
+				<div class="order-main">
+					<section class="panel" aria-labelledby="order-status-heading">
+						<div class="panel__head"><h2 id="order-status-heading">وضعیت سفارش</h2><span class="hint">به‌روزرسانی: {faDateTime(order.updatedAt)}</span></div>
+						<div class="panel__body">
+							{terminal ? (
+								<p class="notice notice--error">این سفارش {order.status === 'cancelled' ? 'لغو شده است' : 'بازپرداخت شده است'}.</p>
+							) : (
+							<ol class="order-progress">
+								{steps.map((step, index) => <li class:list={['order-progress__step', index < activeStep && 'is-complete', index === activeStep && 'is-current']} aria-current={index === activeStep ? 'step' : undefined}><span class="order-progress__number">{faNumber(index + 1)}</span><span>{orderStatusLabel(step)}</span></li>)}
+							</ol>
+							)}
+							<p class="order-data-gap">کد رهگیری شرکت حمل‌ونقل در اطلاعات این سفارش ثبت نشده است؛ وضعیت بالا، وضعیت ثبت‌شدهٔ سفارش را نشان می‌دهد.</p>
+						</div>
+					</section>
+
+					<section class="panel" aria-labelledby="order-items-heading">
+						<div class="panel__head"><h2 id="order-items-heading">اقلام سفارش</h2></div>
+						{order.items.map((item) => <div class="order-item"><div><strong>{item.name}</strong><p class="cart-line__meta"><span class="ltr">{item.sku}</span> — {faMoney(item.price, settings.currency)} × {faNumber(item.quantity)}</p></div><strong class="num">{faMoney(item.price * item.quantity, settings.currency)}</strong></div>)}
+					</section>
+				</div>
+
+				<aside class="order-summary" aria-label="اطلاعات سفارش">
+					<section class="panel">
+						<div class="panel__head">صورت‌حساب</div>
+						<div class="panel__body totals">
+							<div class="totals__row"><span>جمع کالاها</span><span class="num">{faMoney(order.subtotal, settings.currency)}</span></div>
+							<div class="totals__row"><span>ارسال</span><span class="num">{order.shipping === 0 ? 'رایگان' : faMoney(order.shipping, settings.currency)}</span></div>
+							{order.discount > 0 ? <div class="totals__row totals__row--discount"><span>تخفیف{order.discountCode ? ` (${order.discountCode})` : ''}</span><span class="num">− {faMoney(order.discount, settings.currency)}</span></div> : null}
+							<div class="totals__row totals__row--grand"><span>مبلغ نهایی</span><span class="num">{faMoney(order.total, settings.currency)}</span></div>
+						</div>
+					</section>
+
+					<section class="panel">
+						<div class="panel__head">اطلاعات تحویل</div>
+						<dl class="order-address panel__body"><div><dt>نام</dt><dd>{order.customerName}</dd></div><div><dt>شمارهٔ تماس</dt><dd class="ltr">{order.phone}</dd></div>{order.email ? <div><dt>ایمیل</dt><dd class="ltr">{order.email}</dd></div> : null}<div><dt>نشانی</dt><dd>{order.city} — {order.address}</dd></div>{order.note ? <div><dt>یادداشت</dt><dd>{order.note}</dd></div> : null}</dl>
+					</section>
+
+					<nav class="order-actions" aria-label="اقدام‌های سفارش">
+						{order.status === 'pending' && order.paymentState === 'initiated' && order.paymentUrl ? <a class="btn btn--primary btn--block" href={order.paymentUrl} rel="nofollow">ادامهٔ پرداخت</a> : null}
+						{!terminal ? <a class="btn btn--primary btn--block" href={`/shop/invoice/${encodeURIComponent(order.number)}`}>مشاهدهٔ فاکتور</a> : null}
+						<a class="btn btn--quiet btn--block" href="/shop/track">پیگیری سفارش دیگر</a>
+						<a class="order-actions__link" href="/shop">بازگشت به فروشگاه</a>
+						<p class="hint">هزینهٔ پایهٔ ارسال: {faMoney(SHIPPING.fee, settings.currency)}.</p>
+					</nav>
+				</aside>
+			</div>
+		</>
+	)}
+</ShopLayout>

@@ -1,0 +1,142 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import ProductCard from '../../components/store/ProductCard.astro';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { listProducts, listPublicProducts } from '../../lib/commerce/products';
+import { faNumber } from '../../lib/cms/fa';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const category = (Astro.url.searchParams.get('category') ?? '').trim();
+const requestedSort = Astro.url.searchParams.get('sort') ?? 'newest';
+const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+const sortOptions = [
+	{ value: 'newest', label: 'آخرین به‌روزرسانی' },
+	{ value: 'price-asc', label: 'قیمت: کم به زیاد' },
+	{ value: 'price-desc', label: 'قیمت: زیاد به کم' },
+	{ value: 'name', label: 'نام محصول' },
+] as const;
+const sort = sortOptions.some((option) => option.value === requestedSort)
+	? requestedSort as (typeof sortOptions)[number]['value']
+	: 'newest';
+
+let result: Awaited<ReturnType<typeof listProducts>> | null = null;
+let activeProducts: Awaited<ReturnType<typeof listPublicProducts>> = [];
+if (settings.commerceEnabled) {
+	[result, activeProducts] = await Promise.all([
+		listProducts({ query, status: 'active', category, sort, page, perPage: 12 }),
+		listPublicProducts(),
+	]);
+}
+const categories = [...new Set(activeProducts.map((product) => product.category))].sort((left, right) => left.localeCompare(right, 'fa'));
+
+function catalogUrl(overrides: { q?: string; category?: string; sort?: string; page?: number } = {}): string {
+	const values = {
+		q: query,
+		category,
+		sort,
+		page: result?.page ?? 1,
+		...overrides,
+	};
+	const params = new URLSearchParams();
+	if (values.q) params.set('q', values.q);
+	if (values.category) params.set('category', values.category);
+	if (values.sort !== 'newest') params.set('sort', values.sort);
+	if (values.page > 1) params.set('page', String(values.page));
+	const search = params.toString();
+	return search ? `/shop?${search}` : '/shop';
+}
+---
+
+<ShopLayout title={settings.shopTitle} description={settings.shopDescription} cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><span aria-current="page">فروشگاه</span></nav>
+
+	{settings.commerceEnabled && result ? (
+		<>
+			<header class="page-heading">
+				<div>
+					<span class="section__eyebrow">فهرست محصولات فعال</span>
+					<h1>{settings.shopTitle}</h1>
+					{settings.shopDescription ? <p>{settings.shopDescription}</p> : null}
+				</div>
+				<span class="page-heading__count">{faNumber(result.total)} محصول</span>
+			</header>
+
+			<div class="catalog-toolbar">
+				<form class="catalog-toolbar__search" action="/shop" method="get" role="search">
+					<label class="sr-only" for="catalog-search">جست‌وجو در محصولات</label>
+					<input class="input" id="catalog-search" type="search" name="q" value={query} placeholder="نام محصول، دسته یا کد کالا…" />
+					{category ? <input type="hidden" name="category" value={category} /> : null}
+					{sort !== 'newest' ? <input type="hidden" name="sort" value={sort} /> : null}
+					<button class="btn btn--primary" type="submit">جست‌وجو</button>
+				</form>
+
+				<div class="catalog-toolbar__row">
+					<nav class="catalog-filters" aria-label="فیلتر دسته‌بندی">
+						<a class="filter-chip" href={catalogUrl({ category: '' })} aria-current={!category ? 'true' : undefined}>همهٔ دسته‌ها</a>
+						{categories.map((item) => (
+							<a class={`filter-chip${category === item ? ' filter-chip--active' : ''}`} href={catalogUrl({ category: category === item ? '' : item, page: 1 })} aria-current={category === item ? 'true' : undefined}>{item}</a>
+						))}
+					</nav>
+
+					<form class="catalog-sort-form" action="/shop" method="get">
+						<label for="catalog-sort">مرتب‌سازی</label>
+						<select class="select" id="catalog-sort" name="sort">
+							{sortOptions.map((option) => <option value={option.value} selected={option.value === sort}>{option.label}</option>)}
+						</select>
+						{query ? <input type="hidden" name="q" value={query} /> : null}
+						{category ? <input type="hidden" name="category" value={category} /> : null}
+						<button class="btn btn--sm" type="submit">اعمال</button>
+					</form>
+				</div>
+			</div>
+
+			{query || category || sort !== 'newest' ? (
+				<div class="catalog-active-filters">
+					<span>فیلترهای فعال:</span>
+					{query ? <span class="filter-chip filter-chip--active">جست‌وجو: <b class="ltr">{query}</b></span> : null}
+					{category ? <span class="filter-chip filter-chip--active">{category}</span> : null}
+					{sort !== 'newest' ? <span class="filter-chip filter-chip--active">{sortOptions.find((option) => option.value === sort)?.label}</span> : null}
+					<a class="catalog-reset" href="/shop">پاک‌کردن همه</a>
+				</div>
+			) : null}
+
+			<div class="catalog__count">نمایش {faNumber(result.items.length)} از {faNumber(result.total)} محصول</div>
+
+			{result.items.length > 0 ? (
+				<div class="product-grid">
+					{result.items.map((product) => <ProductCard product={product} currency={settings.currency} />)}
+				</div>
+			) : (
+				<div class="empty-state catalog-empty">
+					<h2>محصولی پیدا نشد</h2>
+					<p>{query || category ? 'عبارت جست‌وجو یا دسته‌بندی را تغییر دهید.' : 'در حال حاضر محصول فعالی در فروشگاه ثبت نشده است.'}</p>
+					<a class="btn empty-state__action" href="/shop">نمایش همهٔ محصولات</a>
+				</div>
+			)}
+
+			{result.pages > 1 ? (
+				<nav class="pagination" aria-label="صفحه‌بندی محصولات">
+					{result.page > 1 ? <a class="btn" href={catalogUrl({ page: result.page - 1 })}>صفحهٔ قبل</a> : null}
+					{Array.from({ length: result.pages }, (_, index) => index + 1).map((pageNumber) => (
+						<a class="btn" href={catalogUrl({ page: pageNumber })} aria-current={pageNumber === result.page ? 'page' : undefined}>{faNumber(pageNumber)}</a>
+					))}
+					{result.page < result.pages ? <a class="btn" href={catalogUrl({ page: result.page + 1 })}>صفحهٔ بعد</a> : null}
+				</nav>
+			) : null}
+		</>
+	) : (
+		<section class="empty-state empty-state--page">
+			<span class="empty-state__eyebrow">فروشگاه</span>
+			<h1>فروشگاه موقتاً غیرفعال است</h1>
+			<p>مجله و راهنماهای منتشرشده همچنان در دسترس‌اند.</p>
+			<a class="btn btn--primary empty-state__action" href="/blog">رفتن به مجله</a>
+		</section>
+	)}
+</ShopLayout>

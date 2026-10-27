@@ -1,0 +1,41 @@
+---
+import ProductArtwork from './ProductArtwork.astro';
+import { faMoney } from '../../lib/cms/fa';
+import type { Product } from '../../lib/commerce/types';
+
+interface Props {
+	product: Product;
+	currency?: string;
+}
+
+const { product, currency = 'تومان' } = Astro.props;
+const onSale = typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+const soldOut = product.stock === 0;
+---
+
+<article class="product-card">
+	<div class="product-card__media">
+		<ProductArtwork product={product} />
+		{product.featured ? <span class="badge badge--accent product-card__flag">پیشنهاد</span> : null}
+		{soldOut ? <span class="badge badge--danger product-card__flag product-card__flag--stock">ناموجود</span> : null}
+	</div>
+
+	<div class="product-card__body">
+		<span class="product-card__category">{product.category}</span>
+		<h3 class="product-card__name"><a href={`/shop/${product.slug}`}>{product.name}</a></h3>
+		<p class="product-card__desc">{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
+		<div class="product-card__meta">
+			<span class="ltr">{product.sku}</span>
+			<span>تصویر اختصاصی ثبت نشده</span>
+		</div>
+		<div class="product-card__foot">
+			<div class="product-card__price">
+				{onSale ? <span class="product-card__price--compare num">{faMoney(product.compareAtPrice!, currency)}</span> : null}
+				<span class="num">{faMoney(product.price, currency)}</span>
+			</div>
+			<a class="btn btn--primary product-card__action" href={`/shop/${product.slug}`}>
+				{soldOut ? 'جزئیات' : 'مشاهده'}
+			</a>
+		</div>
+	</div>
+</article>

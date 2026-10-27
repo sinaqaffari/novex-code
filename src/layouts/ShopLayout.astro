@@ -1,0 +1,59 @@
+---
+/* Shared document shell for public marketplace, article, and informational routes. */
+import '@fontsource-variable/vazirmatn';
+import '../styles/store.css';
+import Header from '../components/store/Header.astro';
+import Footer from '../components/store/Footer.astro';
+
+interface Props {
+	title: string;
+	description?: string;
+	cartCount?: number;
+	type?: 'website' | 'article';
+	image?: string;
+	publishedAt?: string;
+	noindex?: boolean;
+}
+
+const {
+	title,
+	description = '',
+	cartCount,
+	type = 'website',
+	image,
+	publishedAt,
+	noindex = false,
+} = Astro.props;
+const documentTitle = title.includes('نووکس‌کد') ? title : `${title} | نووکس‌کد`;
+const canonical = new URL(Astro.url.pathname, Astro.site?.toString() ?? Astro.url.origin).toString();
+---
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<meta name="theme-color" content="#f6f5f1" />
+		{noindex ? <meta name="robots" content="noindex, nofollow" /> : null}
+		<title>{documentTitle}</title>
+		{description && <meta name="description" content={description} />}
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="canonical" href={canonical} />
+		<meta property="og:site_name" content="نووکس‌کد" />
+		<meta property="og:title" content={title} />
+		{description && <meta property="og:description" content={description} />}
+		<meta property="og:type" content={type} />
+		<meta property="og:locale" content="fa_IR" />
+		<meta property="og:url" content={canonical} />
+		{type === 'article' && publishedAt && <meta property="article:published_time" content={publishedAt} />}
+		{image && <meta property="og:image" content={new URL(image, canonical).toString()} />}
+	</head>
+	<body class="store">
+		<a class="skip-link" href="#main">پرش به محتوای اصلی</a>
+		<Header cartCount={cartCount} />
+		<main id="main" class="container site-main">
+			<slot />
+		</main>
+		<Footer />
+	</body>
+</html>

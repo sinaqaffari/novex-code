@@ -1,0 +1,41 @@
+---
+import EditorialArtwork from './EditorialArtwork.astro';
+import { faDate, faReadingTime } from '../../lib/cms/fa';
+
+interface Props {
+	post: {
+		title: string;
+		description: string;
+		pubDate: string;
+		words: number;
+		tags: string[];
+		slug: string;
+		heroImage?: string;
+	};
+	featured?: boolean;
+	compact?: boolean;
+}
+
+const { post, featured = false, compact = false } = Astro.props;
+const category = post.tags?.[0] ?? 'مقاله';
+const cardClass = `story-card${featured ? ' story-card--featured' : ''}${compact ? ' story-card--compact' : ''}`;
+const articleUrl = `/blog/${post.slug}`;
+---
+
+<article class={cardClass}>
+	<a class="story-card__media" href={articleUrl} aria-label={`خواندن مقالهٔ ${post.title}`}>
+		<EditorialArtwork post={post} />
+	</a>
+	<div class="story-card__body">
+		<div class="story-card__eyebrow">
+			<a class="story-card__tag" href={`/blog?tag=${encodeURIComponent(category)}`}>{category}</a>
+			<time datetime={post.pubDate}>{faDate(post.pubDate)}</time>
+		</div>
+		<h3 class="story-card__title"><a href={articleUrl}>{post.title}</a></h3>
+		<p class="story-card__desc">{post.description}</p>
+		<div class="story-card__footer">
+			<span class="story-card__reading">{faReadingTime(post.words)}</span>
+			<a class="story-card__link" href={articleUrl}>خواندن مقاله <span aria-hidden="true">←</span></a>
+		</div>
+	</div>
+</article>

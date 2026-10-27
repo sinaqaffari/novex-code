@@ -1,20 +1,122 @@
 ---
-import { type CollectionEntry, getCollection, render } from 'astro:content';
-import BlogPost from '../../layouts/BlogPost.astro';
+import { createSafeMarkdownRenderer, renderMarkdown } from '../../lib/cms/markdown';
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import BlogPreview from '../../components/store/BlogPreview.astro';
+import EditorialArtwork from '../../components/store/EditorialArtwork.astro';
+import { publicImageSrc } from '../../lib/cms/public-image';
+import { faDate, faReadingTime } from '../../lib/cms/fa';
+import { getPostDraft, listPosts } from '../../lib/cms/posts';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { readSettings } from '../../lib/cms/settings';
 
-export async function getStaticPaths() {
-	const posts = await getCollection('blog');
-	return posts.map((post) => ({
-		params: { slug: post.id },
-		props: post,
-	}));
+export const prerender = false;
+
+interface TocItem {
+	id: string;
+	level: number;
+	text: string;
 }
-type Props = CollectionEntry<'blog'>;
 
-const post = Astro.props;
-const { Content } = await render(post);
+const { slug = '' } = Astro.params;
+const [allPosts, settings, cart] = await Promise.all([
+	listPosts(),
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+const posts = allPosts.filter((post) => !post.draft && post.id.toLowerCase().endsWith('.md'));
+const summary = posts.find((post) => post.slug === slug);
+const draft = summary ? await getPostDraft(summary.id) : null;
+
+if (!draft) Astro.response.status = 404;
+
+const toc: TocItem[] = [];
+const renderer = createSafeMarkdownRenderer();
+renderer.heading = function ({ depth, text, tokens }) {
+	const id = `section-${toc.length + 1}`;
+	const label = text
+		.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+		.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+		.replace(/`([^`]*)`/g, '$1')
+		.replace(/[*_~]/g, '')
+		.trim();
+	toc.push({ id, level: depth, text: label });
+	return `<h${depth} id="${id}">${this.parser.parseInline(tokens)}</h${depth}>\n`;
+};
+const html = draft ? await renderMarkdown(draft.body, { renderer }) : '';
+const related = summary
+	? posts.filter((post) => post.id !== summary.id && post.tags.some((tag) => summary.tags.includes(tag))).slice(0, 3)
+	: [];
+const pageTitle = draft?.title ?? 'نوشته پیدا نشد';
+const pageDescription = draft?.description ?? 'این نوشته در دسترس نیست.';
 ---
 
-<BlogPost {...post.data}>
-	<Content />
-</BlogPost>
+<ShopLayout
+	title={pageTitle}
+	description={draft?.description}
+	cartCount={cart.count}
+	type="article"
+	image={publicImageSrc(draft?.heroImage)}
+	publishedAt={draft?.pubDate}
+>
+	{draft && summary ? (
+		<>
+			<nav class="breadcrumbs" aria-label="مسیر">
+				<a href="/">خانه</a><span aria-hidden="true">/</span><a href="/blog">مجله</a><span aria-hidden="true">/</span><span aria-current="page">{draft.title}</span>
+			</nav>
+
+			<article class="article">
+				<header class="article__head">
+					{draft.tags.length > 0 ? <a class="article__category" href={`/blog?tag=${encodeURIComponent(draft.tags[0])}`}>{draft.tags[0]}</a> : null}
+					<h1 class="article__title">{draft.title}</h1>
+					{draft.description ? <p class="article__lede">{draft.description}</p> : null}
+					<div class="article__meta">
+						<time datetime={draft.pubDate}>{faDate(draft.pubDate)}</time>
+						{draft.updatedDate ? <time datetime={draft.updatedDate}>آخرین ویرایش: {faDate(draft.updatedDate)}</time> : null}
+						<span>{faReadingTime(summary.words)}</span>
+						{settings.showAuthor && settings.authorName ? <span>{settings.authorName}</span> : null}
+					</div>
+					<div class="article__hero"><EditorialArtwork post={draft} /></div>
+				</header>
+
+				<div class={`article-reading-layout${toc.length > 0 ? ' article-reading-layout--toc' : ''}`}>
+					{toc.length > 0 ? (
+						<aside class="article-toc">
+							<details open>
+								<summary>فهرست مطالب</summary>
+								<nav aria-label="فهرست مطالب مقاله">
+									<ol>
+										{toc.map((item) => <li class={`article-toc__level-${item.level}`}><a href={`#${item.id}`}>{item.text}</a></li>)}
+									</ol>
+								</nav>
+							</details>
+						</aside>
+					) : null}
+					<div class="prose article__content" set:html={html} />
+				</div>
+
+				{draft.tags.length > 0 ? (
+					<footer class="article__foot">
+						<span>موضوع‌ها</span>
+						<div class="article__tags">
+							{draft.tags.map((tag) => <a href={`/blog?tag=${encodeURIComponent(tag)}`}>{tag}</a>)}
+						</div>
+					</footer>
+				) : null}
+			</article>
+
+			{related.length > 0 ? (
+				<section class="article__related" aria-labelledby="related-heading">
+					<div class="story-section-head"><h2 id="related-heading">مطالب مرتبط</h2><a href="/blog">همهٔ نوشته‌ها <span aria-hidden="true">←</span></a></div>
+					<div class="story-grid story-grid--related">{related.map((post) => <BlogPreview post={post} compact />)}</div>
+				</section>
+			) : null}
+		</>
+	) : (
+		<section class="empty-state empty-state--page">
+			<span class="empty-state__eyebrow">۴۰۴ — صفحه پیدا نشد</span>
+			<h1>این نوشته در دسترس نیست</h1>
+			<p>{pageDescription}</p>
+			<a class="btn btn--primary empty-state__action" href="/blog">بازگشت به مجله</a>
+		</section>
+	)}
+</ShopLayout>

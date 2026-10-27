@@ -1,0 +1,36 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
+const lookupError = Astro.url.searchParams.get('error');
+if (!settings.commerceEnabled) return Astro.redirect('/shop');
+---
+
+<ShopLayout title="پیگیری سفارش" description="پیگیری وضعیت سفارش با شماره سفارش و شماره تماس ثبت‌شده." cartCount={cart.count} noindex>
+	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><span aria-current="page">پیگیری سفارش</span></nav>
+
+	<section class="tracking-page" aria-labelledby="tracking-heading">
+		<header class="tracking-page__intro">
+			<span class="section__eyebrow">فروشگاه</span>
+			<h1 id="tracking-heading">پیگیری سفارش</h1>
+			<p>شمارهٔ سفارش و همان شمارهٔ تماسی را وارد کنید که هنگام ثبت سفارش داده‌اید.</p>
+		</header>
+		<form method="post" action="/shop/api/order-access" class="panel tracking-form">
+			<div class="panel__body checkout-form__body">
+				{lookupError === 'not-found' ? <p class="notice notice--error" role="alert">شمارهٔ سفارش یا شمارهٔ تماس با اطلاعات ثبت‌شده مطابقت ندارد.</p> : null}
+				{lookupError === 'rate-limited' ? <p class="notice notice--error" role="alert">تلاش‌های پی‌درپی ثبت شد؛ چند دقیقه بعد دوباره امتحان کنید.</p> : null}
+				<div class="field"><label class="label" for="tracking-number">شمارهٔ سفارش</label><input class="input ltr" id="tracking-number" name="number" required maxlength="40" autocomplete="off" /></div>
+				<div class="field"><label class="label" for="tracking-phone">شمارهٔ تماس ثبت‌شده</label><input class="input ltr" id="tracking-phone" name="phone" required maxlength="20" inputmode="tel" autocomplete="tel" /></div>
+				<button class="btn btn--primary" type="submit">نمایش وضعیت سفارش</button>
+			</div>
+		</form>
+		<p class="tracking-page__note">شمارهٔ تماس برای بررسی به سرور ارسال می‌شود و در نشانی صفحه قرار نمی‌گیرد. این فروشگاه حساب کاربری یا سابقهٔ خرید ارائه نمی‌کند.</p>
+	</section>
+</ShopLayout>

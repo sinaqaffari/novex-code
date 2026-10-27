@@ -1,0 +1,63 @@
+{
+	"name": "ابزارهای فارسی",
+	"version": "1.0.0",
+	"description": "تبدیل تاریخ به تقویم جلالی، اعداد انگلیسی به فارسی و تنظیمات نمایش تاریخ در کل سایت.",
+	"pluginUri": "https://example.com/plugins/persian-tools",
+	"author": "تیم نووکس",
+	"authorUri": "https://example.com",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-persian-tools",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"farsi",
+		"jalali",
+		"calendar",
+		"numbers",
+		"admin"
+	],
+	"hooks": [
+		"cms.dashboard.widgets"
+	],
+	"capabilities": [
+		"cms:widgets",
+		"options:read",
+		"options:write",
+		"admin:page"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات فارسی",
+				"description": "فرمت نمایش تاریخ، استفاده از اعداد فارسی و نمایش روز هفته"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "dateFormat",
+			"label": "فرمت نمایش تاریخ",
+			"type": "text",
+			"default": "medium",
+			"help": "short، medium یا long"
+		},
+		{
+			"key": "usePersianDigits",
+			"label": "استفاده از اعداد فارسی در کل سایت",
+			"type": "switch",
+			"default": true,
+			"help": "اگر فعال باشد اعداد انگلیسی به اعداد فارسی تبدیل می‌شوند."
+		},
+		{
+			"key": "showWeekday",
+			"label": "نمایش روز هفته در تاریخ",
+			"type": "switch",
+			"default": false,
+			"help": "مثل «سه‌شنبه ۱۲ آبان ۱۴۰۵»"
+		}
+	],
+	"id": "persian-tools",
+	"apiVersion": 1
+}

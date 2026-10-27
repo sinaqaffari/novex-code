@@ -1,112 +1,138 @@
 ---
-import { Image } from 'astro:assets';
-import { getCollection } from 'astro:content';
-import BaseHead from '../../components/BaseHead.astro';
-import Footer from '../../components/Footer.astro';
-import FormattedDate from '../../components/FormattedDate.astro';
-import Header from '../../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import BlogPreview from '../../components/store/BlogPreview.astro';
+import { faDate, faNumber } from '../../lib/cms/fa';
+import { getPostDraft, listPosts } from '../../lib/cms/posts';
+import { readSettings } from '../../lib/cms/settings';
 
-const posts = (await getCollection('blog')).sort(
-	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
-);
+export const prerender = false;
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const activeTag = (Astro.url.searchParams.get('tag') ?? '').trim();
+const [allPosts, settings] = await Promise.all([listPosts(), readSettings()]);
+const publishedPosts = allPosts.filter((post) => !post.draft && post.id.toLowerCase().endsWith('.md'));
+
+function normalize(value: string): string {
+	return value.toLowerCase().replace(/[يى]/g, 'ی').replace(/ك/g, 'ک');
+}
+
+const normalizedQuery = normalize(query);
+const searchEntries = normalizedQuery
+	? await Promise.all(publishedPosts.map(async (post) => {
+			const draft = await getPostDraft(post.id);
+			return { id: post.id, text: normalize(`${draft.title} ${draft.description} ${draft.tags.join(' ')} ${draft.body}`) };
+	  }))
+	: [];
+const matchingIds = new Set(searchEntries.filter((entry) => entry.text.includes(normalizedQuery)).map((entry) => entry.id));
+const posts = publishedPosts.filter((post) => (!activeTag || post.tags.includes(activeTag)) && (!normalizedQuery || matchingIds.has(post.id)));
+
+const categoryCounts = new Map<string, number>();
+for (const post of publishedPosts) {
+	for (const tag of post.tags) categoryCounts.set(tag, (categoryCounts.get(tag) ?? 0) + 1);
+}
+const categories = [...categoryCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'fa'));
+const [featuredPost, ...recentPosts] = posts;
+const sidebarRecent = publishedPosts.filter((post) => post.id !== featuredPost?.id).slice(0, 3);
+
+function tagUrl(tag: string): string {
+	const params = new URLSearchParams();
+	if (query) params.set('q', query);
+	if (tag) params.set('tag', tag);
+	const search = params.toString();
+	return search ? `/blog?${search}` : '/blog';
+}
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-		<style>
-			main {
-				width: 960px;
-			}
-			ul {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 2rem;
-				list-style-type: none;
-				margin: 0;
-				padding: 0;
-			}
-			ul li {
-				width: calc(50% - 1rem);
-			}
-			ul li * {
-				text-decoration: none;
-				transition: 0.2s ease;
-			}
-			ul li:first-child {
-				width: 100%;
-				margin-bottom: 1rem;
-				text-align: center;
-			}
-			ul li:first-child img {
-				width: 100%;
-			}
-			ul li:first-child .title {
-				font-size: 2.369rem;
-			}
-			ul li img {
-				margin-bottom: 0.5rem;
-				border-radius: 12px;
-			}
-			ul li a {
-				display: block;
-			}
-			.title {
-				margin: 0;
-				color: rgb(var(--black));
-				line-height: 1;
-			}
-			.date {
-				margin: 0;
-				color: rgb(var(--gray));
-			}
-			ul li a:hover h4,
-			ul li a:hover .date {
-				color: rgb(var(--accent));
-			}
-			ul a:hover img {
-				box-shadow: var(--box-shadow);
-			}
-			@media (max-width: 720px) {
-				ul {
-					gap: 0.5em;
-				}
-				ul li {
-					width: 100%;
-					text-align: center;
-				}
-				ul li:first-child {
-					margin-bottom: 0;
-				}
-				ul li:first-child .title {
-					font-size: 1.563em;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<Header />
-		<main>
-			<section>
-				<ul>
-					{posts.map((post) => (
-						<li>
-							<a href={`/blog/${post.id}/`}>
-								{post.data.heroImage && (
-									<Image width={720} height={360} src={post.data.heroImage} alt="" />
-								)}
-								<h4 class="title">{post.data.title}</h4>
-								<p class="date">
-									<FormattedDate date={post.data.pubDate} />
-								</p>
-							</a>
-						</li>
-					))}
+<ShopLayout title="مجله توسعه‌دهندگان" description="راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.">
+	<header class="blog-intro">
+		<div class="blog-intro__copy">
+			<span class="blog-intro__eyebrow">یادداشت‌های فنی برای سازندگان وب</span>
+			<h1 class="blog-intro__title">مجله توسعه‌دهندگان</h1>
+			<p class="blog-intro__desc">راهنماهای فنی، تجربه‌های واقعی توسعه و آموزش ابزارهایی که در پروژه‌های روزمره به کار می‌آیند.</p>
+		</div>
+		<div class="blog-intro__count"><strong>{faNumber(publishedPosts.length)}</strong> نوشتهٔ منتشرشده</div>
+	</header>
+
+	<div class="editorial-layout">
+		<section class="editorial-main" aria-label="نوشته‌های مجله">
+			{featuredPost ? (
+				<>
+					<div class="story-feature">
+						<BlogPreview post={featuredPost} featured />
+					</div>
+					<div class="story-section-head">
+						<h2>{query || activeTag ? 'نتیجه‌های جست‌وجو' : 'نوشته‌های تازه'}</h2>
+						<span>{faNumber(posts.length)} نوشته</span>
+					</div>
+					{recentPosts.length > 0 ? (
+						<div class="story-grid">
+							{recentPosts.map((post) => <BlogPreview post={post} />)}
+						</div>
+					) : (
+						<p class="hint">همین نوشته در فهرست فعلی قرار دارد.</p>
+					)}
+				</>
+			) : (
+				<div class="empty-state">
+					<h2>نوشته‌ای پیدا نشد</h2>
+					<p>عبارت دیگری را جست‌وجو کنید یا فیلتر موضوع را بردارید.</p>
+					<a class="btn btn--primary empty-state__action" href="/blog">نمایش همهٔ نوشته‌ها</a>
+				</div>
+			)}
+		</section>
+
+		<aside class="editorial-sidebar" aria-label="ابزارها و راهنماهای مجله">
+			<section class="sidebar-block">
+				<h2 class="sidebar-block__title">جست‌وجو در نوشته‌ها</h2>
+				<form class="blog-search" action="/blog" method="get" role="search">
+					<label class="sr-only" for="blog-search">عبارت جست‌وجو</label>
+					<input class="input" id="blog-search" type="search" name="q" value={query} placeholder="موضوع یا واژه…" />
+					{activeTag ? <input type="hidden" name="tag" value={activeTag} /> : null}
+					<button class="btn" type="submit">جست‌وجو</button>
+				</form>
+				{query || activeTag ? <a class="sidebar-reset" href="/blog">پاک‌کردن جست‌وجو و فیلتر</a> : null}
+			</section>
+
+			{categories.length > 0 ? (
+				<section class="sidebar-block">
+					<h2 class="sidebar-block__title">موضوع‌ها</h2>
+					<ul class="category-list">
+						{categories.map(([tag, count]) => (
+							<li>
+								<a href={tagUrl(tag)} aria-current={activeTag === tag ? 'true' : undefined}>
+									<span>{tag}</span><span class="category-list__count">{faNumber(count)}</span>
+								</a>
+							</li>
+						))}
+					</ul>
+				</section>
+			) : null}
+
+			{sidebarRecent.length > 0 ? (
+				<section class="sidebar-block">
+					<h2 class="sidebar-block__title">تازه‌های مجله</h2>
+					<ul class="latest-list">
+						{sidebarRecent.map((post) => (
+							<li>
+								<a href={`/blog/${post.slug}`}>
+									<span>{post.title}</span>
+									<time class="latest-list__date" datetime={post.pubDate}>{faDate(post.pubDate)}</time>
+								</a>
+							</li>
+						))}
+					</ul>
+				</section>
+			) : null}
+
+			<section class="sidebar-block">
+				<h2 class="sidebar-block__title">منابع توسعه</h2>
+				<p class="sidebar-note">راهنماهای عملی و ابزارهای همین پروژه — بدون آمار ساختگی یا خبرنامهٔ غیرفعال.</p>
+				<ul class="resource-list">
+					{settings.commerceEnabled ? <li><a href="/shop"><span>قالب‌ها و ابزارهای آماده</span><span aria-hidden="true">←</span></a></li> : null}
+					<li><a href="/about"><span>دربارهٔ پلتفرم</span><span aria-hidden="true">←</span></a></li>
+					{settings.enableRss ? <li><a href="/rss.xml"><span>خوراک RSS</span><span aria-hidden="true">←</span></a></li> : null}
 				</ul>
 			</section>
-		</main>
-		<Footer />
-	</body>
-</html>
+		</aside>
+	</div>
+</ShopLayout>
