@@ -67,22 +67,13 @@ function normalize(raw: unknown): Database {
 
 async function writeDatabase(db: Database): Promise<void> {
 	await mkdir(path.dirname(DB_FILE), { recursive: true });
-	const temporary = `${DB_FILE}.${process.pid}.tmp`;
+	const temporary = `${DB_FILE}.${process.pid}.${randomUUID()}.tmp`;
 	await writeFile(temporary, `${JSON.stringify(db, null, '\t')}\n`, 'utf8');
 	await rename(temporary, DB_FILE);
 }
 
-export async function readDatabase(): Promise<Database> {
-	let raw: string;
-	try {
-		raw = await readFile(DB_FILE, 'utf8');
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
-		const empty = createEmptyDatabase();
-		await writeDatabase(empty);
-		return empty;
-	}
-
+async function readPersistedDatabase(): Promise<Database> {
+	const raw = await readFile(DB_FILE, 'utf8');
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -90,6 +81,38 @@ export async function readDatabase(): Promise<Database> {
 		throw new Error(`Commerce data at ${DB_FILE} is not valid JSON; refusing to reset it.`, { cause: error });
 	}
 	return normalize(parsed);
+}
+
+let initialization: Promise<Database> | null = null;
+
+export async function readDatabase(): Promise<Database> {
+	try {
+		return await readPersistedDatabase();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+	}
+
+	if (!initialization) {
+		initialization = (async () => {
+			// Recheck after entering the shared initializer in case another process
+			// created the file between the first read and this one.
+			try {
+				return await readPersistedDatabase();
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+				const empty = createEmptyDatabase();
+				await writeDatabase(empty);
+				return empty;
+			}
+		})();
+	}
+
+	const pending = initialization;
+	try {
+		return await pending;
+	} finally {
+		if (initialization === pending) initialization = null;
+	}
 }
 
 let queue: Promise<unknown> = Promise.resolve();

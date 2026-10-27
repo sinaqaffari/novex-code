@@ -94,4 +94,18 @@ describe('CMS product sorting', () => {
 		assert.deepEqual(alphabetical.items.map((item) => item.id), ['alpha', 'beta', 'gamma']);
 		assert.deepEqual(invalid.items.map((item) => item.id), ['alpha', 'beta', 'gamma']);
 	});
+
+	it('only exposes active product categories in public catalog results', async () => {
+		await replaceProducts([
+			product('published', 'محصول منتشرشده', { category: 'عمومی', status: 'active' }),
+			product('draft', 'محصول پیش‌نویس', { category: 'پیش‌نویس', status: 'draft' }),
+			product('archived', 'محصول بایگانی‌شده', { category: 'قدیمی', status: 'archived' }),
+		]);
+
+		const publicCatalog = await listProducts({ status: 'active' });
+		const adminCatalog = await listProducts({ status: 'all' });
+
+		assert.deepEqual(publicCatalog.categories, ['عمومی']);
+		assert.deepEqual(adminCatalog.categories, ['پیش‌نویس', 'عمومی', 'قدیمی']);
+	});
 });

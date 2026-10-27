@@ -1,62 +1,144 @@
 ---
 import ShopLayout from '../layouts/ShopLayout.astro';
-import { faNumber } from '../lib/cms/fa';
 import { readSettings } from '../lib/cms/settings';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
 
 export const prerender = false;
 
-const settings = await readSettings();
-const cart = await hydrateCart(readCart(Astro.cookies));
+const [settings, cart] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+]);
 ---
 
-<ShopLayout title="درباره" description={settings.siteDescription} cartCount={cart.count}>
+<ShopLayout title="درباره" description={settings.siteDescription} cartCount={cart.count} settings={settings}>
 	<nav class="breadcrumbs" aria-label="مسیر">
 		<a href="/">خانه</a>
 		<span aria-hidden="true">/</span>
-		<span>درباره</span>
+		<span aria-current="page">درباره</span>
 	</nav>
 
-	<section class="shop-hero" style="padding:var(--space-10) 1rem var(--space-6)">
-		<span class="shop-hero__eyebrow">دربارهٔ ما</span>
-		<h1 style="font-size:var(--text-2xl);margin-block-end:var(--space-2)">{settings.siteTitle}</h1>
-		<p style="color:var(--ink-soft);max-width:48ch">{settings.siteDescription}</p>
-	</section>
+	<header class="about-intro">
+		<span class="about-intro__eyebrow">دربارهٔ سایت</span>
+		<h1>{settings.siteTitle}</h1>
+		<p>{settings.siteDescription}</p>
+	</header>
 
-	<div class="prose" style="padding-bottom:var(--space-10)">
-		<p>
-			این سایت با Astro ساخته شده و همهٔ محتوای آن — نوشته‌ها، تنظیمات و محصولات — از یک
-			پنل مدیریت فارسی و راست‌به‌چپ اداره می‌شود. هیچ سرویس خارجی، پایگاه‌دادهٔ مدیریت‌شده یا
-			حساب کاربری ابری لازم نیست؛ داده‌ها روی همان سروری می‌مانند که سایت روی آن اجرا می‌شود.
-		</p>
+	<div class="about-grid">
+		<section class="about-card">
+			<span class="about-card__index">۰۱</span>
+			<h2>محتوا و مدیریت</h2>
+			<p>
+				نوشته‌ها از پنل مدیریت ویرایش و منتشر می‌شوند. متن‌ها به‌صورت فایل‌های Markdown
+				نگه‌داری می‌شوند و تنظیمات سایت و داده‌های فروشگاه در فایل‌های محلی سرور ذخیره می‌شوند.
+			</p>
+		</section>
 
-		<h2>چرا این ساختار؟</h2>
-		<p>
-			پنل‌های مدیریت معمولاً یا بسیار سنگین‌اند یا برای زبان‌های چپ‌به‌راست ساخته شده‌اند.
-			این‌جا چیدمان از ابتدا با dir="rtl" و ویژگی‌های منطقی CSS نوشته شده — نه با وصله‌های
-			بعدی. اعداد فارسی، تاریخ هجری شمسی و قلم وزیرمتن بخشی از قرارداد هستند، نه افزونه.
-		</p>
+		<section class="about-card">
+			<span class="about-card__index">۰۲</span>
+			<h2>فارسی و راست‌به‌چپ</h2>
+			<p>
+				رابط کاربری فارسی است و جهت چیدمان با ویژگی‌های منطقی CSS پیاده‌سازی شده است.
+				تاریخ‌ها و عددها در رابط فعلی با قالب فارسی نمایش داده می‌شوند.
+			</p>
+		</section>
 
-		<h2>امکانات</h2>
-		<ul>
-			<li>مدیریت نوشته‌ها با ویرایشگر مارک‌داون و پیش‌نمایش زنده</li>
-			<li>کتابخانهٔ رسانه با بارگذاری تصویر و بهینه‌سازی</li>
-			<li>فروشگاه: محصولات، سفارش‌ها، مشتریان و کدهای تخفیف</li>
-			<li>داشبورد با شاخص‌های واقعی — نه اعداد تزئینی</li>
-			<li>اجرای کامل با Docker و بدون وابستگی به بیرون</li>
-		</ul>
+		<section class="about-card">
+			<span class="about-card__index">۰۳</span>
+			<h2>فروشگاه</h2>
+			<p>
+				{settings.commerceEnabled
+					? 'فروشگاه از داده‌های واقعی محصولات، موجودی و سفارش‌ها استفاده می‌کند. امکان پرداخت آنلاین به نصب و پیکربندی افزونهٔ درگاه وابسته است.'
+					: 'ماژول فروشگاه اکنون غیرفعال است؛ نوشته‌های مجله همچنان در دسترس‌اند.'}
+			</p>
+			{settings.commerceEnabled && <a class="about-card__link" href="/shop">رفتن به فروشگاه</a>}
+		</section>
 
-		<h2>تماس</h2>
-		<p>
-			برای ارتباط با تیم، از نشانی{' '}
-			<a href={`mailto:${settings.authorEmail}`} dir="ltr">{settings.authorEmail}</a>{' '}
-			استفاده کنید.
-		</p>
+		<section class="about-card about-card--wide">
+			<span class="about-card__index">۰۴</span>
+			<h2>افزونه‌ها و داده‌ها</h2>
+			<p>
+				افزونه‌ها از قلاب‌ها و قابلیت‌های اعلام‌شده استفاده می‌کنند؛ اما در همان پردازهٔ Node
+				اجرا می‌شوند و در محیط ایزوله نیستند. فقط افزونه‌های مورداعتماد را نصب کنید. از پوشه‌های
+				داده و رسانه نسخهٔ پشتیبان منظم بگیرید.
+			</p>
+		</section>
 
-		<p class="hint">
-			{settings.commerceEnabled
-				? `فروشگاه فعال است — ارسال رایگان برای سفارش‌های بالای ${faNumber(1000000)} تومان.`
-				: 'ماژول فروشگاه در حال حاضر خاموش است؛ مجله در دسترس است.'}
-		</p>
+		<section class="about-card">
+			<span class="about-card__index">۰۵</span>
+			<h2>ارتباط</h2>
+			{settings.authorEmail ? (
+				<>
+					<p>برای پیام دربارهٔ سایت، از این نشانی استفاده کنید.</p>
+					<a class="about-card__link" href={`mailto:${settings.authorEmail}`} dir="ltr">{settings.authorEmail}</a>
+				</>
+			) : (
+				<p>نشانی تماس در تنظیمات سایت ثبت نشده است.</p>
+			)}
+		</section>
 	</div>
 </ShopLayout>
+
+<style>
+	.about-intro {
+		max-width: 58rem;
+		padding-block: var(--space-8) var(--space-6);
+	}
+
+	.about-intro__eyebrow,
+	.about-card__index {
+		color: var(--brand-ink);
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-semibold);
+	}
+
+	.about-intro h1 {
+		font-size: clamp(var(--text-3xl), 4vw, 2.5rem);
+		margin-block: var(--space-2);
+	}
+
+	.about-intro p {
+		max-width: 60ch;
+		color: var(--ink-soft);
+		font-size: var(--text-lg);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.about-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+		gap: var(--space-4);
+		padding-block-end: var(--space-8);
+	}
+
+	.about-card {
+		padding: clamp(1.1rem, 2.5vw, 1.5rem);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		background: var(--surface);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-3);
+	}
+
+	.about-card h2 {
+		font-size: var(--text-xl);
+	}
+
+	.about-card p {
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.about-card__link {
+		margin-block-start: auto;
+		font-weight: var(--font-weight-semibold);
+	}
+
+	@media (min-width: 900px) {
+		.about-card--wide {
+			grid-column: span 2;
+		}
+	}
+</style>

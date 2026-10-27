@@ -11,6 +11,7 @@ import {
 } from './types.ts';
 
 const PLUGIN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PLUGIN_API_ROUTE_PATH = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const SETTING_KEY = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 const KNOWN_CAPABILITIES = new Set<string>(PLUGIN_CAPABILITIES);
@@ -26,6 +27,10 @@ function isUniqueStringArray(value: unknown): value is string[] {
 
 export function isSemVer(value: unknown): value is string {
 	return typeof value === 'string' && SEMVER.test(value);
+}
+
+export function isPluginApiRoutePath(value: unknown): value is string {
+	return typeof value === 'string' && value.length <= 120 && PLUGIN_API_ROUTE_PATH.test(value);
 }
 
 /** A true runtime read-only Set view; mutators and callback backdoors are blocked. */
@@ -116,8 +121,12 @@ function settingIssues(value: unknown, index: number): string[] {
 	if (value.secret !== undefined && typeof value.secret !== 'boolean') {
 		issues.push(`${prefix}.secret باید boolean باشد.`);
 	}
+	if (value.public !== undefined && typeof value.public !== 'boolean') {
+		issues.push(`${prefix}.public باید boolean باشد.`);
+	}
 	if (value.secret === true && value.type !== 'text') issues.push(`${prefix}.secret فقط برای تنظیم text معتبر است.`);
 	if (value.secret === true && value.default !== undefined) issues.push(`${prefix}.secret نباید default داشته باشد.`);
+	if (value.secret === true && value.public === true) issues.push(`${prefix}.secret نمی‌تواند public باشد.`);
 	for (const field of ['minLength', 'maxLength'] as const) {
 		if (value[field] !== undefined && (!Number.isInteger(value[field]) || Number(value[field]) < 0)) {
 			issues.push(`${prefix}.${field} باید عدد صحیح نامنفی باشد.`);
@@ -248,6 +257,55 @@ export function validatePluginManifest(raw: unknown, expectedId: string): string
 			}
 			if (Array.isArray(pages) && pages.length && (!Array.isArray(capabilities) || !capabilities.includes('admin:page'))) {
 				issues.push('افزونه‌ای که صفحهٔ پنل دارد باید توانایی admin:page را اعلام کند.');
+			}
+		}
+	}
+
+	if (raw.routes !== undefined) {
+		if (!Array.isArray(raw.routes)) issues.push('routes باید یک فهرست باشد.');
+		else {
+			if (raw.routes.length > 50) issues.push('حداکثر ۵۰ API route برای هر افزونه مجاز است.');
+			const paths = new Set<string>();
+			let hasPublicRoute = false;
+			let hasCmsRoute = false;
+			for (const [index, route] of raw.routes.entries()) {
+				if (!isRecord(route)) {
+					issues.push(`routes[${index}] باید یک شیء باشد.`);
+					continue;
+				}
+				if (!isPluginApiRoutePath(route.path)) {
+					issues.push(`routes[${index}].path باید مسیر نسبی کوتاه و امن باشد.`);
+				} else if (paths.has(route.path)) {
+					issues.push(`مسیر API تکراری است: ${route.path}.`);
+				} else {
+					paths.add(route.path);
+				}
+
+				const access = route.access;
+				if (access !== 'public' && access !== 'cms') {
+					issues.push(`routes[${index}].access باید public یا cms باشد.`);
+				} else if (access === 'public') hasPublicRoute = true;
+				else hasCmsRoute = true;
+
+				const methods = route.methods;
+				if (!isUniqueStringArray(methods) || methods.length === 0) {
+					issues.push(`routes[${index}].methods باید فهرستی غیرخالی از روش‌های یکتا باشد.`);
+				} else {
+					for (const method of methods) {
+						if (method !== 'GET' && method !== 'POST') {
+							issues.push(`روش ${method} در routes[${index}] پشتیبانی نمی‌شود.`);
+					}
+					if (access === 'public' && method !== 'GET') {
+						issues.push('API عمومی فقط می‌تواند روش GET را اعلام کند.');
+					}
+				}
+				}
+			}
+			if (hasPublicRoute && (!Array.isArray(capabilities) || !capabilities.includes('api:public'))) {
+				issues.push('API عمومی به توانایی api:public نیاز دارد.');
+			}
+			if (hasCmsRoute && (!Array.isArray(capabilities) || !capabilities.includes('api:cms'))) {
+				issues.push('API پنل به توانایی api:cms نیاز دارد.');
 			}
 		}
 	}

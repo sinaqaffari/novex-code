@@ -5,27 +5,26 @@
    ========================================================================== */
 
 import '../../styles/design.css';
-import { readSettings } from '../../lib/cms/settings';
+import type { SiteSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
 import { faNumber } from '../../lib/cms/fa';
 
 interface Props {
 	cartCount?: number;
+	settings: SiteSettings;
 }
 
-const { cartCount } = Astro.props;
-const settings = await readSettings();
-const cart = await hydrateCart(readCart(Astro.cookies));
+const { cartCount, settings } = Astro.props;
 
 const isActive = (prefix: string) =>
 	prefix === '/' ? Astro.url.pathname === '/' : Astro.url.pathname === prefix || Astro.url.pathname.startsWith(`${prefix}/`);
 
-const finalCartCount = cartCount ?? cart.count;
+const finalCartCount = cartCount ?? (await hydrateCart(readCart(Astro.cookies))).count;
 ---
 
 <header class="header">
 	<div class="container header__inner">
-		<a class="brand" href="/" aria-label="{settings.siteTitle}">
+		<a class="brand" href="/" aria-label={settings.siteTitle}>
 			<span class="brand__mark" aria-hidden="true">ن</span>
 			<span class="brand__text">
 				<span class="brand__name">{settings.siteTitle}</span>
@@ -80,13 +79,26 @@ const finalCartCount = cartCount ?? cart.count;
 </header>
 
 <script>
-	const toggle = document.querySelector('.menu-toggle');
+	const toggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
 	const menu = document.getElementById('mobile-menu');
+
 	if (toggle && menu) {
+		const closeMenu = () => {
+			menu.hidden = true;
+			toggle.setAttribute('aria-expanded', 'false');
+			toggle.setAttribute('aria-label', 'نمایش منو');
+		};
+
 		toggle.addEventListener('click', () => {
 			const open = menu.hidden;
 			menu.hidden = !open;
 			toggle.setAttribute('aria-expanded', String(open));
+			toggle.setAttribute('aria-label', open ? 'بستن منو' : 'نمایش منو');
+		});
+
+		menu.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+		document.addEventListener('keydown', (event) => {
+			if (event.key === 'Escape' && !menu.hidden) closeMenu();
 		});
 	}
 </script>

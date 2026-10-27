@@ -129,6 +129,19 @@ describe('CMS route authorization', () => {
 		assert.equal(can('subscriber', customerList!), false);
 	});
 
+	it('applies plugin read/write authorization to every nested plugin API route', () => {
+		assert.equal(
+			requiredCmsPermission({ pathname: '/cms/api/plugins/content-audit/audit', method: 'GET' }),
+			'cms.plugins:read',
+		);
+		assert.equal(
+			requiredCmsPermission({ pathname: '/cms/api/plugins/content-audit/audit', method: 'POST' }),
+			'cms.plugins:write',
+		);
+		assert.equal(can('editor', 'cms.plugins:read'), false);
+		assert.equal(can('admin', 'cms.plugins:write'), true);
+	});
+
 	it('uses action-specific delete permission and keeps media upload separate', () => {
 		assert.equal(
 			requiredCmsPermission({ pathname: '/cms/api/posts/post-1', method: 'POST', action: 'delete' }),

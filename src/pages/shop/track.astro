@@ -1,5 +1,6 @@
 ---
 import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
 import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
 
@@ -13,7 +14,7 @@ const lookupError = Astro.url.searchParams.get('error');
 if (!settings.commerceEnabled) return Astro.redirect('/shop');
 ---
 
-<ShopLayout title="پیگیری سفارش" description="پیگیری وضعیت سفارش با شماره سفارش و شماره تماس ثبت‌شده." cartCount={cart.count} noindex>
+<ShopLayout title="پیگیری سفارش" description="پیگیری وضعیت سفارش با شماره سفارش و شماره تماس ثبت‌شده." cartCount={cart.count} settings={settings} noindex>
 	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><span aria-current="page">پیگیری سفارش</span></nav>
 
 	<section class="tracking-page" aria-labelledby="tracking-heading">

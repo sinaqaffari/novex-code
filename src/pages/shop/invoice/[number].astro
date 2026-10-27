@@ -1,5 +1,6 @@
 ---
 import ShopLayout from '../../../layouts/ShopLayout.astro';
+import '../../../styles/commerce.css';
 import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
 import { readSettings } from '../../../lib/cms/settings';
 import { getOrder } from '../../../lib/commerce/orders';
@@ -17,7 +18,7 @@ const ownsOrder = Boolean(order && verifyOrderAccessToken(
 ));
 ---
 
-<ShopLayout title={order && ownsOrder ? `فاکتور ${order.number}` : 'فاکتور سفارش'} description="فاکتور سفارش فروشگاه" noindex>
+<ShopLayout title={order && ownsOrder ? `فاکتور ${order.number}` : 'فاکتور سفارش'} description="فاکتور سفارش فروشگاه" settings={settings} noindex>
 	<nav class="breadcrumbs no-print" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href="/shop/track">پیگیری سفارش</a>{order && ownsOrder ? <><span aria-hidden="true">/</span><span aria-current="page">فاکتور {order.number}</span></> : null}</nav>
 
 	{!order || !ownsOrder ? (
@@ -39,7 +40,7 @@ const ownsOrder = Boolean(order && verifyOrderAccessToken(
 
 			<article class="invoice" aria-labelledby="invoice-heading">
 				<header class="invoice__header">
-					<div><a class="invoice__brand" href="/">{settings.siteTitle}</a><p>{settings.shopDescription}</p></div>
+					<div><a class="invoice__brand" href="/">{settings.siteTitle}</a>{settings.shopDescription && <p>{settings.shopDescription}</p>}</div>
 					<div class="invoice__meta"><h1 id="invoice-heading">فاکتور <span class="ltr">{order.number}</span></h1><dl><div><dt>تاریخ</dt><dd>{faDate(order.createdAt, 'long')}</dd></div><div><dt>وضعیت</dt><dd><span class={`badge badge--${orderStatusTone(order.status)}`}>{orderStatusLabel(order.status)}</span></dd></div></dl></div>
 				</header>
 

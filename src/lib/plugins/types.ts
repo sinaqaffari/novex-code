@@ -16,7 +16,9 @@ export type PluginCapability =
 	| 'secrets:read'
 	| 'options:read'
 	| 'options:write'
-	| 'admin:page';
+	| 'admin:page'
+	| 'api:cms'
+	| 'api:public';
 
 /** The host-owned extension points available to plugins. Unknown hooks fail closed. */
 export const PLUGIN_HOOKS = {
@@ -44,6 +46,8 @@ export const PLUGIN_CAPABILITIES: readonly PluginCapability[] = [
 	'options:read',
 	'options:write',
 	'admin:page',
+	'api:cms',
+	'api:public',
 ];
 
 /** توضیح کوتاه هر توانایی — در صفحهٔ افزونه‌ها نشان داده می‌شود. */
@@ -56,6 +60,8 @@ export const PLUGIN_CAPABILITY_LABELS: Record<PluginCapability, string> = {
 	'options:read': 'خواندن تنظیمات خودش',
 	'options:write': 'ذخیرهٔ تنظیمات خودش',
 	'admin:page': 'داشتن صفحهٔ اختصاصی در پنل',
+	'api:cms': 'ثبت API اختصاصی پشت نشست و مجوز پنل',
+	'api:public': 'ثبت API عمومی فقط‌خواندنی برای درخواست‌های GET',
 };
 
 /** فیلدهای قابل تنظیم که در صفحهٔ افزونه‌ها رندر می‌شوند. */
@@ -76,6 +82,8 @@ export interface PluginSetting {
 	required?: boolean;
 	/** Read only from a plugin-scoped environment variable; never saved in plugin state. */
 	secret?: boolean;
+	/** Permit an anonymous plugin GET route to read this non-secret setting. */
+	public?: boolean;
 }
 
 /** Validated manifest contract. `id` is stable; `apiVersion` versions the host interface. */
@@ -107,8 +115,10 @@ export interface PluginManifest {
 	hooks?: PluginHook[];
 	/** توانایی‌های اعلام‌شده؛ هسته بر اساس همین‌ها API را محدود می‌کند. */
 	capabilities?: PluginCapability[];
-	/** صفحه‌های اختصاصی پنل — معادل `admin.pages` در مانیفست EmDash. */
+	/** صفحه‌های اختصاصی پنل؛ مسیرهای اصلی میزبان قابل جایگزینی نیستند. */
 	admin?: { pages?: PluginAdminPage[] };
+	/** APIهای افزونه با مسیرهای ثابت و دسترسی صریح؛ هر handler باید در index.ts وجود داشته باشد. */
+	routes?: PluginApiRoute[];
 	settings?: PluginSetting[];
 }
 
@@ -119,6 +129,44 @@ export interface PluginAdminPage {
 	title: string;
 	description?: string;
 }
+
+export type PluginApiRouteMethod = 'GET' | 'POST';
+export type PluginApiRouteAccess = 'public' | 'cms';
+
+/** یک endpoint ثابت زیر فضای نام اختصاصی افزونه. */
+export interface PluginApiRoute {
+	/** مسیر نسبی امن، مثل `audit/items`؛ بدون پارامتر مسیر یا wildcard. */
+	path: string;
+	access: PluginApiRouteAccess;
+	methods: PluginApiRouteMethod[];
+}
+
+export interface PublicPluginApi {
+	id: string;
+	manifest: Readonly<PluginManifest>;
+	/** نیازمند `content:read` و فقط نوشته‌های منتشرشده را برمی‌گرداند. */
+	getPublicPosts(): Promise<PluginPost[]>;
+	/** نیازمند `options:read` و setting با `public: true`؛ رازها هرگز در این API نیستند. */
+	getPublicOption<T = unknown>(key: string, fallback?: T): T;
+}
+
+export type PluginApiRouteContext =
+	| {
+			access: 'public';
+			method: 'GET';
+			url: URL;
+			api: PublicPluginApi;
+	  }
+	| {
+			access: 'cms';
+			method: PluginApiRouteMethod;
+			url: URL;
+			body?: Record<string, unknown>;
+			user: { username: string; role: string };
+			api: PluginApi;
+	  };
+
+export type PluginApiRouteHandler = (context: PluginApiRouteContext) => unknown | Promise<unknown>;
 
 /** نوشته‌ای که افزونهٔ دارای `content:read` می‌بیند. */
 export interface PluginPost {
@@ -178,6 +226,8 @@ export interface PluginModule {
 	 * خروجی HTML است و داخل قالب پنل رندر می‌شود.
 	 */
 	pages?: Record<string, PluginPageRenderer>;
+	/** API handlers keyed by the exact relative paths declared in `plugin.json`. */
+	routes?: Record<string, PluginApiRouteHandler>;
 }
 
 /** وضعیت هر افزونه در پنل. */

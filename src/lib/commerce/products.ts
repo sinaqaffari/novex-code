@@ -132,9 +132,13 @@ export async function listProducts(options: ProductListOptions = {}) {
 		pages,
 		page: current,
 		perPage,
-		categories: [...new Set(db.products.map((product) => product.category))].sort((a, b) =>
-			a.localeCompare(b, 'fa'),
-		),
+		categories: [
+			...new Set(
+				db.products
+					.filter((product) => status !== 'active' || product.status === 'active')
+					.map((product) => product.category),
+			),
+		].sort((a, b) => a.localeCompare(b, 'fa')),
 		counts: {
 			all: db.products.length,
 			active: db.products.filter((product) => product.status === 'active').length,

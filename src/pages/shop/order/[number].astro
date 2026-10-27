@@ -1,9 +1,11 @@
 ---
 import ShopLayout from '../../../layouts/ShopLayout.astro';
+import '../../../styles/commerce.css';
 import { faDateTime, faMoney, faNumber } from '../../../lib/cms/fa';
 import { readSettings } from '../../../lib/cms/settings';
 import { getOrder, SHIPPING } from '../../../lib/commerce/orders';
 import { orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
+import { getOrderPaymentNotice } from '../../../lib/commerce/payment-notice';
 import { ORDER_ACCESS_COOKIE, verifyOrderAccessToken } from '../../../lib/commerce/order-access';
 
 export const prerender = false;
@@ -19,25 +21,10 @@ const terminal = order?.status === 'cancelled' || order?.status === 'refunded';
 const steps = ['pending', 'paid', 'processing', 'shipped', 'delivered'] as const;
 const activeStep = order ? steps.indexOf(order.status as (typeof steps)[number]) : -1;
 const paymentStatus = Astro.url.searchParams.get('payment') ?? '';
-const hasPaymentError = Astro.url.searchParams.has('error');
-const paymentNotice = hasPaymentError
-	? { tone: 'error', text: 'در بازگشت از درگاه مشکلی پیش آمد؛ وضعیت سفارش را بررسی کنید.' }
-	: paymentStatus === 'success'
-		? { tone: 'success', text: 'پرداخت از سوی درگاه تأیید و در سفارش ثبت شد.' }
-		: paymentStatus === 'failed'
-			? { tone: 'error', text: 'این سفارش لغو شده است؛ برای بررسی وضعیت پرداخت با پشتیبانی تماس بگیرید.' }
-			: paymentStatus === 'not-confirmed'
-				? { tone: 'plain', text: 'در بازگشت از درگاه، پرداخت موفق تأیید نشد. سفارش همچنان در انتظار است؛ اگر مبلغی کسر شده، دوباره پرداخت نکنید و وضعیت را با پشتیبانی بررسی کنید.' }
-			: paymentStatus === 'unknown' || order?.paymentState === 'unknown'
-				? { tone: 'error', text: 'نتیجهٔ پرداخت هنوز قابل تأیید نیست. برای جلوگیری از پرداخت تکراری، دوباره پرداخت نکنید و با پشتیبانی تماس بگیرید.' }
-				: paymentStatus === 'processing' || order?.paymentState === 'initiating' || order?.paymentState === 'verifying'
-					? { tone: 'plain', text: 'درخواست پرداخت در حال بررسی است؛ این صفحه را کمی بعد دوباره ببینید.' }
-					: order?.paymentState === 'not-configured'
-						? { tone: 'plain', text: 'سفارش ثبت شد، اما درگاه پرداخت آنلاین برای این فروشگاه فعال نیست.' }
-						: null;
+const paymentNotice = getOrderPaymentNotice(order, paymentStatus);
 ---
 
-<ShopLayout title={order && verified ? `سفارش ${order.number}` : 'پیگیری سفارش'} noindex>
+<ShopLayout title={order && verified ? `سفارش ${order.number}` : 'پیگیری سفارش'} settings={settings} noindex>
 	<nav class="breadcrumbs" aria-label="مسیر"><a href="/shop">فروشگاه</a><span aria-hidden="true">/</span><a href="/shop/track">پیگیری سفارش</a>{order && verified ? <><span aria-hidden="true">/</span><span aria-current="page">{order.number}</span></> : null}</nav>
 
 	{!order || !verified ? (

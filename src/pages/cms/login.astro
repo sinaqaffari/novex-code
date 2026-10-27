@@ -40,9 +40,10 @@ export const prerender = false;
 		<form class="auth-form" method="post" action="/cms/api/login" data-login-form>
 			<input type="hidden" name="next" value={safeNext} />
 
-			<label class="field">
-				<span class="label">نام کاربری</span>
+			<div class="field">
+				<label class="label" for="cms-username">نام کاربری</label>
 				<input
+					id="cms-username"
 					class="input ltr"
 					type="text"
 					name="username"
@@ -52,12 +53,13 @@ export const prerender = false;
 					placeholder="admin"
 					dir="ltr"
 				/>
-			</label>
+			</div>
 
-			<label class="field">
-				<span class="label">گذرواژه</span>
+			<div class="field">
+				<label class="label" for="cms-password">گذرواژه</label>
 				<span class="password-field">
 					<input
+						id="cms-password"
 						class="input"
 						type="password"
 						name="password"
@@ -76,7 +78,7 @@ export const prerender = false;
 						<Icon name="eye" size={17} />
 					</button>
 				</span>
-			</label>
+			</div>
 
 			<p class="error-text" role="alert" data-login-error hidden></p>
 
@@ -96,6 +98,7 @@ export const prerender = false;
 				</p>
 			)
 		}
+		<p class="auth-back"><a href="/">بازگشت به سایت</a></p>
 	</div>
 </CmsLayout>
 

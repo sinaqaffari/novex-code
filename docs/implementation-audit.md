@@ -1,6 +1,6 @@
 # Implementation and authorization audit
 
-Audit date: 2026-10-27. Scope: the current workspace, including the first commerce slice, CMS authorization hardening, and plugin-platform phase 1. This records verified implementation and remaining limits; it is not a production-security certification.
+Audit date: 2026-10-27. Scope: the current workspace, including the commerce slice, CMS authorization hardening, public-page styling/performance work, and the plugin API-route phase. This records verified implementation and remaining limits; it is not a production-security certification.
 
 ## Architecture and initial findings
 
@@ -13,7 +13,7 @@ Audit date: 2026-10-27. Scope: the current workspace, including the first commer
 | Authentication | HMAC-signed, eight-hour session cookie; scrypt password hashes; five failed attempts lock an IP for five minutes in the current process. The middleware now reloads the stored user and current role on each CMS request, so role changes/deactivation take effect without waiting for cookie expiry. A random session-signing key is used if `CMS_SESSION_SECRET` is unset, invalidating sessions on restart; production must set a persistent secret. |
 | Authorization | `src/lib/cms/access.ts` maps CMS routes and request methods to permissions; route matching is segment-aware and fails closed to `cms.settings:write` for unmapped routes. Middleware protects pages, APIs, and private media paths, applies cross-site checks, and adds no-store/noindex headers. UI navigation/actions are filtered separately. |
 | Payments | Checkout calls the payment initiation hook; `/shop/api/payment/callback` claims verification and applies verified payment once within the local store. A bundled Zarinpal adapter exists, but it has not been checked against current official provider documentation or a real transaction. |
-| Plugins | `plugin.json` manifests are enumerated at startup; implementation modules are bundled but imported lazily when an active plugin boots or an explicit lifecycle/page action needs them. Imported modules run in the application process and remain cached after deactivation. Capability checks limit the exposed plugin API, but this is not a sandbox for untrusted plugin code. |
+| Plugins | `plugin.json` manifests are enumerated at startup; bundled modules load lazily. Manifests can declare exact CMS/public API routes with restricted JSON transport; CMS routes use session/RBAC/CSRF middleware, while public routes are GET-only with a restricted API. Imported modules run in-process and remain cached after deactivation; this is not a sandbox for untrusted code. |
 | Deployment | Multi-stage Node Dockerfile, Compose, local volumes, health endpoint, and non-root runtime are present. |
 | Ecosystem | No component registry or CLI package exists. Package/release metadata and a safe extension-distribution flow remain future work. |
 
@@ -24,6 +24,12 @@ Audit date: 2026-10-27. Scope: the current workspace, including the first commer
 - Order lookup is not a customer account, purchase history, or download-entitlement system.
 - Shipping remains hard-coded in the checkout service at 45,000 toman with a 1,000,000 toman free-shipping threshold; these are implementation defaults, not confirmed store policy.
 
+## Public-page styling and performance notes
+
+- Shared public/storefront layouts now use intentional layered surface backgrounds, branded cards/hero treatments, and a short entrance transition. `prefers-reduced-motion: reduce` disables nonessential motion; page behavior remains usable without animation.
+- The `ShopLayout` stylesheet was reduced from 48,514 bytes in the recorded baseline to 36,685 bytes after removing duplicated/unused rules (a 24.4% stylesheet-size reduction). This is a source/asset-size comparison, not a Lighthouse, Core Web Vitals, or measured runtime-speed claim.
+- Built-server HTTP smoke returned 200 for `/`, `/blog`, `/blog/docker`, `/about`, and `/shop`. No browser screenshot or automated visual regression was captured in this environment.
+
 ## First commerce workflow
 
 - The first slice intentionally retained the existing Astro/Node and JSON architecture instead of introducing Fastify/PostgreSQL/Drizzle in one large change. This is a scope decision—not a statement that JSON is production-grade.
@@ -33,13 +39,13 @@ Audit date: 2026-10-27. Scope: the current workspace, including the first commer
 - No SQL migration was added. JSON writes use a same-process queue and atomic rename; multiple processes/instances can race. Move to PostgreSQL with a migration plan, unique idempotency constraint, and transactional stock/payment operations before horizontal scaling or production traffic.
 - Posts have no creator/owner field. Contributors can collaborate on the shared draft pool; these permissions are not per-author isolation. Add post ownership and a migration/claim policy before treating contributor accounts as isolated workspaces.
 
-## Plugin-platform hardening — phase 1
+## Plugin-platform hardening — phase 1 and API routes
 
 ### Changed files and runtime contract
 
-- Core runtime: `src/lib/plugins/{types,validation,secrets,lazy-module,registry,store,hooks}.ts`; CMS management: `src/pages/cms/plugins.astro`, `src/pages/cms/api/plugins.ts`; host UI updates: plugin-owned settings pages and `plugins/*/plugin.json`/`readme.txt`.
+- Core runtime: `src/lib/plugins/{types,validation,secrets,lazy-module,registry,store,hooks,route-http,route-dispatch,route-controller}.ts`; CMS management: `src/pages/cms/plugins.astro`, `src/pages/cms/api/plugins.ts`; plugin endpoints: `src/pages/api/plugins/[id]/[...path].ts` and `src/pages/cms/api/plugins/[id]/[...path].ts`; manifests, handlers, and `readme.txt` under `plugins/*/`.
 - Plugin implementation discovery uses a non-eager `import.meta.glob`; each module is loaded on demand, concurrent imports are coalesced, and successful modules are cached. Inactive plugin module bodies are not evaluated when the registry starts. A regression test checks the lazy glob and cache behavior. Once imported, Node retains the module after deactivation; this only reduces startup/evaluation of disabled code and is not isolation.
-- All five bundled manifests now declare stable `id` and `apiVersion: 1`. Invalid IDs, API versions, SemVer, capability declarations, hooks, dependencies, pages, and settings are surfaced as errors and cannot activate.
+- All five bundled manifests declare stable `id` and `apiVersion: 1`. Validation rejects invalid IDs, API versions, SemVer, capability/hook declarations, dependency/page/settings errors, unsafe or duplicate API paths, unsupported methods, missing `api:cms`/`api:public` capability, and public visibility on secret settings. API route declarations are exact static paths; there are no wildcards or dynamic parameters.
 - `PLUGIN_HOOKS` is an allowlist. Registrations must match a host-defined hook, hook kind, manifest declaration, and required capability. Payment initiation and verification require `commerce:payments`; unknown hooks are rejected.
 - `PluginApi.capabilities` uses a runtime read-only proxy detached from the authorization Set; nested manifest data is frozen. `hasCapability` and authorization checks use the private source Set.
 - Hook priorities are bounded integers. Presentation hook failures are isolated so the prior output survives; payment-hook failures remain fail-closed. Plugin hooks are removed if registration/activation fails.
@@ -50,13 +56,14 @@ Audit date: 2026-10-27. Scope: the current workspace, including the first commer
 
 ### Endpoints and validation
 
-- `GET /cms/plugins` lists packages and schema errors; `POST /cms/api/plugins` handles activate, deactivate, uninstall, and non-secret settings; declared plugin pages are served under `/cms/plugins/<id>/<path>`.
-- `npm test` now includes focused plugin manifest, hook-policy, secret-environment, SemVer, settings, state-integrity, and lazy-import/cache regression tests. The lazy-import test guards the implementation glob against eager evaluation and verifies on-demand, coalesced, cached loading. The suite does not exercise the Astro registry through a repeatable HTTP test.
-- Existing bundled manifests were updated in place; no SQL migration was added. Any custom plugin must add the required `id` and `apiVersion`, declare each used hook/capability, and move plaintext credentials from legacy plugin options to the named environment variables before upgrade.
+- `GET /cms/plugins` lists packages and schema errors; `POST /cms/api/plugins` handles lifecycle and non-secret settings; declared pages remain under `/cms/plugins/<id>/<path>`. `GET /cms/api/plugins/<id>/<path>` resolves only an exact route of an active, valid plugin and requires a CMS session plus `cms.plugins:read`; declared POST routes require `cms.plugins:write` and JSON input. The shared middleware checks CSRF origin and role on CMS requests.
+- `GET /api/plugins/<id>/<path>` is available only for manifest-declared public routes. Public routes are GET-only and receive an API limited to published posts and individually marked public, non-secret settings. CMS routes get the host `PluginApi` only after role checks. Both transports are JSON-only, `no-store`, and size-bounded; plugin errors return generic responses without forwarding cookies or arbitrary headers.
+- The CMS route behavior was smoke-tested against the built server: anonymous 401, authorized content-audit activation/GET 200, unsupported POST 405 with `Allow`, cross-site POST 403, and inactive-plugin 404. Unit tests cover manifest path/capability validation, JSON limits, method handling, role checks, HEAD, and handler context. The integration smoke was manual; the registry/middleware do not yet have a repeatable HTTP test harness. There is no database migration.
+- Existing bundled manifests were updated in place. A custom plugin must add `id` and `apiVersion`, declare every hook/capability/API route it uses, and move plaintext credentials from legacy plugin options to the named environment variables before upgrade.
 
 ### Remaining plugin limits
 
-Plugin source is bundled into the application build and runs with full Node-process privileges. Implementation modules now load lazily, so disabled plugins are not evaluated during registry startup, but imports remain cached after deactivation. The API/capability system is a contract for trusted code, not a security sandbox; a malicious bundled module can bypass it by importing Node APIs directly. There is no plugin archive installer, signature verification, update channel, dependency version range, per-plugin data migration runner, or secret rotation UI. The configured secrets depend on deployment-level environment/secret-manager operations. Any legacy plaintext secret previously stored in `data/plugins.json` must be moved to the environment and manually removed; the app does not delete it automatically to avoid destroying configuration without operator confirmation.
+Plugin source is bundled into the application build and runs with full Node-process privileges. Implementation modules now load lazily, so disabled plugins are not evaluated during registry startup, but imports remain cached after deactivation. The API/capability system is a contract for trusted code, not a security sandbox; a malicious bundled module can bypass it by importing Node APIs directly. This TypeScript/Node contract does not execute or install PHP WordPress plugins. There is no runtime plugin archive installer, signature verification, update channel, dependency version range, per-plugin data migration runner, or secret rotation UI. The configured secrets depend on deployment-level environment/secret-manager operations. Any legacy plaintext secret previously stored in `data/plugins.json` must be moved to the environment and manually removed; the app does not delete it automatically to avoid destroying configuration without operator confirmation.
 
 ## CMS authorization changes
 
@@ -89,16 +96,14 @@ The branch's Git base commit (`249e60c`) contains no `src/middleware.ts`, so the
 
 ## Validation recorded for this workspace
 
-- `npm ci` — completed; 309 packages added and npm reported 0 vulnerabilities. It also warned that local Node `v22.22.3` is below the project's/Astro's required `>=22.23.4`.
-- `npm test` — **72/72 passed** across 23 suites. Includes concurrent user-store initialization, plugin manifest, hook-policy, secret-environment, settings, SemVer, state-integrity, lazy-module import/cache, and CMS product-sort tests; still not a browser or provider E2E suite.
-- `npm run check:rtl` — passed (90 files checked).
-- `npm run check:copy` — passed (125 files checked).
-- `git diff --check` — passed after the final code and documentation updates.
-- `npm run check` and `npm run build` — both stop at Astro's Node-version guard under local Node `v22.22.3`.
-- Direct internal `@astrojs/check` CLI — **0 errors, 0 warnings, 0 hints** across 121 files (used to assess the source despite the unsupported local Node version).
-- Direct internal Astro CLI build — completed successfully after the lazy-import and user-store race fixes. The generated registry uses dynamic `import()` loaders for plugin implementation chunks; manifest/readme data remains eager. This bypasses only Astro's Node-version guard; build/runtime operation under a supported Node version remains unverified.
-- Manual built-server plugin HTTP smoke — logged in, activated `content-audit`, rendered its custom page (HTTP 200), deactivated it, and verified the former page redirected to plugin management (HTTP 302) with the plugin inactive. Generated user/plugin/commerce state and temporary cookie data were removed afterward. The earlier smoke also covered option save, out-of-range rejection, invalid-action rejection, secret-env status rendering, and no secret-marker persistence.
-- User-store concurrency smoke — 32 parallel first-time login requests all returned HTTP 200, created exactly one configured admin, and produced a mode-`0600` user file without rename errors. Generated user data was removed afterward.
+- Project scripts were run with Node `v22.23.4` from the available npx binary; the system-default Node remains `v22.22.3`, below the repository engine requirement.
+- `npm run check` — **0 errors, 0 warnings, 0 hints** across 132 files.
+- `npm run build` — completed successfully with the supported Node binary; Astro built the standalone Node server and generated client assets.
+- `npm test` — **92/92 passed** across 28 suites, including manifest route/capability validation, route JSON bounds and serialization, dispatch authorization, method handling, public/CMS handler contexts, RBAC path mapping, and existing CMS/commerce/plugin tests. This remains a unit/service suite, not provider E2E or browser automation.
+- `npm run check:rtl` — passed (95 files checked); `npm run check:copy` — passed (131 files checked).
+- Built-server HTTP smoke — `/`, `/blog`, `/blog/docker`, `/about`, `/shop` all returned 200. The plugin API checks returned anonymous 401, login/activation 200, authorized `content-audit` GET 200 with JSON `no-store`, undeclared POST 405 (`Allow: GET, HEAD`), cross-site POST 403, and inactive plugin 404. The test-only user and plugin state were removed afterward; the pre-existing empty `data/commerce.json` was preserved.
+- The earlier 32-request user-store concurrency smoke remains recorded: all first-time logins returned 200, exactly one configured admin was created, and the generated file had mode `0600`; test user data was removed.
+- No automated browser screenshot, visual regression, live payment-provider test, or independent security certification was performed.
 
 ## Remaining risks and next phase
 

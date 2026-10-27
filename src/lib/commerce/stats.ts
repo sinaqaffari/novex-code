@@ -7,8 +7,8 @@ import { isRevenue } from './types.ts';
 const DAY = 86_400_000;
 
 export interface DashboardMetrics {
-	revenue: { current: number; previous: number; change: number };
-	orders: { current: number; previous: number; change: number };
+	revenue: { current: number; previous: number; change: number | null };
+	orders: { current: number; previous: number; change: number | null };
 	averageOrder: number;
 	pending: number;
 	customers: number;
@@ -25,8 +25,8 @@ const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(),
 const revenueOf = (orders: Order[]) =>
 	orders.filter((order) => isRevenue(order.status)).reduce((sum, order) => sum + order.total, 0);
 
-function percentChange(current: number, previous: number): number {
-	if (previous === 0) return current > 0 ? 100 : 0;
+function percentChange(current: number, previous: number): number | null {
+	if (previous === 0) return current > 0 ? null : 0;
 	return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
@@ -63,7 +63,7 @@ export async function buildDashboardMetrics(days = 14): Promise<DashboardMetrics
 	}
 
 	const unitsByProduct = new Map<string, { quantity: number; revenue: number }>();
-	for (const order of db.orders) {
+	for (const order of inLast30) {
 		if (!isRevenue(order.status)) continue;
 		for (const item of order.items) {
 			const entry = unitsByProduct.get(item.name) ?? { quantity: 0, revenue: 0 };

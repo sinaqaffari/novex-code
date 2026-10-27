@@ -45,11 +45,11 @@ export interface SiteSettings {
 
 export const defaultSettings: SiteSettings = {
 	siteTitle: 'نووکس‌کد',
-	siteDescription: 'آزمایشگاه نوشتن، کد و طراحی — با تمرکز بر تجربهٔ فارسی.',
+	siteDescription: 'راهنماهای فنی نووکس‌کد دربارهٔ توسعهٔ وب، طراحی راست‌به‌چپ و راه‌اندازی پروژه‌ها.',
 	authorName: 'سینا قفاری',
 	authorEmail: 'hello@novexcode.ir',
-	heroTitle: 'کد را فارسی بنویس، فارسی بخوان.',
-	heroSubtitle: 'مجلهٔ فنی نووکس‌کد؛ نوشته‌هایی دربارهٔ فرانت‌اند، معماری نرم‌افزار و طراحی راست‌به‌چپ.',
+	heroTitle: 'توسعهٔ وب، به زبان فارسی',
+	heroSubtitle: 'از ساخت رابط‌های راست‌به‌چپ تا اجرای پروژه با Docker و پیگیری سفارش؛ راهنماهایی دربارهٔ همین سامانه.',
 	footerNote: 'ساخته‌شده با آسترو و احترام به تایپوگرافی فارسی.',
 	language: 'fa',
 	direction: 'rtl',
@@ -66,7 +66,7 @@ export const defaultSettings: SiteSettings = {
 	commerceEnabled: true,
 	currency: 'تومان',
 	shopTitle: 'فروشگاه نووکس‌کد',
-	shopDescription: 'ابزارهای فارسی برای ساخت وب‌سایت و فروشگاه — قالب، کیت رابط کاربری و دورهٔ آموزشی.',
+	shopDescription: 'فهرست محصولات و اطلاعات فروشگاه نووکس‌کد.',
 	social: {
 		github: 'https://github.com/sinaqaffari',
 		telegram: '',

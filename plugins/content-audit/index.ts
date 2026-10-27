@@ -6,16 +6,17 @@
  * License:     MIT
  * Text Domain: novex-content-audit
  *
- * نمونهٔ افزونهٔ سمت پنل با دو سطح رابط:
+ * نمونهٔ افزونهٔ سمت پنل با سه سطح یکپارچه‌سازی:
  *  - ویجت داشبورد از فیلتر `cms.dashboard.widgets`
  *  - صفحهٔ اختصاصی `/cms/plugins/content-audit/audit` از `admin.pages`
+ *  - API محدودشده به نشست در `/cms/api/plugins/content-audit/audit`
  *
- * داده را از API می‌گیرد (توانایی `content:read`) و HTML امن برمی‌گرداند؛
+ * داده را از `PluginApi` می‌گیرد (توانایی `content:read`) و HTML امن یا JSON برمی‌گرداند؛
  * به فایل‌ها یا پایگاه‌داده دسترسی مستقیم ندارد.
  */
 
 import { escapeHtml } from '../../src/lib/plugins/html';
-import type { DashboardWidget, PluginApi, PluginPost } from '../../src/lib/plugins/types';
+import type { DashboardWidget, PluginApi, PluginApiRouteContext, PluginPost } from '../../src/lib/plugins/types';
 
 interface DashboardContext {
 	posts?: PluginPost[];
@@ -137,5 +138,24 @@ export const pages = {
 		const includeDrafts = Boolean(api.getOption('includeDrafts', true));
 		const posts = await api.getPosts();
 		return pageHtml(auditPosts(posts, includeDrafts));
+	},
+};
+
+/** CMS-authenticated JSON API used by plugin-owned admin UI extensions. */
+export const routes = {
+	async audit(context: PluginApiRouteContext) {
+		if (context.access !== 'cms') throw new Error('این endpoint فقط در پنل قابل استفاده است.');
+		const includeDrafts = Boolean(context.api.getOption('includeDrafts', true));
+		const maxItems = clampItems(context.api.getOption('maxItems', 5), 5);
+		const posts = await context.api.getPosts();
+		return {
+			items: auditPosts(posts, includeDrafts).slice(0, maxItems).map(({ post, missing }) => ({
+				id: post.id,
+				slug: post.slug,
+				title: post.title,
+				draft: post.draft,
+				missing,
+			})),
+		};
 	},
 };

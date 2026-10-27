@@ -1,5 +1,6 @@
 ---
 import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
 import { faMoney, faNumber } from '../../lib/cms/fa';
 import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
@@ -37,7 +38,7 @@ const total = Math.max(0, cart.subtotal - discount) + shipping;
 const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subtotal);
 ---
 
-<ShopLayout title="سبد خرید" cartCount={cart.count}>
+<ShopLayout title="سبد خرید" cartCount={cart.count} settings={settings}>
 	<nav class="breadcrumbs" aria-label="مسیر">
 		<a href="/shop">فروشگاه</a>
 		<span aria-hidden="true">/</span>
@@ -54,7 +55,7 @@ const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subto
 		<div class="empty" style="max-width:520px;margin-inline:auto">
 			<h2 class="empty__title">سبد خرید شما خالی است</h2>
 			<p class="empty__desc">محصولی انتخاب کنید تا این‌جا نمایش داده شود.</p>
-			<p style="margin-top:1.5rem"><a class="btn btn--primary" href="/shop">رفتن به فروشگاه</a></p>
+			<p style="margin-block-start:var(--space-2)"><a class="btn btn--primary" href="/shop">رفتن به فروشگاه</a></p>
 		</div>
 	) : (
 		<div class="cart-layout">

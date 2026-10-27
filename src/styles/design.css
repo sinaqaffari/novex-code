@@ -108,9 +108,14 @@ html {
 }
 
 body.store {
+	--canvas: #f3f6fb;
 	margin: 0;
 	min-height: 100vh;
-	background: var(--canvas);
+	background-color: var(--canvas);
+	background-image: linear-gradient(180deg, rgba(37, 99, 235, 0.055), transparent);
+	background-position: top center;
+	background-repeat: no-repeat;
+	background-size: 100% 30rem;
 	color: var(--ink);
 	font-family: var(--font-fa);
 	font-size: var(--text-base);
@@ -363,6 +368,12 @@ kbd {
 	color: var(--brand-ink);
 }
 
+.hint {
+	color: var(--muted);
+	font-size: var(--text-sm);
+	line-height: var(--line-height-relaxed);
+}
+
 /* ===== فرم‌ها ===== */
 .form-group {
 	margin-block-end: 1rem;
@@ -480,7 +491,11 @@ kbd {
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
-	padding: 5rem 1rem;
+	gap: var(--space-2);
+	padding: clamp(1.25rem, 3vw, 2rem) 1rem;
+	border: 1px dashed var(--line-strong);
+	border-radius: var(--radius-lg);
+	background: var(--surface);
 	color: var(--muted);
 }
 

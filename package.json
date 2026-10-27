@@ -13,6 +13,7 @@
 		"check:rtl": "node scripts/check-rtl.mjs",
 		"check:copy": "node scripts/check-copy.mjs",
 		"check": "astro check",
+		"seed:demo": "node scripts/seed-demo.mjs",
 		"test": "node --experimental-strip-types --test tests/*.test.ts tests/e2e/*.test.ts",
 		"test:ci": "npm run check && npm run build && npm test",
 		"docker:build": "docker build -t novex-code .",

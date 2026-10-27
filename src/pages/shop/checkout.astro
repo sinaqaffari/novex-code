@@ -1,5 +1,6 @@
 ---
 import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
 import { faMoney, faNumber } from '../../lib/cms/fa';
 import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
@@ -40,7 +41,7 @@ const shipping = cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
 const total = Math.max(0, cart.subtotal - discount) + shipping;
 ---
 
-<ShopLayout title="تکمیل خرید" cartCount={cart.count}>
+<ShopLayout title="تکمیل خرید" cartCount={cart.count} settings={settings}>
 	<nav class="breadcrumbs" aria-label="مسیر">
 		<a href="/shop">فروشگاه</a>
 		<span aria-hidden="true">/</span>

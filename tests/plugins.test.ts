@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
 	compareSemVer,
+	isPluginApiRoutePath,
 	isSemVer,
 	parsePluginSettingValue,
 	readonlySetView,
@@ -34,6 +35,50 @@ describe('Plugin manifest contract', () => {
 		assert.ok(validatePluginManifest({ ...raw, apiVersion: 99 }, 'zarinpal-gateway').some((issue) => issue.includes('apiVersion')));
 		assert.ok(validatePluginManifest({ ...raw, capabilities: ['root:access'] }, 'zarinpal-gateway').some((issue) => issue.includes('ناشناخته')));
 		assert.ok(validatePluginManifest({ ...raw, capabilities: ['cms:widgets', 'options:read', 'options:write', 'admin:page'] }, 'zarinpal-gateway').some((issue) => issue.includes('commerce:payments')));
+	});
+
+	it('validates declared CMS and public routes with least-privilege capabilities', () => {
+		const raw = JSON.parse(readFileSync(join(process.cwd(), 'plugins/content-audit/plugin.json'), 'utf8'));
+		assert.deepEqual(validatePluginManifest(raw, 'content-audit'), []);
+
+		const publicRoute = {
+			...raw,
+			capabilities: [...raw.capabilities, 'api:public'],
+			routes: [...raw.routes, { path: 'feed/articles', access: 'public', methods: ['GET'] }],
+		};
+		assert.deepEqual(validatePluginManifest(publicRoute, 'content-audit'), []);
+		assert.ok(validatePluginManifest({
+			...publicRoute,
+			capabilities: publicRoute.capabilities.filter((capability: string) => capability !== 'api:public'),
+		}, 'content-audit').some((issue) => issue.includes('api:public')));
+		assert.ok(validatePluginManifest({
+			...raw,
+			routes: [{ path: 'audit', access: 'cms', methods: ['DELETE'] }],
+		}, 'content-audit').some((issue) => issue.includes('پشتیبانی نمی‌شود')));
+		assert.ok(validatePluginManifest({
+			...raw,
+			routes: [{ path: '../audit', access: 'cms', methods: ['GET'] }],
+		}, 'content-audit').some((issue) => issue.includes('مسیر نسبی')));
+		assert.ok(validatePluginManifest({
+			...raw,
+			routes: [...raw.routes, raw.routes[0]],
+		}, 'content-audit').some((issue) => issue.includes('تکراری')));
+	});
+
+	it('allows only short static route paths without traversal or encoded segments', () => {
+		assert.equal(isPluginApiRoutePath('audit/items-v2'), true);
+		assert.equal(isPluginApiRoutePath('../audit'), false);
+		assert.equal(isPluginApiRoutePath('audit/%2e%2e'), false);
+		assert.equal(isPluginApiRoutePath('/audit'), false);
+		assert.equal(isPluginApiRoutePath('audit/'), false);
+	});
+
+	it('rejects public visibility for secret settings', () => {
+		const raw = JSON.parse(readFileSync(join(process.cwd(), 'plugins/kaveh-neg-sms/plugin.json'), 'utf8'));
+		const settings = raw.settings.map((setting: Record<string, unknown>) =>
+			setting.secret === true ? { ...setting, public: true } : setting,
+		);
+		assert.ok(validatePluginManifest({ ...raw, settings }, 'kaveh-neg-sms').some((issue) => issue.includes('نمی‌تواند public باشد')));
 	});
 
 	it('rejects duplicate or invalid settings and dependency cycles at the self-edge', () => {

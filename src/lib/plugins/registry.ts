@@ -21,13 +21,17 @@ import {
 	type InstalledPlugin,
 	type PluginAdminPage,
 	type PluginApi,
+	type PluginApiRoute,
+	type PluginApiRouteAccess,
+	type PluginApiRouteHandler,
 	type PluginCapability,
 	type PluginManifest,
 	type PluginModule,
 	type PluginPageRenderer,
 	type PluginReadme,
+	type PublicPluginApi,
 } from './types';
-import { compareSemVer, parsePluginSettingValue, readonlySetView, validateHookRegistration, validatePluginManifest } from './validation';
+import { compareSemVer, isPluginApiRoutePath, parsePluginSettingValue, readonlySetView, validateHookRegistration, validatePluginManifest } from './validation';
 
 /** نسخهٔ پنل برای مقایسهٔ فیلد `requires` در هدر افزونه. */
 export const PANEL_VERSION = '2.0.0';
@@ -192,6 +196,45 @@ function createApi(entry: PluginEntry): PluginApi {
 	};
 }
 
+/** Anonymous routes receive a deliberately smaller API: no secrets, writes, drafts, or hook registration. */
+function createPublicApi(entry: PluginEntry): PublicPluginApi {
+	const { id, manifest } = entry;
+	const capabilities = new Set<PluginCapability>(manifest.capabilities ?? []);
+	const publicManifest = deepFreeze(structuredClone(manifest)) as Readonly<PluginManifest>;
+
+	const authorize = (capability: PluginCapability, action: string) => {
+		if (capabilities.has(capability)) return;
+		throw new Error(
+			`افزونه «${manifest.name}» برای ${action} باید توانایی «${capability}» را در plugin.json اعلام کند.`,
+		);
+	};
+	const getSetting = (key: string) => {
+		const setting = manifest.settings?.find((candidate) => candidate.key === key);
+		if (!setting) throw new Error(`تنظیم «${key}» در مانیفست افزونه اعلام نشده است.`);
+		return setting;
+	};
+
+	return {
+		id,
+		manifest: publicManifest,
+		async getPublicPosts() {
+			authorize('content:read', 'خواندن نوشته‌های عمومی');
+			const { listPosts } = await import('../cms/posts');
+			return (await listPosts()).filter((post) => !post.draft);
+		},
+		getPublicOption<T = unknown>(key: string, fallback?: T): T {
+			authorize('options:read', 'خواندن تنظیم عمومی');
+			const setting = getSetting(key);
+			if (setting.secret || setting.public !== true) {
+				throw new Error(`تنظیم «${key}» برای دسترسی عمومی علامت‌گذاری نشده است.`);
+			}
+			const stored = cache?.options[id]?.[key];
+			const value = stored !== undefined ? stored : setting.default !== undefined ? setting.default : fallback;
+			return (value === undefined ? undefined : parsePluginSettingValue(setting, value)) as T;
+		},
+	};
+}
+
 /** وابستگی‌های فعال‌نشده را برمی‌گرداند؛ خالی یعنی مشکلی نیست. */
 function missingDependencies(entry: PluginEntry, active: string[]): string[] {
 	return (entry.manifest.requiresPlugins ?? []).filter(
@@ -218,6 +261,16 @@ async function registerPlugin(entry: PluginEntry, runActivate: boolean): Promise
 		for (const page of declaredPages) {
 			if (module.pages?.[page.path]) continue;
 			throw new Error(`صفحهٔ «${page.title}» در مانیفست اعلام شده اما سازندهٔ آن در index.ts نیست.`);
+		}
+		const declaredRoutes = entry.manifest.routes ?? [];
+		for (const route of declaredRoutes) {
+			if (module.routes && Object.hasOwn(module.routes, route.path) && typeof module.routes[route.path] === 'function') continue;
+			throw new Error(`API route «${route.path}» در مانیفست اعلام شده اما handler آن در index.ts نیست.`);
+		}
+		for (const path of Object.keys(module.routes ?? {})) {
+			if (!declaredRoutes.some((route) => route.path === path)) {
+				throw new Error(`API route «${path}» در index.ts اعلام شده اما در مانیفست نیست.`);
+			}
 		}
 
 		await module.register(api);
@@ -454,4 +507,43 @@ export async function renderPluginPage(
 
 	const html = await renderer(createApi(entry));
 	return { manifest: entry.manifest, page, html };
+}
+
+export interface ResolvedPluginApiRoute {
+	manifest: PluginManifest;
+	route: PluginApiRoute;
+	handler: PluginApiRouteHandler;
+	api: PluginApi | PublicPluginApi;
+}
+
+/** Resolve only an exact, declared route belonging to an active, successfully registered plugin. */
+export async function resolvePluginApiRoute(input: {
+	pluginId: string;
+	path: string;
+	access: PluginApiRouteAccess;
+}): Promise<ResolvedPluginApiRoute | null> {
+	await ensurePluginsBooted();
+	if (!isPluginApiRoutePath(input.path)) return null;
+
+	const entry = buildEntries().find((item) => item.id === input.pluginId);
+	if (!entry || entry.validationError || !(cache?.active ?? []).includes(entry.id) || !registered.has(entry.id)) {
+		return null;
+	}
+
+	const route = (entry.manifest.routes ?? []).find(
+		(candidate) => candidate.path === input.path && candidate.access === input.access,
+	);
+	if (!route) return null;
+
+	const module = await loadPluginModule(entry);
+	if (!module.routes || !Object.hasOwn(module.routes, input.path)) return null;
+	const handler = module.routes[input.path];
+	if (typeof handler !== 'function') return null;
+
+	return {
+		manifest: entry.manifest,
+		route,
+		handler,
+		api: input.access === 'public' ? createPublicApi(entry) : createApi(entry),
+	};
 }

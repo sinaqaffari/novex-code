@@ -1,13 +1,11 @@
 ---
-/* ==========================================================================
-   نووکس‌کد — صفحه جزئیات محصول (بازنگری شده)
-   اطلاعات کافی برای تصمیم خرید، حفظ شده پرداخت و سبد خرید.
-   ========================================================================== */
-
 import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
+import ProductCard from '../../components/store/ProductCard.astro';
+import ProductArtwork from '../../components/store/ProductArtwork.astro';
 import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
-import { getProduct } from '../../lib/commerce/products';
+import { getProduct, listProducts } from '../../lib/commerce/products';
 import { SHIPPING } from '../../lib/commerce/orders';
 import { faMoney, faNumber, faDate } from '../../lib/cms/fa';
 
@@ -20,11 +18,12 @@ if (!product || product.status !== 'active') {
 	return Astro.redirect('/shop');
 }
 
-const [settings, cart] = await Promise.all([
+const [settings, cart, relatedResult] = await Promise.all([
 	readSettings(),
 	hydrateCart(readCart(Astro.cookies)),
+	listProducts({ status: 'active', category: product.category, sort: 'newest', perPage: 5 }),
 ]);
-
+const relatedProducts = relatedResult.items.filter((item) => item.id !== product.id).slice(0, 4);
 const onSale =
 	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
 const percentOff = onSale
@@ -34,11 +33,10 @@ const soldOut = product.stock === 0;
 const lowStock = product.stock > 0 && product.stock <= 3;
 const errorMessage = Astro.url.searchParams.get('error') ?? '';
 const added = Astro.url.searchParams.get('added') === '1';
-const initial = product.name.trim().charAt(0);
 ---
 
-<ShopLayout title={product.name} description={product.description.slice(0, 160)} cartCount={cart.count}>
-	<nav class="breadcrumbs" style="margin-block:1.5rem 0" aria-label="مسیر">
+<ShopLayout title={product.name} description={product.description} cartCount={cart.count} settings={settings}>
+	<nav class="breadcrumbs" aria-label="مسیر">
 		<a href="/">خانه</a>
 		<span aria-hidden="true">/</span>
 		<a href="/shop">فروشگاه</a>
@@ -48,74 +46,57 @@ const initial = product.name.trim().charAt(0);
 		<span aria-current="page">{product.name}</span>
 	</nav>
 
-	<div class="product-detail-page" style="display:grid;gap:var(--space-8)">
-		<!-- Left: media -->
-		<div class="product-media">
-			<div class="product-media__main">
-				{product.image ? (
-					<img src={product.image} alt={product.name} />
-				) : (
-					<div class="product-placeholder" style="height:100%;width:100%">
-						<span class="product-placeholder__symbol">{initial}</span>
-					</div>
-				)}
-			</div>
-			{!soldOut && (
-				<p class="hint" style="margin-top:0.5rem;color:var(--success);font-weight:var(--font-weight-semibold)">
-					{lowStock ? `فقط {faNumber(product.stock)} عدد باقی مانده` : 'موجود در انبار'}
-				</p>
-			)}
-		</div>
-
-		<!-- Right: info + buy -->
-		<div class="product-info">
-			<div class="product-meta">
-				<span class="badge badge--brand">{product.category}</span>
-				{onSale && <span class="badge badge--warning num">{faNumber(percentOff)}٪ تخفیف</span>}
-				{soldOut ? (
-					<span class="badge badge--danger">ناموجود</span>
-				) : lowStock ? (
-					<span class="badge badge--warning num">فقط {faNumber(product.stock)} عدد</span>
-				) : (
-					<span class="badge badge--success">موجود در انبار</span>
-				)}
+	<div class="product-detail-page">
+		<div class="product-detail-grid">
+			<div class="product-media">
+				<div class="product-media__main">
+					<ProductArtwork product={product} variant="detail" />
+				</div>
 			</div>
 
-			<h1>{product.name}</h1>
-
-			<p class="product-desc">{product.description || 'توضیحی برای این محصول ثبت نشده است.'}</p>
-
-			<div class="buy-box">
-				<div class="buy-box__row" style="justify-content:space-between;align-items:center">
-					<span class="product-price">
-						{product.compareAtPrice && (
-							<span class="product-price--was num">
-								{faMoney(product.compareAtPrice!, settings.currency)}
-							</span>
-						)}
-						<span class="product-price--now num">{faMoney(product.price, settings.currency)}</span>
-					</span>
-					<span class="product-sku muted">کد کالا: {product.sku}</span>
+			<div class="product-info">
+				<div class="product-meta">
+					<span class="badge badge--brand">{product.category}</span>
+					{onSale && <span class="badge badge--warning num">{faNumber(percentOff)}٪ تخفیف</span>}
+					{soldOut ? (
+						<span class="badge badge--danger">ناموجود</span>
+					) : lowStock ? (
+						<span class="badge badge--warning">موجودی کم</span>
+					) : (
+						<span class="badge badge--success">موجود</span>
+					)}
 				</div>
 
-				{errorMessage && <p class="alert alert--error">{errorMessage}</p>}
-				{added && <p class="alert alert--success">محصول به سبد خرید اضافه شد.</p>}
+				<h1>{product.name}</h1>
+				<p class="product-desc">
+					{product.description || 'برای این محصول هنوز توضیحی ثبت نشده است.'}
+				</p>
 
-				{soldOut ? (
-					<p class="notice" style="text-align:center">
-						این محصول فعلاً ناموجود است — برای اطلاع از شارژ موجودی به مجله سر بزنید.
-					</p>
-				) : (
-					<form method="post" action="/shop/api/cart" class="buy-form">
-						<input type="hidden" name="action" value="add" />
-						<input type="hidden" name="productId" value={product.id} />
-						<input
-							type="hidden"
-							name="redirect"
-							value={`/shop/${product.slug}?added=1`}
-						/>
-						<label class="sr-only" for="quantity">تعداد</label>
-						<div class="qty-control" style="display:flex;align-items:center;gap:0.5rem">
+				<section class="buy-box" aria-label="خرید محصول">
+					<div class="buy-box__row">
+						<span class="product-price">
+							{onSale && (
+								<span class="product-price--was num">
+									{faMoney(product.compareAtPrice!, settings.currency)}
+								</span>
+							)}
+							<span class="product-price--now num">{faMoney(product.price, settings.currency)}</span>
+						</span>
+						<span class="product-sku ltr">{product.sku}</span>
+					</div>
+
+					{lowStock && <p class="hint">فقط {faNumber(product.stock)} عدد باقی مانده است.</p>}
+					{errorMessage && <p class="alert alert--error" role="alert">{errorMessage}</p>}
+					{added && <p class="alert alert--success" role="status">محصول به سبد خرید اضافه شد.</p>}
+
+					{soldOut ? (
+						<p class="notice" role="status">این محصول در حال حاضر موجود نیست.</p>
+					) : (
+						<form method="post" action="/shop/api/cart" class="buy-form">
+							<input type="hidden" name="action" value="add" />
+							<input type="hidden" name="productId" value={product.id} />
+							<input type="hidden" name="redirect" value={`/shop/${product.slug}?added=1`} />
+							<label class="sr-only" for="quantity">تعداد</label>
 							<input
 								id="quantity"
 								name="quantity"
@@ -126,84 +107,153 @@ const initial = product.name.trim().charAt(0);
 								inputmode="numeric"
 								class="qty-input"
 							/>
-							<button class="btn btn--primary btn--lg" type="submit">
-								افزودن به سبد خرید
-							</button>
-							{cart.count > 0 && (
-								<a class="btn btn--outline" href="/shop/cart">مشاهدهٔ سبد</a>
-							)}
-						</div>
-					</form>
-				)}
+							<button class="btn btn--primary btn--lg" type="submit">افزودن به سبد خرید</button>
+							{cart.count > 0 && <a class="btn btn--outline" href="/shop/cart">رفتن به سبد</a>}
+						</form>
+					)}
 
-				<ul class="buy-info" style="margin:0;padding:0;list-style:none;display:grid;gap:0.25rem;margin-top:1rem">
-					<li>
-						{product.price >= SHIPPING.freeThreshold
-							? 'ارسال این محصول رایگان است.'
-							: `هزینهٔ ارسال ${faMoney(SHIPPING.fee, settings.currency)} — برای سفارش‌های بالای ${faMoney(SHIPPING.freeThreshold, settings.currency)} رایگان.`}
-					</li>
-					<li>پرداخت امن و پیگیری سفارش با شمارهٔ سفارش.</li>
-					<li>پشتیبانی فارسی در روزهای کاری.</li>
-				</ul>
-			</div>
-
-			<!-- Product info sections -->
-			<section class="product-sections" style="margin-top:var(--space-10)">
-				<div class="section-tab">
-					<h3>آنلاین‌سازی محصول</h3>
-					<p class="product-section-desc">
-						{product.description || 'توضیحی برای این محصول ثبت نشده است.'}
+					<p class="shipping-note">
+						هزینهٔ ارسال بر اساس مبلغ سبد خرید محاسبه می‌شود؛ برای سفارش‌های بالاتر از{' '}
+						{faMoney(SHIPPING.freeThreshold, settings.currency)} رایگان است.
 					</p>
-				</div>
+				</section>
 
-				<div class="product-section">
-					<h4>تکنولوژی و سازگاری</h4>
-					<p class="product-section-desc">
-						این محصول در دسته‌بندی <span class="ltr">{product.category}</span> قرار دارد و برای استفاده در
-						پروژه‌های فارسی آماده‌سازی شده است.
-					</p>
-				</div>
-
-				<div class="product-section">
-					<h4>نصب و راه‌اندازی</h4>
-					<p class="product-section-desc">
-						بعد از خرید، فایل‌های محصول در حسابتان در دسترس خواهد بود. برای نصب، فایل‌ها را دانلود کنید و
-						براساس راهنمای مراحل آموزشی پیش بروید.
-					</p>
-				</div>
-
-				<div class="product-section">
-					<h4>نسخه و به‌روزرسانی</h4>
-					<p class="product-section-desc">
-						آخرین به‌روزرسانی: {faDate(product.updatedAt)} — این نسخه قابل استفاده در محیط‌های تولیدی است.
-					</p>
-				</div>
-
-				<div class="product-section">
-					<h4>مجوز و پشتیبانی</h4>
-					<p class="product-section-desc">
-						مجوز استفاده برای یک پروژه/domäne است. پشتیبانی فارسی در روزهای کاری ارائه می‌شود.
-					</p>
-				</div>
-
-				<div class="product-section">
-					<h4>سوالات متداول</h4>
-					<dl class="faq-list" style="margin:0;padding:0;display:grid;gap:0.75rem">
-						<div class="faq-item">
-							<dt class="faq-question">چه چیزی پس از خرید دریافت می‌کنم؟</dt>
-							<dd class="faq-answer">فایل‌های منبعpropyl و مستندات نصب محصول.</dd>
-						</div>
-						<div class="faq-item">
-							<dt class="faq-question">آیا کد منبع باز است؟</dt>
-							<dd class="faq-answer">بله، کد منبعpropyl قابل بررسی و تغییر است.</dd>
-						</div>
-						<div class="faq-item">
-							<dt class="faq-question">چگونه به به‌روزرسانی‌ها دسترسی پیدا کنم؟</dt>
-							<dd class="faq-answer">از طریق پنل کاربری خود، نسخه‌های جدید را دانلود کنید.</dd>
-						</div>
+				<section class="product-specs" aria-labelledby="product-specs-title">
+					<h2 id="product-specs-title">اطلاعات ثبت‌شده</h2>
+					<dl>
+						<div><dt>دسته‌بندی</dt><dd>{product.category}</dd></div>
+						<div><dt>کد کالا</dt><dd class="ltr">{product.sku}</dd></div>
+						<div><dt>آخرین ویرایش</dt><dd>{faDate(product.updatedAt)}</dd></div>
+						<div><dt>موجودی</dt><dd>{soldOut ? 'ناموجود' : `${faNumber(product.stock)} عدد`}</dd></div>
 					</dl>
-				</div>
-			</section>
+				</section>
+			</div>
 		</div>
 	</div>
+
+	{relatedProducts.length > 0 && (
+		<section class="section related-products" aria-labelledby="related-products-title">
+			<div class="section__head">
+				<h2 id="related-products-title">محصولات دیگر در این دسته</h2>
+				<a class="section__subtitle" href={`/shop?category=${encodeURIComponent(product.category)}`}>دیدن دسته</a>
+			</div>
+			<div class="product-grid">
+				{relatedProducts.map((related) => <ProductCard product={related} currency={settings.currency} />)}
+			</div>
+		</section>
+	)}
 </ShopLayout>
+
+<style>
+	.product-detail-page {
+		max-width: 1100px;
+		margin-inline: auto;
+		padding-block: var(--space-6) var(--space-8);
+	}
+
+	.product-detail-grid {
+		display: grid;
+		align-items: start;
+		gap: var(--space-6);
+	}
+
+	@media (min-width: 960px) {
+		.product-detail-grid {
+			grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr);
+			gap: var(--space-10);
+		}
+	}
+
+	.product-info {
+		min-width: 0;
+		display: grid;
+		align-content: start;
+		gap: var(--space-4);
+	}
+
+	.product-info h1 {
+		font-size: clamp(var(--text-2xl), 3vw, var(--text-4xl));
+	}
+
+	.product-desc {
+		margin: 0;
+		max-width: 60ch;
+		font-size: var(--text-lg);
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.buy-box {
+		gap: var(--space-4);
+		padding: clamp(1rem, 2.5vw, 1.5rem);
+	}
+
+	.buy-box__row,
+	.buy-form {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+	}
+
+	.product-sku {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	.shipping-note {
+		font-size: var(--text-sm);
+		color: var(--muted);
+		line-height: 1.7;
+	}
+
+	.product-specs {
+		padding-block-start: var(--space-3);
+		border-block-start: 1px solid var(--line);
+	}
+
+	.product-specs h2 {
+		font-size: var(--text-lg);
+		margin-block-end: var(--space-3);
+	}
+
+	.product-specs dl {
+		margin: 0;
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.product-specs dl > div {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--space-3);
+	}
+
+	.product-specs dt {
+		color: var(--muted);
+	}
+
+	.product-specs dd {
+		margin: 0;
+		color: var(--ink);
+		font-weight: var(--font-weight-medium);
+		text-align: end;
+	}
+
+	@media (max-width: 640px) {
+		.product-detail-page {
+			padding-block: var(--space-4);
+		}
+
+		.buy-form {
+			align-items: stretch;
+		}
+
+		.buy-form .btn {
+			flex: 1 1 100%;
+		}
+	}
+</style>

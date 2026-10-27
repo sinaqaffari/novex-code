@@ -22,7 +22,8 @@
 		"cms:widgets",
 		"content:read",
 		"options:read",
-		"admin:page"
+		"admin:page",
+		"api:cms"
 	],
 	"admin": {
 		"pages": [
@@ -33,6 +34,13 @@
 			}
 		]
 	},
+	"routes": [
+		{
+			"path": "audit",
+			"access": "cms",
+			"methods": ["GET"]
+		}
+	],
 	"settings": [
 		{
 			"key": "includeDrafts",

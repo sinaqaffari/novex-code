@@ -34,8 +34,8 @@ const pluginWidgets = await applyFilters<DashboardWidget[]>('cms.dashboard.widge
 });
 const drafts = posts.filter((post) => post.draft).length;
 
-const trend = (change: number) =>
-	change > 0 ? 'trend trend--up' : change < 0 ? 'trend trend--down' : 'trend trend--flat';
+const trend = (change: number | null) =>
+	change === null ? 'trend trend--flat' : change > 0 ? 'trend trend--up' : change < 0 ? 'trend trend--down' : 'trend trend--flat';
 ---
 
 <CmsLayout title="داشبورد" subtitle="نمای کلی محتوا و فروش">
@@ -65,9 +65,9 @@ const trend = (change: number) =>
 						</strong>
 						<span class="metric-strip__foot">
 							<span class={trend(metrics.revenue.change)}>
-								<span class="num">{faNumber(Math.abs(metrics.revenue.change))}٪</span>
+								<span class="num">{metrics.revenue.change === null ? '—' : `${faNumber(Math.abs(metrics.revenue.change))}٪`}</span>
 							</span>
-							<span>نسبت به دورهٔ قبل</span>
+							<span>{metrics.revenue.change === null ? 'دورهٔ قبل مبنای مقایسه ندارد' : 'نسبت به دورهٔ قبل'}</span>
 						</span>
 					</div>
 
@@ -76,8 +76,9 @@ const trend = (change: number) =>
 						<strong class="metric-strip__value num">{faNumber(metrics.orders.current)}</strong>
 						<span class="metric-strip__foot">
 							<span class={trend(metrics.orders.change)}>
-								<span class="num">{faNumber(Math.abs(metrics.orders.change))}٪</span>
+								<span class="num">{metrics.orders.change === null ? '—' : `${faNumber(Math.abs(metrics.orders.change))}٪`}</span>
 							</span>
+							<span>{metrics.orders.change === null ? 'دورهٔ قبل مبنای مقایسه ندارد' : 'نسبت به دورهٔ قبل'}</span>
 							<span>{faNumber(pending)} در انتظار پرداخت</span>
 						</span>
 					</div>
@@ -132,7 +133,7 @@ const trend = (change: number) =>
 										>
 											<div
 												class:list={['chart__bar', point.total === 0 && 'chart__bar--muted']}
-												style={`height:${Math.max(3, Math.round((point.total / maxBar) * 100))}%`}
+												style={`height:${point.total === 0 ? 0 : Math.max(3, Math.round((point.total / maxBar) * 100))}%`}
 											/>
 											<span class="chart__label num">
 												{index % 2 === 0 ? dayLabel.format(new Date(point.date)) : ''}

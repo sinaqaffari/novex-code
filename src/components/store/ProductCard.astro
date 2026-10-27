@@ -1,9 +1,6 @@
 ---
-/* ==========================================================================
-   نووکس‌کد — کارت محصول (بخش reused شده در کتالوغ و صفحه اصلی)
-   ========================================================================== */
-
 import '../../styles/store.css';
+import ProductArtwork from './ProductArtwork.astro';
 import { faMoney } from '../../lib/cms/fa';
 import type { Product } from '../../lib/commerce/types';
 
@@ -16,19 +13,11 @@ const { product, currency = 'تومان' } = Astro.props;
 const onSale =
 	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
 const soldOut = product.stock === 0;
-const initial = product.name.trim().charAt(0);
 ---
 
-<article class="product-card" aria-label="{product.name}">
+<article class="product-card" aria-label={product.name}>
 	<div class="product-card__media">
-		{product.image ? (
-			<img src={product.image} alt={product.name} loading="lazy" decoding="async" />
-		) : (
-			<div class="product-placeholder" aria-hidden="true">
-				<span class="product-placeholder__symbol">{initial}</span>
-				<span class="product-placeholder__label">{product.category}</span>
-			</div>
-		)}
+		<ProductArtwork product={product} />
 		{onSale && <span class="badge badge--warning product-card__badge">تخفیف</span>}
 		{soldOut && <span class="badge badge--danger product-card__badge">ناموجود</span>}
 	</div>
@@ -36,13 +25,13 @@ const initial = product.name.trim().charAt(0);
 	<div class="product-card__body">
 		<span class="product-card__category">{product.category}</span>
 		<h3 class="product-card__name">{product.name}</h3>
-		<p class="product-card__desc">{product.description}</p>
+		{product.description && <p class="product-card__desc">{product.description}</p>}
 
 		<div class="product-card__foot">
 			<span class="product-card__price">
-				{product.compareAtPrice && (
+				{onSale && (
 					<span class="product-card__price--compare num">
-						{faMoney(product.compareAtPrice, currency)}
+						{faMoney(product.compareAtPrice!, currency)}
 					</span>
 				)}
 				<span class="num">{faMoney(product.price, currency)}</span>
@@ -52,41 +41,9 @@ const initial = product.name.trim().charAt(0);
 				<span class="badge badge--danger product-card__btn">ناموجود</span>
 			) : (
 				<a class="btn btn--primary product-card__btn" href={`/shop/${product.slug}`}>
-					مشاهده
+					مشاهدهٔ محصول
 				</a>
 			)}
 		</div>
 	</div>
 </article>
-
-<style>
-	.product-card {
-		text-decoration: none;
-		color: inherit;
-		display: block;
-	}
-
-	.product-card__name {
-		margin: 0;
-		font-size: var(--text-lg);
-		font-weight: var(--font-weight-bold);
-		color: var(--ink);
-		line-height: 1.4;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	.product-card__desc {
-		margin: 0;
-		font-size: var(--text-sm);
-		color: var(--muted);
-		line-height: 1.55;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		flex: 1;
-	}
-</style>
