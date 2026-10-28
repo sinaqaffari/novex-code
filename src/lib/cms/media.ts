@@ -3,6 +3,7 @@
  * them, and every file is previewed through the panel's own streaming route.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AppError as CmsError } from '../errors.ts';
@@ -128,17 +129,32 @@ export async function listMedia(): Promise<MediaItem[]> {
 	return [...uploads, ...builtin];
 }
 
-export async function saveUpload(file: File): Promise<MediaItem> {
-	await mkdir(UPLOAD_DIR, { recursive: true });
-
+export async function validateUploadFile(file: File): Promise<void> {
 	const extension = extensionOf(file.name);
 	if (!ALLOWED_UPLOAD_EXTENSIONS.includes(extension as never)) {
 		throw new CmsError('فقط تصاویر JPG، PNG، WebP، AVIF و GIF مجاز هستند.', 'file');
 	}
 	if (file.size === 0) throw new CmsError('فایل خالی است.', 'file');
-	if (file.size > MAX_BYTES) {
-		throw new CmsError('حجم فایل نمی‌تواند بیشتر از ۸ مگابایت باشد.', 'file');
-	}
+	if (file.size > MAX_BYTES) throw new CmsError('حجم هر فایل نمی‌تواند بیشتر از ۸ مگابایت باشد.', 'file');
+
+	const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+	const ascii = (start: number, length: number) => String.fromCharCode(...header.slice(start, start + length));
+	const validSignature = extension === 'jpg' || extension === 'jpeg'
+		? header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff
+		: extension === 'png'
+			? header.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((value, index) => header[index] === value)
+			: extension === 'webp'
+				? header.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP'
+				: extension === 'gif'
+					? ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a'
+					: header.length >= 12 && ascii(4, 4) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 4));
+	if (!validSignature) throw new CmsError('محتوای فایل با قالب تصویر انتخاب‌شده سازگار نیست.', 'file');
+}
+
+export async function saveUpload(file: File): Promise<MediaItem> {
+	await validateUploadFile(file);
+	await mkdir(UPLOAD_DIR, { recursive: true });
+	const extension = extensionOf(file.name);
 
 	const base =
 		path
@@ -148,7 +164,7 @@ export async function saveUpload(file: File): Promise<MediaItem> {
 			.replace(/^-+|-+$/g, '')
 			.slice(0, 40) || 'image';
 
-	const name = `${base}-${Date.now().toString(36)}.${extension}`;
+	const name = `${base}-${randomUUID().slice(0, 8)}.${extension}`;
 	const absolute = path.join(UPLOAD_DIR, name);
 	await writeFile(absolute, Buffer.from(await file.arrayBuffer()));
 
@@ -186,5 +202,15 @@ export async function readAsset(reference: string): Promise<{ body: Buffer; type
 		return { body, type: MIME_BY_EXTENSION[extensionOf(absolute)] ?? 'application/octet-stream' };
 	} catch {
 		throw new CmsError('فایل مورد نظر پیدا نشد.', 'file', 404);
+	}
+}
+
+export async function assetExists(reference: string): Promise<boolean> {
+	const absolute = resolveAssetPath(reference);
+	if (!absolute) return false;
+	try {
+		return (await stat(absolute)).isFile();
+	} catch {
+		return false;
 	}
 }

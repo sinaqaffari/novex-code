@@ -1,0 +1,74 @@
+.policy-page {
+	max-width: 72rem;
+	margin-inline: auto;
+	padding-block: clamp(1.5rem, 5vw, 3.5rem);
+}
+.policy-page__intro {
+	max-width: 62rem;
+	margin-block-end: clamp(1.25rem, 4vw, 2.5rem);
+}
+.policy-page__eyebrow {
+	display: inline-block;
+	margin-block-end: .5rem;
+	color: var(--brand-ink, #2456a8);
+	font-size: .85rem;
+	font-weight: 700;
+}
+.policy-page__intro h1 {
+	margin: 0;
+	font-size: clamp(1.8rem, 5vw, 2.7rem);
+	line-height: 1.35;
+}
+.policy-page__intro p {
+	max-width: 68ch;
+	margin-block: .75rem 0;
+	color: var(--ink-soft, #4c5560);
+	font-size: 1rem;
+	line-height: 1.9;
+}
+.policy-page__section {
+	margin-block-start: 1rem;
+	padding: clamp(1rem, 3vw, 1.5rem);
+	border: 1px solid var(--line, #e2e6ec);
+	border-radius: var(--radius-lg, 12px);
+	background: var(--surface, #fff);
+}
+.policy-page__section h2 {
+	margin: 0 0 .65rem;
+	font-size: clamp(1.05rem, 2vw, 1.3rem);
+}
+.policy-page__section p,
+.policy-page__section li {
+	color: var(--ink-soft, #4c5560);
+	line-height: 1.9;
+}
+.policy-page__section p { margin-block: .55rem 0; }
+.policy-page__section ul { display: grid; gap: .45rem; margin: .7rem 0 0; padding-inline-start: 1.3rem; }
+.policy-page__links {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+	gap: .8rem;
+	margin-block-start: 1.2rem;
+}
+.policy-page__link {
+	display: grid;
+	gap: .35rem;
+	padding: 1rem;
+	border: 1px solid var(--line, #e2e6ec);
+	border-radius: var(--radius-lg, 12px);
+	background: var(--surface, #fff);
+	color: var(--ink, #1c2632);
+	text-decoration: none;
+}
+.policy-page__link:hover { border-color: var(--brand-line, #b6caeb); background: var(--surface-2, #f7f9fc); }
+.policy-page__link strong { color: var(--brand-ink, #2456a8); }
+.policy-page__link span { color: var(--muted, #65717e); font-size: .9rem; line-height: 1.7; }
+.policy-page__notice {
+	padding: .9rem 1rem;
+	border-inline-start: 4px solid var(--brand, #2563eb);
+	border-radius: .4rem;
+	background: var(--surface-2, #f4f7fb);
+	color: var(--ink-soft, #4c5560);
+	line-height: 1.85;
+}
+.policy-page__email { direction: ltr; unicode-bidi: isolate; overflow-wrap: anywhere; }

@@ -12,7 +12,7 @@ import path from 'node:path';
 import { hashPassword, verifyPassword } from './auth.ts';
 import { isRole, type Role } from './rbac.ts';
 
-export const USERS_FILE = path.resolve(process.cwd(), 'data/users.json');
+export const USERS_FILE = path.resolve(process.cwd(), process.env.CMS_USERS_FILE || 'data/users.json');
 
 export interface User {
 	id: string;

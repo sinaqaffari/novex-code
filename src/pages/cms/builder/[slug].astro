@@ -17,5 +17,5 @@ const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
 ---
 
 <BuilderLayout title={record?.draft.title ?? 'صفحه'}>
-	{record ? <BuilderEditor client:load initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+	{record ? <BuilderEditor client:load initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
 </BuilderLayout>

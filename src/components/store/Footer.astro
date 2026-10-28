@@ -8,6 +8,7 @@ interface Props {
 }
 
 const { settings } = Astro.props;
+const contactEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.authorEmail.trim()) ? settings.authorEmail.trim() : '';
 const socialLinks = {
 	github: safeExternalUrl(settings.social.github),
 	telegram: safeExternalUrl(settings.social.telegram),
@@ -57,7 +58,19 @@ const socialLinks = {
 					<li><a href="/">خانه</a></li>
 					<li><a href="/blog">مجله</a></li>
 					<li><a href="/about">درباره</a></li>
+					<li><a href="/contact">تماس</a></li>
 					{settings.enableRss && <li><a href="/rss.xml">خوراک RSS</a></li>}
+				</ul>
+			</div>
+
+			<div class="footer__col">
+				<h2 class="footer__heading">سیاست‌ها</h2>
+				<ul class="footer__list">
+					<li><a href="/policies">راهنمای سیاست‌ها</a></li>
+					<li><a href="/privacy">حریم خصوصی</a></li>
+					<li><a href="/terms">شرایط فروش</a></li>
+					<li><a href="/shipping">ارسال</a></li>
+					<li><a href="/returns">مرجوعی و بازپرداخت</a></li>
 				</ul>
 			</div>
 
@@ -72,14 +85,13 @@ const socialLinks = {
 				</div>
 			)}
 
-			{settings.authorEmail && (
-				<div class="footer__col">
-					<h2 class="footer__heading">ارتباط</h2>
-					<ul class="footer__list">
-						<li><a href={`mailto:${settings.authorEmail}`}>{settings.authorEmail}</a></li>
-					</ul>
-				</div>
-			)}
+			<div class="footer__col">
+				<h2 class="footer__heading">ارتباط</h2>
+				<ul class="footer__list">
+					<li><a href="/contact">صفحهٔ تماس</a></li>
+					{contactEmail ? <li><a href={`mailto:${contactEmail}`} dir="ltr">{contactEmail}</a></li> : <li><span>ایمیل تماس پیکربندی نشده است.</span></li>}
+				</ul>
+			</div>
 		</div>
 
 		<div class="footer__bottom">

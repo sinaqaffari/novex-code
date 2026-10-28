@@ -1,0 +1,36 @@
+---
+import ShopLayout from '../layouts/ShopLayout.astro';
+import '../styles/policies.css';
+import { readSettings } from '../lib/cms/settings';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([readSettings(), hydrateCart(readCart(Astro.cookies))]);
+const pages = [
+	{ href: '/privacy', title: 'حریم خصوصی', description: 'داده‌هایی که هنگام مرور یا ثبت سفارش در این سامانه پردازش می‌شوند.' },
+	{ href: '/terms', title: 'شرایط فروش', description: 'نحوهٔ نمایش قیمت، ثبت سفارش و وضعیت پرداخت.' },
+	{ href: '/shipping', title: 'ارسال', description: 'هزینهٔ ارسال محاسبه‌شده در سبد و محدودیت‌های اطلاعات موجود.' },
+	{ href: '/returns', title: 'مرجوعی و بازپرداخت', description: 'مواردی که هنوز باید توسط صاحب فروشگاه تعیین و اعلام شوند.' },
+];
+---
+
+<ShopLayout title="راهنمای سیاست‌ها" description={`راهنمای حریم خصوصی و فروش ${settings.siteTitle}.`} cartCount={cart.count} settings={settings}>
+	<div class="policy-page">
+		<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><span aria-current="page">سیاست‌ها</span></nav>
+		<header class="policy-page__intro">
+			<span class="policy-page__eyebrow">راهنما</span>
+			<h1>سیاست‌های سایت و فروشگاه</h1>
+			<p>این صفحه‌ها یک نقطهٔ شروع فارسی برای توضیح رفتار فعلی سامانه هستند؛ جزئیات تجاریِ پیکربندی‌نشده به‌عنوان وعده یا قانون فرض نشده‌اند.</p>
+		</header>
+		<p class="policy-page__notice" role="note">متن‌ها را پیش از استفادهٔ عملیاتی با شیوهٔ واقعی کسب‌وکار و الزامات محل فعالیت تطبیق دهید. این متن جایگزین مشاورهٔ حقوقی نیست.</p>
+		<nav class="policy-page__links" aria-label="صفحه‌های سیاست">
+			{pages.map((item) => <a class="policy-page__link" href={item.href}><strong>{item.title}</strong><span>{item.description}</span></a>)}
+		</nav>
+		<section class="policy-page__section">
+			<h2>وضعیت پیکربندی</h2>
+			<p>{settings.commerceEnabled ? 'ماژول فروشگاه روشن است؛ با این حال روشن‌بودن فروشگاه به‌معنای فعال‌بودن درگاه پرداخت یا تعیین همهٔ رویه‌های ارسال و مرجوعی نیست.' : 'ماژول فروشگاه غیرفعال است و سفارش تازه پذیرفته نمی‌شود.'}</p>
+			<p>راه تماسِ ثبت‌شده، در صورت وجود، در <a href="/contact">صفحهٔ تماس</a> نمایش داده می‌شود.</p>
+		</section>
+	</div>
+</ShopLayout>

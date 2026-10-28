@@ -1,12 +1,16 @@
 import type { APIRoute } from 'astro';
 import { failure, json, redirect } from '../../../../lib/cms/http';
+import { can } from '../../../../lib/cms/rbac';
 import { deleteUpload } from '../../../../lib/cms/media';
 import { CmsError } from '../../../../lib/cms/posts';
 
 export const prerender = false;
 
-export const DELETE: APIRoute = async ({ request, params }) => {
+export const DELETE: APIRoute = async ({ request, params, locals }) => {
 	const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
+	if (!can(locals.cmsUser?.role ?? 'subscriber', 'cms.media:delete')) {
+		return wantsJson ? failure('نقش شما اجازهٔ حذف رسانه را ندارد.', 403, 'permission') : redirect('/cms/login?next=%2Fcms%2Fmedia');
+	}
 	try {
 		await deleteUpload(params.name ?? '');
 		return wantsJson

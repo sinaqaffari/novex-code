@@ -23,6 +23,7 @@ const [settings, cart, relatedResult] = await Promise.all([
 	hydrateCart(readCart(Astro.cookies)),
 	listProducts({ status: 'active', category: product.category, sort: 'newest', perPage: 5 }),
 ]);
+if (!settings.commerceEnabled) return Astro.redirect('/shop');
 const relatedProducts = relatedResult.items.filter((item) => item.id !== product.id).slice(0, 4);
 const onSale =
 	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;

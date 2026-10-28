@@ -8,6 +8,8 @@ import type {
 	ThemeColor,
 } from './types.ts';
 import { BUILDER_COMPONENT_TYPES, BREAKPOINTS, SPACING_STEPS, type Breakpoint } from './types.ts';
+import { normalizeProductGridBinding } from '../commerce/product-binding.ts';
+import { parseBuilderMediaReference } from './media-reference.ts';
 
 const alignOptions = [
 	{ value: 'start', label: 'آغاز خط' },
@@ -109,7 +111,7 @@ const definitions = {
 			},
 			...commonStyleFields,
 		],
-		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button'],
+		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid'],
 		supportsChildren: true,
 		previewRenderer: 'container',
 		productionRenderer: 'BuilderNode.astro',
@@ -256,6 +258,48 @@ const definitions = {
 		previewRenderer: 'button',
 		productionRenderer: 'BuilderNode.astro',
 	} satisfies ComponentDefinition<'Button'>,
+	ProductGrid: {
+		type: 'ProductGrid',
+		version: 1,
+		label: 'محصولات',
+		category: 'commerce',
+		description: 'نمایش زندهٔ محصولات فعال از فروشگاه نووکس.',
+		documentation: 'فقط محصول فعال و اطلاعات عمومی کارت نمایش داده می‌شود؛ شناسه، موجودی و کد داخلی به سند صفحه وارد نمی‌شود.',
+		example: 'محصولات ویژه یا تازهٔ فروشگاه، با پیوند مستقیم به جزئیات واقعی هر محصول.',
+		defaultProps: {
+			heading: 'محصولات منتخب',
+			emptyMessage: 'هنوز محصول فعالی در این بخش ثبت نشده است.',
+			binding: { provider: 'novex-commerce-products', version: 1, selection: 'featured', limit: 4 },
+		},
+		fields: [
+			{ key: 'heading', label: 'عنوان بخش', kind: 'text', group: 'content', maxLength: 120 },
+			{ key: 'emptyMessage', label: 'پیام فهرست خالی', kind: 'text', group: 'content', maxLength: 180 },
+			{
+				key: 'binding.selection',
+				label: 'منبع محصولات',
+				kind: 'select',
+				group: 'content',
+				options: [
+					{ value: 'featured', label: 'ویژه' },
+					{ value: 'latest', label: 'تازه‌ترین' },
+					{ value: 'category', label: 'دسته‌بندی' },
+				],
+			},
+			{ key: 'binding.category', label: 'دسته‌بندی دقیق', kind: 'text', group: 'content', maxLength: 60 },
+			{
+				key: 'binding.limit',
+				label: 'تعداد کارت‌ها',
+				kind: 'number',
+				group: 'layout',
+				options: [2, 3, 4, 6, 8, 12].map((value) => ({ value, label: String(value) })),
+			},
+			...commonStyleFields,
+		],
+		allowedChildren: [],
+		supportsChildren: false,
+		previewRenderer: 'productGrid',
+		productionRenderer: 'BuilderNode.astro',
+	} satisfies ComponentDefinition<'ProductGrid'>,
 } satisfies { [K in BuilderComponentType]: ComponentDefinition<K> };
 
 export const COMPONENT_REGISTRY = definitions;
@@ -286,6 +330,7 @@ export function safeImageSrc(value: string): boolean {
 	const src = value.trim();
 	if (!src) return true;
 	if (src.length > 500 || /[\\\u0000-\u001f\u007f]/.test(src)) return false;
+	if (parseBuilderMediaReference(src)) return true;
 	if (src.startsWith('/') && !src.startsWith('//')) return true;
 	try {
 		const parsed = new URL(src);
@@ -367,13 +412,21 @@ export function normalizeProps<T extends BuilderComponentType>(
 
 	if (type === 'Image') {
 		const src = text(merged.src, 'src', 500).trim();
-		if (!safeImageSrc(src)) throw new Error('Image source must be an internal path or a safe HTTPS URL.');
+		if (!safeImageSrc(src)) throw new Error('Image source must be an internal path, a stored media reference, or a safe HTTPS URL.');
 		return {
 			src,
 			alt: text(merged.alt, 'alt', 240),
 			caption: text(merged.caption, 'caption', 240),
 			aspectRatio: enumValue(merged.aspectRatio, 'aspectRatio', ['auto', 'wide', 'square', 'portrait']),
 			fit: enumValue(merged.fit, 'fit', ['cover', 'contain']),
+		} as ComponentPropsByType[T];
+	}
+
+	if (type === 'ProductGrid') {
+		return {
+			heading: text(merged.heading, 'heading', 120),
+			emptyMessage: text(merged.emptyMessage, 'emptyMessage', 180),
+			binding: normalizeProductGridBinding(merged.binding),
 		} as ComponentPropsByType[T];
 	}
 

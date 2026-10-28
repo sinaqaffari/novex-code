@@ -1,0 +1,35 @@
+---
+import ShopLayout from '../layouts/ShopLayout.astro';
+import '../styles/policies.css';
+import { readSettings } from '../lib/cms/settings';
+import { faMoney } from '../lib/cms/fa';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+import { SHIPPING } from '../lib/commerce/orders';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([readSettings(), hydrateCart(readCart(Astro.cookies))]);
+---
+
+<ShopLayout title="ارسال" description={`اطلاعات محاسبهٔ هزینهٔ ارسال در ${settings.siteTitle}.`} cartCount={cart.count} settings={settings}>
+	<div class="policy-page">
+		<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><a href="/policies">سیاست‌ها</a><span aria-hidden="true">/</span><span aria-current="page">ارسال</span></nav>
+		<header class="policy-page__intro"><span class="policy-page__eyebrow">تحویل سفارش</span><h1>ارسال</h1><p>مبلغ ارسال در حال حاضر بر اساس قواعد ثابت فروشگاه و جمع کالاها محاسبه می‌شود.</p></header>
+
+		<section class="policy-page__section">
+			<h2>قاعدهٔ فعلی هزینهٔ ارسال</h2>
+			<ul>
+				<li>هزینهٔ پایه: <strong>{faMoney(SHIPPING.fee, settings.currency)}</strong>؛</li>
+				<li>برای جمع کالای برابر یا بیشتر از <strong>{faMoney(SHIPPING.freeThreshold, settings.currency)}</strong>، هزینهٔ ارسال در محاسبهٔ فروشگاه صفر است؛</li>
+				<li>مبلغ نهایی پیش از ثبت سفارش در سبد و مرحلهٔ پرداخت نمایش داده می‌شود.</li>
+			</ul>
+		</section>
+
+		<section class="policy-page__section">
+			<h2>زمان و روش تحویل</h2>
+			<p>این نسخه زمان تحویل، محدودهٔ جغرافیایی، شرکت حمل‌ونقل یا کد رهگیری را در مدل سفارش پیکربندی نکرده است؛ بنابراین برای آن‌ها زمان یا روش مشخصی وعده داده نمی‌شود.</p>
+			<p>برای دیدن وضعیت ثبت‌شدهٔ سفارش از <a href="/shop/track">پیگیری سفارش</a> استفاده کنید. نشانی تماس، در صورت تنظیم، در <a href="/contact">صفحهٔ تماس</a> آمده است.</p>
+			<p class="policy-page__notice">هزینه و آستانه از تنظیم ثابت فروشگاه می‌آیند و در صفحهٔ checkout نیز دوباره نمایش داده می‌شوند؛ صاحب سایت باید پیش از فروش واقعی آن‌ها را بازبینی کند.</p>
+		</section>
+	</div>
+</ShopLayout>

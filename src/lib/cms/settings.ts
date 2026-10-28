@@ -5,10 +5,10 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { CmsError } from './posts';
-import { asBoolean, asText } from './http';
+import { CmsError } from './posts.ts';
+import { asBoolean, asText } from './http.ts';
 
-export const SETTINGS_FILE = path.resolve(process.cwd(), 'data/cms-settings.json');
+export const SETTINGS_FILE = path.resolve(process.cwd(), process.env.CMS_SETTINGS_FILE || 'data/cms-settings.json');
 
 export interface SiteSettings {
 	siteTitle: string;

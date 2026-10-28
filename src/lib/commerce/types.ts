@@ -25,6 +25,27 @@ export interface Product {
 	updatedAt: string;
 }
 
+/** Versioned, allow-listed binding serialized by Builder ProductGrid nodes. */
+export interface ProductGridBinding {
+	provider: 'novex-commerce-products';
+	version: 1;
+	selection: 'featured' | 'latest' | 'category';
+	limit: number;
+	category?: string;
+}
+
+/** Public card projection; intentionally excludes SKU, stock, and internal IDs. */
+export interface PublicProductCard {
+	name: string;
+	slug: string;
+	category: string;
+	description: string;
+	price: number;
+	compareAtPrice?: number;
+	image: string;
+	inStock: boolean;
+}
+
 export type OrderStatus =
 	| 'pending'
 	| 'paid'

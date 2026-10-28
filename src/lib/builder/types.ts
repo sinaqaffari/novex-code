@@ -1,7 +1,9 @@
 export const PAGE_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const COMPONENT_VERSION = 1 as const;
 
-export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button'] as const;
+import type { ProductGridBinding } from '../commerce/types.ts';
+
+export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid'] as const;
 export type BuilderComponentType = (typeof BUILDER_COMPONENT_TYPES)[number];
 
 export const BREAKPOINTS = ['desktop', 'tablet', 'mobile'] as const;
@@ -54,12 +56,19 @@ export interface ButtonProps {
 	align: TextAlign;
 }
 
+export interface ProductGridProps {
+	heading: string;
+	emptyMessage: string;
+	binding: ProductGridBinding;
+}
+
 export interface ComponentPropsByType {
 	Container: ContainerProps;
 	Heading: HeadingProps;
 	Text: TextProps;
 	Image: ImageProps;
 	Button: ButtonProps;
+	ProductGrid: ProductGridProps;
 }
 
 /** A controlled, token-based style surface. No raw CSS is accepted. */
@@ -107,7 +116,11 @@ export interface ButtonNode extends NodeBase<'Button'> {
 	children?: never;
 }
 
-export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode;
+export interface ProductGridNode extends NodeBase<'ProductGrid'> {
+	children?: never;
+}
+
+export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode | ProductGridNode;
 
 export interface PageDocument {
 	schemaVersion: typeof PAGE_DOCUMENT_SCHEMA_VERSION;
@@ -136,7 +149,7 @@ export interface ComponentDefinition<T extends BuilderComponentType = BuilderCom
 	type: T;
 	version: number;
 	label: string;
-	category: 'layout' | 'content' | 'media' | 'action';
+	category: 'layout' | 'content' | 'media' | 'action' | 'commerce';
 	description: string;
 	documentation: string;
 	example: string;
@@ -144,6 +157,6 @@ export interface ComponentDefinition<T extends BuilderComponentType = BuilderCom
 	fields: readonly InspectorField[];
 	allowedChildren: readonly BuilderComponentType[];
 	supportsChildren: boolean;
-	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button';
+	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button' | 'productGrid';
 	productionRenderer: 'BuilderNode.astro';
 }

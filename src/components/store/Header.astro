@@ -39,6 +39,7 @@ const finalCartCount = cartCount ?? (await hydrateCart(readCart(Astro.cookies)))
 				<a href="/shop" class="nav__link" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>
 			)}
 			<a href="/about" class="nav__link" aria-current={isActive('/about') ? 'page' : undefined}>درباره</a>
+			<a href="/contact" class="nav__link" aria-current={isActive('/contact') ? 'page' : undefined}>تماس</a>
 		</nav>
 
 		<div class="header__actions">
@@ -65,6 +66,7 @@ const finalCartCount = cartCount ?? (await hydrateCart(readCart(Astro.cookies)))
 					<a href="/shop" class="mobile-nav__link" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>
 				)}
 				<a href="/about" class="mobile-nav__link" aria-current={isActive('/about') ? 'page' : undefined}>درباره</a>
+				<a href="/contact" class="mobile-nav__link" aria-current={isActive('/contact') ? 'page' : undefined}>تماس</a>
 			</nav>
 			{settings.commerceEnabled && (
 				<div class="mobile-cart">

@@ -7,6 +7,7 @@ import {
 	type AutosaveStatus,
 } from '../../lib/builder/autosave.ts';
 import { exportPageDocument, hiddenAtBreakpoint, importPageDocument, validatePageDocument } from '../../lib/builder/document.ts';
+import { resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
 import {
 	addNode,
 	createNodeId,
@@ -23,6 +24,9 @@ import {
 import { commitDocument, createDocumentHistory, redoDocument, undoDocument } from '../../lib/builder/history.ts';
 import { BUILDER_THEME_LIST, themeVariables } from '../../lib/builder/themes.ts';
 import { applyTemplate, listStarterTemplates } from '../../lib/builder/templates.ts';
+import { productGridApiPath } from '../../lib/commerce/product-binding.ts';
+import { faMoney } from '../../lib/cms/fa.ts';
+import type { ProductGridBinding, PublicProductCard } from '../../lib/commerce/types.ts';
 import type {
 	Breakpoint,
 	BuilderComponentType,
@@ -42,6 +46,8 @@ interface Props {
 	publishedAt: string | null;
 	slug: string;
 	canPublish: boolean;
+	canReadMedia: boolean;
+	canUploadMedia: boolean;
 }
 
 interface RevisionSummary {
@@ -59,6 +65,16 @@ interface TemplateSummary {
 	document?: PageDocument;
 }
 
+interface MediaPickerItem {
+	name: string;
+	assetRef: string;
+	publicUrl: string;
+	previewUrl: string;
+	bytes: number;
+	modifiedAt: string;
+	builtin: boolean;
+}
+
 const BREAKPOINT_LABELS: Record<Breakpoint, string> = {
 	desktop: 'رومیزی',
 	tablet: 'تبلت',
@@ -73,7 +89,7 @@ const STATUS_LABELS: Record<AutosaveStatus, string> = {
 	conflict: 'تعارض نسخه',
 };
 
-export default function BuilderEditor({ initialDocument, initialRevision, publishedAt, slug, canPublish }: Props) {
+export default function BuilderEditor({ initialDocument, initialRevision, publishedAt, slug, canPublish, canReadMedia, canUploadMedia }: Props) {
 	const [history, setHistory] = useState(() => createDocumentHistory(initialDocument));
 	const historyRef = useRef(history);
 	const [revision, setRevision] = useState(initialRevision);
@@ -88,17 +104,41 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
 	const [revisionLoading, setRevisionLoading] = useState(false);
+	const historyOpenRef = useRef(false);
+	const revisionHistoryRequestRef = useRef(0);
 	const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 	const [templateItems, setTemplateItems] = useState<TemplateSummary[]>([]);
 	const [templateLoading, setTemplateLoading] = useState(false);
 	const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
 	const [templateName, setTemplateName] = useState('');
 	const [templateSaving, setTemplateSaving] = useState(false);
+	const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+	const [mediaItems, setMediaItems] = useState<MediaPickerItem[]>([]);
+	const [mediaLoading, setMediaLoading] = useState(false);
+	const [mediaUploading, setMediaUploading] = useState(false);
+	const [mediaError, setMediaError] = useState('');
 	const [publishBusy, setPublishBusy] = useState(false);
 	const controllerRef = useRef<AutosaveController | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
+	const mediaFileRef = useRef<HTMLInputElement | null>(null);
+	const mediaTargetRef = useRef<string | null>(null);
 	const document = history.present;
 	const selectedNode = selectedId ? findNode(document.nodes, selectedId) : null;
+
+	async function refreshRevisionHistory(): Promise<void> {
+		const requestId = ++revisionHistoryRequestRef.current;
+		setRevisionLoading(true);
+		try {
+			const response = await fetch(`/cms/api/builder/pages/${encodeURIComponent(slug)}/history`, { headers: { accept: 'application/json' } });
+			const result = await readResponse(response);
+			if (!response.ok) throw new Error(result.message || 'خواندن تاریخچه ممکن نشد.');
+			if (requestId === revisionHistoryRequestRef.current) setRevisions(Array.isArray(result.revisions) ? result.revisions : []);
+		} catch (error) {
+			if (requestId === revisionHistoryRequestRef.current) setMessage(error instanceof Error ? error.message : 'خواندن تاریخچه ممکن نشد.');
+		} finally {
+			if (requestId === revisionHistoryRequestRef.current) setRevisionLoading(false);
+		}
+	}
 
 	useEffect(() => {
 		const controller = new AutosaveController(
@@ -116,6 +156,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 				if (typeof result.revision !== 'number') throw new Error('پاسخ ذخیره نسخهٔ تازه را برنگرداند.');
 				revisionRef.current = result.revision;
 				setRevision(result.revision);
+				if (historyOpenRef.current) void refreshRevisionHistory();
 				setSaveError('');
 			},
 			(nextStatus, error) => {
@@ -148,8 +189,13 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 
 	useEffect(() => {
 		const handleShortcut = (event: KeyboardEvent) => {
-			if (!(event.metaKey || event.ctrlKey)) return;
 			const target = event.target as HTMLElement | null;
+			if (event.key === 'Escape') {
+				if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
+				setSelectedId(null);
+				return;
+			}
+			if (!(event.metaKey || event.ctrlKey)) return;
 			if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
 			if (event.key.toLowerCase() === 'z') {
 				event.preventDefault();
@@ -236,6 +282,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 				setHistory(nextHistory);
 				revisionRef.current = result.revision;
 				setRevision(result.revision);
+				if (historyOpenRef.current) void refreshRevisionHistory();
 				setIsPublished(Boolean(result.publishedAt));
 				controllerRef.current?.initialize(nextDocument);
 				setSelectedId(null);
@@ -331,6 +378,13 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 				applyDocument(updateNodeStyles(historyRef.current.present, node.id, patch, viewport));
 				return;
 			}
+			if (field.key.startsWith('binding.') && node.type === 'ProductGrid') {
+				const key = field.key.slice('binding.'.length) as keyof ProductGridBinding;
+				const binding: Record<string, unknown> = { ...node.props.binding, [key]: rawValue };
+				if (key === 'selection' && rawValue !== 'category') delete binding.category;
+				applyDocument(updateNodeProps(historyRef.current.present, node.id, { binding }));
+				return;
+			}
 			applyDocument(updateNodeProps(historyRef.current.present, node.id, { [field.key]: rawValue }));
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : 'مقدار واردشده معتبر نیست.');
@@ -384,6 +438,81 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 		}
 	}
 
+	async function loadMediaForPicker(): Promise<void> {
+		if (!canReadMedia) {
+			setMediaItems([]);
+			setMediaError('نقش شما اجازهٔ مشاهدهٔ کتابخانهٔ رسانه را ندارد.');
+			return;
+		}
+		setMediaLoading(true);
+		setMediaError('');
+		try {
+			const response = await fetch('/cms/api/media', { headers: { accept: 'application/json' } });
+			const result = await readResponse(response);
+			if (!response.ok) throw new Error(result.message || 'خواندن کتابخانهٔ رسانه ممکن نشد.');
+			const items = Array.isArray(result.media)
+				? result.media.filter((item: MediaPickerItem) => typeof item.assetRef === 'string' && typeof item.previewUrl === 'string')
+				: [];
+			setMediaItems(items);
+		} catch (error) {
+			setMediaError(error instanceof Error ? error.message : 'خواندن کتابخانهٔ رسانه ممکن نشد.');
+		} finally {
+			setMediaLoading(false);
+		}
+	}
+
+	function openMediaPicker(node: BuilderNode): void {
+		if (node.type !== 'Image') return;
+		mediaTargetRef.current = node.id;
+		setMediaPickerOpen(true);
+		void loadMediaForPicker();
+	}
+
+	function selectMedia(item: MediaPickerItem): void {
+		const targetId = mediaTargetRef.current;
+		const target = targetId ? findNode(historyRef.current.present.nodes, targetId) : null;
+		if (!target || target.type !== 'Image') {
+			setMediaError('مؤلفهٔ تصویر انتخاب‌شده دیگر در صفحه نیست.');
+			return;
+		}
+		try {
+			applyDocument(updateNodeProps(historyRef.current.present, target.id, { src: item.assetRef }));
+			setSelectedId(target.id);
+			setMediaPickerOpen(false);
+			setMediaError('');
+			setMessage(`تصویر «${item.name}» به سند پیوند شد.`);
+		} catch (error) {
+			setMediaError(error instanceof Error ? error.message : 'انتخاب تصویر انجام نشد.');
+		}
+	}
+
+	async function uploadPickerImage(file: File): Promise<void> {
+		if (!canUploadMedia) {
+			setMediaError('نقش شما اجازهٔ بارگذاری تصویر را ندارد.');
+			return;
+		}
+		setMediaUploading(true);
+		setMediaError('');
+		try {
+			const body = new FormData();
+			body.append('files', file);
+			const response = await fetch('/cms/api/media/upload', {
+				method: 'POST',
+				headers: { accept: 'application/json' },
+				body,
+			});
+			const result = await readResponse(response);
+			const item = Array.isArray(result.files) ? result.files[0] as MediaPickerItem | undefined : undefined;
+			if (!response.ok || !item?.assetRef) throw new Error(result.message || 'بارگذاری تصویر انجام نشد.');
+			setMediaItems((current) => [item, ...current.filter((candidate) => candidate.assetRef !== item.assetRef)]);
+			selectMedia(item);
+		} catch (error) {
+			setMediaError(error instanceof Error ? error.message : 'بارگذاری تصویر انجام نشد.');
+		} finally {
+			setMediaUploading(false);
+		}
+	}
+
 	function handleDrop(event: DragEvent<HTMLElement>, target: BuilderNode): void {
 		event.preventDefault();
 		event.stopPropagation();
@@ -401,19 +530,9 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 
 	async function toggleHistory(): Promise<void> {
 		const open = !historyOpen;
+		historyOpenRef.current = open;
 		setHistoryOpen(open);
-		if (!open || revisions.length) return;
-		setRevisionLoading(true);
-		try {
-			const response = await fetch(`/cms/api/builder/pages/${encodeURIComponent(slug)}/history`, { headers: { accept: 'application/json' } });
-			const result = await readResponse(response);
-			if (!response.ok) throw new Error(result.message || 'خواندن تاریخچه ممکن نشد.');
-			setRevisions(Array.isArray(result.revisions) ? result.revisions : []);
-		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'خواندن تاریخچه ممکن نشد.');
-		} finally {
-			setRevisionLoading(false);
-		}
+		if (open) await refreshRevisionHistory();
 	}
 
 	async function restoreRevision(revisionNumber: number): Promise<void> {
@@ -536,6 +655,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 			if (!response.ok) throw new Error(result.message || 'انتشار صفحه انجام نشد.');
 			revisionRef.current = result.revision;
 			setRevision(result.revision);
+			if (historyOpenRef.current) void refreshRevisionHistory();
 			setIsPublished(true);
 			setMessage(`صفحه منتشر شد. نشانی عمومی: ${result.publicUrl}`);
 		} catch (error) {
@@ -564,10 +684,10 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					{status === 'conflict' ? <button className="builder-link-button" type="button" onClick={reloadServerVersion}>بارگیری نسخهٔ تازه</button> : null}
 				</div>
 				<div className="builder-toolbar__actions">
-					<button className="builder-icon-button" type="button" title="واگرد (Ctrl/⌘ Z)" aria-label="واگرد" disabled={!history.past.length} onClick={undo}>↶</button>
-					<button className="builder-icon-button" type="button" title="ازنو (Ctrl/⌘ Shift Z)" aria-label="ازنو" disabled={!history.future.length} onClick={redo}>↷</button>
-					<button className="builder-toolbar-button" type="button" onClick={() => void saveNow().catch(() => undefined)}>ذخیره</button>
-					{canPublish ? <button className="builder-toolbar-button builder-toolbar-button--publish" type="button" disabled={publishBusy} onClick={() => void publish()}>{publishBusy ? 'در حال انتشار…' : 'انتشار'}</button> : null}
+					<button className="builder-icon-button" type="button" title="واگرد (Ctrl/⌘ Z)" aria-label="واگرد" data-testid="undo" disabled={!history.past.length} onClick={undo}>↶</button>
+					<button className="builder-icon-button" type="button" title="ازنو (Ctrl/⌘ Shift Z)" aria-label="ازنو" data-testid="redo" disabled={!history.future.length} onClick={redo}>↷</button>
+					<button className="builder-toolbar-button" type="button" data-testid="save-page" onClick={() => void saveNow().catch(() => undefined)}>ذخیره</button>
+					{canPublish ? <button className="builder-toolbar-button builder-toolbar-button--publish" type="button" data-testid="publish-page" disabled={publishBusy} onClick={() => void publish()}>{publishBusy ? 'در حال انتشار…' : 'انتشار'}</button> : null}
 					{isPublished ? <a className="builder-toolbar-button builder-toolbar-button--quiet" href={`/pages/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">نمایش منتشرشده</a> : <button className="builder-toolbar-button builder-toolbar-button--quiet" type="button" disabled title="پس از انتشار در دسترس است">پس از انتشار</button>}
 				</div>
 			</header>
@@ -590,13 +710,13 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					</div>
 					<div className="builder-library">
 						{COMPONENT_LIST.map((definition) => (
-							<button className="builder-component-card" type="button" key={definition.type} onClick={() => addComponent(definition.type)} title={definition.documentation}>
+							<button className="builder-component-card" type="button" key={definition.type} data-testid={`add-component-${definition.type.toLowerCase()}`} onClick={() => addComponent(definition.type)} title={definition.documentation}>
 								<span className="builder-component-card__icon">{componentIcon(definition.type)}</span>
 								<span><strong>{definition.label}</strong><small>{definition.description}</small></span>
 								<span className="builder-component-card__add">+</span>
 							</button>
 						))}
-						<button className="builder-component-card" type="button" onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
+						<button className="builder-component-card" type="button" data-testid="add-component-grid" onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
 							<span className="builder-component-card__icon">▦</span>
 							<span><strong>شبکه</strong><small>بخش Grid با ستون‌های واکنش‌گرا</small></span>
 							<span className="builder-component-card__add">+</span>
@@ -604,7 +724,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					</div>
 					<div className="builder-tree-heading"><span>لایه‌ها</span><span>{countNodes(document.nodes).toLocaleString('fa-IR')}</span></div>
 					{document.nodes.length ? (
-						<div className="builder-tree" role="tree" aria-label="ساختار صفحه">
+						<div className="builder-tree" role="list" aria-label="ساختار صفحه">
 							{document.nodes.map((node) => <TreeNode key={node.id} node={node} selectedId={selectedId} onSelect={setSelectedId} onDragStart={startDrag} onDrop={handleDrop} />)}
 						</div>
 					) : (
@@ -654,7 +774,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 									<h1>{document.title || 'بدون عنوان'}</h1>
 									{document.description ? <p>{document.description}</p> : null}
 								</header>
-								<div className="builder-preview-content" onDragOver={(event) => event.preventDefault()}>
+								<div className="builder-preview-content" data-testid="builder-canvas" onClick={() => setSelectedId(null)} onDragOver={(event) => event.preventDefault()}>
 									{document.nodes.length ? document.nodes.map((node) => (
 										<PreviewNode key={node.id} node={node} selectedId={selectedId} viewport={viewport} onSelect={setSelectedId} onInlineEdit={updateInlineText} onDragStart={startDrag} onDrop={handleDrop} />
 									)) : (
@@ -685,6 +805,9 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 							onMove={moveSelected}
 							onDuplicate={duplicateSelected}
 							onDelete={removeSelected}
+							onDeselect={() => setSelectedId(null)}
+							canReadMedia={canReadMedia}
+							onPickMedia={() => openMediaPicker(selectedNode)}
 						/>
 					) : (
 						<PageInspector document={document} onDescription={updatePageDescription} onTheme={(themeId) => applyDocument({ ...historyRef.current.present, themeId })} />
@@ -720,6 +843,33 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					</form>
 				</div>
 			) : null}
+			{mediaPickerOpen ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMediaPickerOpen(false); }}>
+					<section className="builder-modal builder-modal--media" role="dialog" aria-modal="true" aria-labelledby="builder-media-title" data-testid="media-picker">
+						<header className="builder-modal__header"><div><h2 id="builder-media-title">کتابخانهٔ رسانه</h2><p>تصویر انتخاب‌شده با شناسهٔ پایدار رسانه در سند ذخیره می‌شود.</p></div><button type="button" aria-label="بستن" onClick={() => setMediaPickerOpen(false)}>×</button></header>
+						{mediaError ? <p className="builder-media-error" role="alert">{mediaError}</p> : null}
+						{mediaLoading ? <p className="builder-template-empty" role="status">در حال بارگیری رسانه…</p> : mediaItems.length ? (
+							<div className="builder-media-grid">
+								{mediaItems.map((item) => (
+									<button className="builder-media-option" type="button" key={item.assetRef} data-testid="media-asset" data-asset-ref={item.assetRef} onClick={() => selectMedia(item)}>
+										<img src={item.previewUrl} alt="" loading="lazy" decoding="async" />
+										<span>{item.name}</span>{item.builtin ? <small>همراه قالب</small> : null}
+									</button>
+								))}
+							</div>
+						) : mediaError ? null : <p className="builder-template-empty" role="status">تصویر قابل‌استفاده‌ای در کتابخانه نیست.</p>}
+						<footer className="builder-modal__footer">
+							{canUploadMedia ? (
+								<label className={`builder-media-upload${mediaUploading ? ' is-busy' : ''}`}>
+									{mediaUploading ? 'در حال بارگذاری…' : 'بارگذاری تصویر'}
+									<input ref={mediaFileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.avif,.gif" disabled={mediaUploading} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void uploadPickerImage(file); }} />
+								</label>
+							) : <span className="builder-media-permission-note">بارگذاری برای نقش شما مجاز نیست.</span>}
+							<button type="button" onClick={() => setMediaPickerOpen(false)}>بستن</button>
+						</footer>
+					</section>
+				</div>
+			) : null}
 		</div>
 	);
 
@@ -738,7 +888,7 @@ interface TreeNodeProps {
 }
 
 function componentIcon(type: BuilderComponentType): string {
-	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : '↗';
+	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : type === 'ProductGrid' ? '▣' : '↗';
 }
 
 function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeProps) {
@@ -747,11 +897,15 @@ function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeP
 		: node.type === 'Text' ? node.props.text
 			: node.type === 'Button' ? node.props.label
 				: node.type === 'Image' ? node.props.alt || node.props.src || 'بدون تصویر'
-					: `${node.children.length} فرزند`;
+					: node.type === 'ProductGrid' ? `محصولات ${node.props.binding.selection}`
+						: `${node.children.length} فرزند`;
 	return (
-		<div className="builder-tree-node" role="treeitem" aria-expanded={node.type === 'Container' ? true : undefined} aria-selected={selectedId === node.id}>
+		<div className="builder-tree-node" role="listitem">
 			<button
 				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}`}
+				data-testid="tree-node"
+				data-node-id={node.id}
+				aria-pressed={selectedId === node.id}
 				type="button"
 				draggable
 				onClick={() => onSelect(node.id)}
@@ -763,7 +917,7 @@ function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeP
 				<span className="builder-tree-node__label"><strong>{label}</strong><small>{details || 'بدون متن'}</small></span>
 			</button>
 			{node.type === 'Container' && node.children.length ? (
-				<div className="builder-tree-node__children" role="group">
+				<div className="builder-tree-node__children" role="list">
 					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} onDragStart={onDragStart} onDrop={onDrop} />)}
 				</div>
 			) : null}
@@ -842,10 +996,17 @@ function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDra
 			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
 				<figure className="nvx-builder-node nvx-builder-image">
 					<div className="nvx-builder-image__frame" data-aspect={node.props.aspectRatio} data-fit={node.props.fit}>
-						{node.props.src ? <img src={node.props.src} alt={node.props.alt} loading="lazy" decoding="async" /> : <div className="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>تصویر انتخاب نشده است</div>}
+						{node.props.src ? <PreviewImage src={resolveBuilderImageSource(node.props.src)} alt={node.props.alt} /> : <div className="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>تصویر انتخاب نشده است</div>}
 					</div>
 					{node.props.caption ? <figcaption className="nvx-builder-image__caption">{node.props.caption}</figcaption> : null}
 				</figure>
+			</div>
+		);
+	}
+	if (node.type === 'ProductGrid') {
+		return (
+			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+				<ProductGridPreview node={node} />
 			</div>
 		);
 	}
@@ -856,6 +1017,90 @@ function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDra
 			</div>
 		</div>
 	);
+}
+
+interface ProductGridPreviewState {
+	status: 'loading' | 'ready' | 'disabled' | 'error';
+	currency?: string;
+	products?: PublicProductCard[];
+}
+
+function ProductGridPreview({ node }: { node: Extract<BuilderNode, { type: 'ProductGrid' }> }) {
+	const apiPath = productGridApiPath(node.props.binding);
+	const [result, setResult] = useState<ProductGridPreviewState>({ status: 'loading' });
+
+	useEffect(() => {
+		const controller = new AbortController();
+		setResult({ status: 'loading' });
+		void fetch(apiPath, { signal: controller.signal, headers: { Accept: 'application/json' } })
+			.then(async (response) => {
+				const payload = await response.json() as { ok?: unknown; status?: unknown; currency?: unknown; products?: unknown };
+				if (!response.ok || payload.ok !== true) throw new Error('Product preview could not be loaded.');
+				if (payload.status === 'disabled') {
+					setResult({ status: 'disabled' });
+					return;
+				}
+				if (payload.status !== 'ready' || typeof payload.currency !== 'string' || !Array.isArray(payload.products)) {
+					throw new Error('Product preview response is invalid.');
+				}
+				setResult({ status: 'ready', currency: payload.currency, products: payload.products as PublicProductCard[] });
+			})
+			.catch((error: unknown) => {
+				if (error instanceof Error && error.name === 'AbortError') return;
+				if (!controller.signal.aborted) setResult({ status: 'error' });
+			});
+		return () => controller.abort();
+	}, [apiPath]);
+
+	const products = result.products ?? [];
+	return (
+		<section className="nvx-builder-node nvx-builder-product-grid" data-testid="product-grid-preview" data-product-grid data-selection={node.props.binding.selection} aria-label={node.props.heading || 'پیش‌نمایش محصولات'}>
+			{node.props.heading ? <h3 className="nvx-builder-product-grid__heading">{node.props.heading}</h3> : null}
+			{result.status === 'loading' ? <p className="nvx-builder-product-grid__state" role="status">در حال بارگیری محصولات…</p> : null}
+			{result.status === 'disabled' ? <p className="nvx-builder-product-grid__state" role="status">فروشگاه غیرفعال است؛ پیش‌نمایش هنگام فعال‌بودن فروشگاه نمایش داده می‌شود.</p> : null}
+			{result.status === 'error' ? <p className="nvx-builder-product-grid__state" role="alert">بارگیری پیش‌نمایش محصولات ممکن نیست.</p> : null}
+			{result.status === 'ready' && products.length === 0 ? <p className="nvx-builder-product-grid__state" role="status">{node.props.emptyMessage}</p> : null}
+			{result.status === 'ready' && products.length ? (
+				<div className="nvx-builder-product-grid__items">
+					{products.map((product) => (
+						<article className="nvx-builder-product-card" key={product.slug} data-product-slug={product.slug}>
+							<a className="nvx-builder-product-card__link" href={`/shop/${encodeURIComponent(product.slug)}`} onClick={(event) => event.preventDefault()} aria-label={`مشاهدهٔ ${product.name}`}>
+								<ProductCardPreviewImage product={product} />
+								<div className="nvx-builder-product-card__body">
+									<span className="nvx-builder-product-card__category">{product.category}</span>
+									<h4>{product.name}</h4>
+									{product.description ? <p>{product.description}</p> : null}
+									<div className="nvx-builder-product-card__foot">
+										<span className="nvx-builder-product-card__price">
+											{product.compareAtPrice ? <del>{faMoney(product.compareAtPrice, result.currency ?? 'IRR')}</del> : null}
+											<strong>{faMoney(product.price, result.currency ?? 'IRR')}</strong>
+										</span>
+										<span className={`nvx-builder-product-card__availability${product.inStock ? '' : ' is-unavailable'}`}>{product.inStock ? 'موجود' : 'ناموجود'}</span>
+									</div>
+								</div>
+							</a>
+						</article>
+					))}
+				</div>
+			) : null}
+		</section>
+	);
+}
+
+function ProductCardPreviewImage({ product }: { product: PublicProductCard }) {
+	const [failed, setFailed] = useState(false);
+	useEffect(() => setFailed(false), [product.image]);
+	return (
+		<div className="nvx-builder-product-card__image">
+			{product.image && !failed ? <img src={product.image} alt={product.name} loading="lazy" decoding="async" onError={() => setFailed(true)} /> : <span role="img" aria-label={`تصویر ${product.name} ثبت نشده است`}>تصویر در دسترس نیست</span>}
+		</div>
+	);
+}
+
+function PreviewImage({ src, alt }: { src: string; alt: string }) {
+	const [failed, setFailed] = useState(false);
+	useEffect(() => setFailed(false), [src]);
+	return failed ? <div className="nvx-builder-image__empty" role="img" aria-label={alt || 'تصویر در دسترس نیست'}>فایل تصویر پیدا نشد</div> : <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }
 
 interface InlineEditableTextProps {
@@ -953,9 +1198,12 @@ interface InspectorProps {
 	onMove: (direction: -1 | 1) => void;
 	onDuplicate: () => void;
 	onDelete: () => void;
+	onDeselect: () => void;
+	canReadMedia: boolean;
+	onPickMedia: () => void;
 }
 
-function Inspector({ node, viewport, canMoveUp, canMoveDown, onField, onHidden, onMove, onDuplicate, onDelete }: InspectorProps) {
+function Inspector({ node, viewport, canMoveUp, canMoveDown, onField, onHidden, onMove, onDuplicate, onDelete, onDeselect, canReadMedia, onPickMedia }: InspectorProps) {
 	const definition = getComponentDefinition(node.type);
 	const groups: Array<{ key: InspectorField['group']; label: string }> = [
 		{ key: 'content', label: 'محتوا' },
@@ -966,13 +1214,21 @@ function Inspector({ node, viewport, canMoveUp, canMoveDown, onField, onHidden, 
 		<div className="builder-inspector">
 			<div className="builder-panel__heading builder-panel__heading--inspector">
 				<div><span className="builder-inspector__eyebrow">تنظیمات {BREAKPOINT_LABELS[viewport]}</span><h2>{definition.label}</h2></div>
-				<span className="builder-inspector__type">{node.type}</span>
+				<div className="builder-inspector__heading-actions"><span className="builder-inspector__type">{node.type}</span><button className="builder-icon-button" type="button" aria-label="پاک‌کردن انتخاب" title="پاک‌کردن انتخاب" onClick={onDeselect}>×</button></div>
 			</div>
 			<div className="builder-inspector__body">
 				{groups.map((group) => {
-					const fields = definition.fields.filter((field) => field.group === group.key);
+					const fields = definition.fields.filter((field) =>
+						field.group === group.key &&
+						!(node.type === 'ProductGrid' && field.key === 'binding.category' && node.props.binding.selection !== 'category'),
+					);
 					if (!fields.length) return null;
-					return <section className="builder-field-group" key={group.key}><h3>{group.label}</h3>{fields.map((field) => <InspectorControl key={field.key} field={field} value={fieldValue(node, field, viewport)} onChange={(value) => onField(field, value)} />)}</section>;
+					return <section className="builder-field-group" key={group.key}><h3>{group.label}</h3>{fields.map((field) => (
+						<div className={node.type === 'Image' && field.key === 'src' ? 'builder-field-with-action' : undefined} key={field.key}>
+							<InspectorControl field={field} value={fieldValue(node, field, viewport)} onChange={(value) => onField(field, value)} />
+							{node.type === 'Image' && field.key === 'src' ? <button className="builder-media-picker-trigger" type="button" data-testid="open-media-picker" disabled={!canReadMedia} title={canReadMedia ? 'انتخاب از کتابخانهٔ رسانه' : 'نقش شما اجازهٔ خواندن رسانه را ندارد'} onClick={onPickMedia}>انتخاب از کتابخانهٔ رسانه</button> : null}
+						</div>
+					))}</section>;
 				})}
 				<section className="builder-field-group builder-responsive-group">
 					<h3>واکنش‌گرا</h3>
@@ -1080,6 +1336,9 @@ function previewStyle(node: BuilderNode, viewport: Breakpoint): CSSProperties {
 }
 
 function fieldValue(node: BuilderNode, field: InspectorField, viewport: Breakpoint): unknown {
+	if (field.key.startsWith('binding.') && node.type === 'ProductGrid') {
+		return node.props.binding[field.key.slice('binding.'.length) as keyof ProductGridBinding] ?? '';
+	}
 	if (!field.key.startsWith('styles.')) return node.props[field.key as keyof typeof node.props];
 	const key = field.key.slice('styles.'.length) as keyof NodeStyles;
 	if (viewport === 'desktop') return node.styles?.[key] ?? '';

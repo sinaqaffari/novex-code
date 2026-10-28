@@ -1,6 +1,9 @@
 ---
 import type { BuilderNode } from '../../lib/builder/types.ts';
 import { controlledNodeStyle } from '../../lib/builder/render.ts';
+import ProductGrid from './ProductGrid.astro';
+import { parseBuilderMediaReference, resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
+import { assetExists } from '../../lib/cms/media.ts';
 
 interface Props {
 	node: BuilderNode;
@@ -10,6 +13,10 @@ const { node } = Astro.props;
 const style = controlledNodeStyle(node.styles);
 const id = node.id;
 const baseClass = `nvx-builder-node${node.styles?.width ? ` nvx-builder-node--width-${node.styles.width}` : ''}`;
+const mediaReference = node.type === 'Image' ? parseBuilderMediaReference(node.props.src) : null;
+const mediaPath = mediaReference ? `${mediaReference.bucket === 'uploads' ? 'uploads/' : ''}${mediaReference.name}` : '';
+const imageAvailable = node.type === 'Image' && mediaReference ? await assetExists(mediaPath) : true;
+const imageSource = node.type === 'Image' ? resolveBuilderImageSource(node.props.src) : '';
 ---
 
 {node.type === 'Container' ? (
@@ -37,14 +44,16 @@ const baseClass = `nvx-builder-node${node.styles?.width ? ` nvx-builder-node--wi
 ) : node.type === 'Image' ? (
 	<figure class:list={[baseClass, 'nvx-builder-image']} data-builder-id={id} style={style}>
 		<div class="nvx-builder-image__frame" data-aspect={node.props.aspectRatio} data-fit={node.props.fit}>
-			{node.props.src ? (
-				<img src={node.props.src} alt={node.props.alt} loading="lazy" decoding="async" />
+			{node.props.src && imageAvailable ? (
+				<img src={imageSource} alt={node.props.alt} loading="lazy" decoding="async" />
 			) : (
-				<div class="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>تصویر در دسترس نیست</div>
+				<div class="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>{node.props.src ? 'فایل تصویر پیدا نشد' : 'تصویر انتخاب نشده است'}</div>
 			)}
 		</div>
 		{node.props.caption ? <figcaption class="nvx-builder-image__caption">{node.props.caption}</figcaption> : null}
 	</figure>
+) : node.type === 'ProductGrid' ? (
+	<ProductGrid node={node} className={baseClass} style={style} />
 ) : (
 	<div class:list={[baseClass, 'nvx-builder-button-wrap']} data-builder-id={id} data-align={node.props.align} style={style}>
 		<a class:list={['nvx-builder-button', `nvx-builder-button--${node.props.variant}`]} href={node.props.href}>{node.props.label}</a>

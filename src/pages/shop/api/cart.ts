@@ -11,6 +11,7 @@ import {
 import { readDatabase } from '../../../lib/commerce/db';
 import { computeDiscount } from '../../../lib/commerce/discounts';
 import { AppError } from '../../../lib/errors';
+import { readSettings } from '../../../lib/cms/settings';
 
 export const prerender = false;
 
@@ -38,6 +39,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 
 	const fail = (message: string, status = 400) =>
 		wantsJson ? Response.json({ ok: false, message }, { status }) : redirect(withError(back, message), 303);
+
+	if ((action === 'add' || action === 'discount') && !(await readSettings()).commerceEnabled) {
+		return fail('فروشگاه غیرفعال است و امکان افزودن کالا یا کد تخفیف وجود ندارد.', 503);
+	}
 
 	try {
 		let lines = readCart(cookies);

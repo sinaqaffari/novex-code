@@ -6,6 +6,7 @@ import { newId, readDatabase, updateDatabase } from './db.ts';
 import type { Product, ProductStatus } from './types.ts';
 import { parseEnum, parseInteger, parseMoney, requireText, asBool, asText } from './validation.ts';
 
+
 export interface ProductInput {
 	name: string;
 	slug: string;

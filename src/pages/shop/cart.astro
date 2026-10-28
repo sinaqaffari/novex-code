@@ -36,6 +36,7 @@ if (code) {
 const shipping = cart.subtotal === 0 || cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
 const total = Math.max(0, cart.subtotal - discount) + shipping;
 const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subtotal);
+const shopClosed = !settings.commerceEnabled;
 ---
 
 <ShopLayout title="سبد خرید" cartCount={cart.count} settings={settings} noindex>
@@ -50,6 +51,7 @@ const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subto
 	{cartError && (
 		<p class="notice notice--error" role="alert">{cartError}</p>
 	)}
+	{shopClosed ? <p class="notice" role="status">فروشگاه غیرفعال است؛ اقلام سبد خرید را می‌توانید ببینید یا حذف کنید، اما سفارش تازه پذیرفته نمی‌شود.</p> : null}
 
 	{cart.lines.length === 0 ? (
 		<div class="empty" style="max-width:520px;margin-inline:auto">
@@ -138,9 +140,7 @@ const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subto
 							<span class="num">{faMoney(total, settings.currency)}</span>
 						</div>
 
-						<a class="btn btn--primary btn--block" href="/shop/checkout" style="margin-top:0.6rem">
-							ادامهٔ فرآیند خرید
-						</a>
+						{!shopClosed ? <a class="btn btn--primary btn--block" href="/shop/checkout" style="margin-top:0.6rem">ادامهٔ فرآیند خرید</a> : null}
 
 						{remainingForFreeShipping > 0 ? (
 							<p class="hint">
@@ -152,34 +152,28 @@ const remainingForFreeShipping = Math.max(0, SHIPPING.freeThreshold - cart.subto
 					</div>
 				</div>
 
-				<div class="panel">
-					<div class="panel__head">کد تخفیف</div>
-					<div class="panel__body" style="display:grid;gap:0.6rem">
-						{discountError && <p class="notice notice--error">{discountError}</p>}
-						<form method="post" action="/shop/api/cart" style="display:flex;gap:0.5rem">
-							<input type="hidden" name="action" value="discount" />
-						<label class="sr-only" for="discountCode">کد تخفیف</label>
-						<input
-								class="input"
-								id="discountCode"
-								name="code"
-								value={discountCode || code}
-								placeholder="مثلاً NOWRUZ25"
-								autocomplete="off"
-								dir="ltr"
-							/>
-							<button class="btn btn--outline" type="submit">اعمال</button>
-						</form>
-						{discountCode && (
-							<form method="post" action="/shop/api/cart">
+				{!shopClosed ? (
+					<div class="panel">
+						<div class="panel__head">کد تخفیف</div>
+						<div class="panel__body" style="display:grid;gap:0.6rem">
+							{discountError && <p class="notice notice--error">{discountError}</p>}
+							<form method="post" action="/shop/api/cart" style="display:flex;gap:0.5rem">
 								<input type="hidden" name="action" value="discount" />
-								<input type="hidden" name="code" value="" />
-								<button class="btn btn--ghost" type="submit">حذف کد «{discountCode}»</button>
+								<label class="sr-only" for="discountCode">کد تخفیف</label>
+								<input class="input" id="discountCode" name="code" value={discountCode || code} placeholder="مثلاً NOWRUZ25" autocomplete="off" dir="ltr" />
+								<button class="btn btn--outline" type="submit">اعمال</button>
 							</form>
-						)}
-						<p class="hint">کد تخفیف در مرحلهٔ پرداخت دوباره بررسی می‌شود.</p>
+							{discountCode && (
+								<form method="post" action="/shop/api/cart">
+									<input type="hidden" name="action" value="discount" />
+									<input type="hidden" name="code" value="" />
+									<button class="btn btn--ghost" type="submit">حذف کد «{discountCode}»</button>
+								</form>
+							)}
+							<p class="hint">کد تخفیف در مرحلهٔ پرداخت دوباره بررسی می‌شود.</p>
+						</div>
 					</div>
-				</div>
+				) : null}
 			</aside>
 		</div>
 	)}

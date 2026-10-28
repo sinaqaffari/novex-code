@@ -1,4 +1,5 @@
 ---
+import { randomUUID } from 'node:crypto';
 import ShopLayout from '../../layouts/ShopLayout.astro';
 import '../../styles/commerce.css';
 import { faMoney, faNumber } from '../../lib/cms/fa';
@@ -11,7 +12,8 @@ import { readDatabase } from '../../lib/commerce/db';
 export const prerender = false;
 
 const settings = await readSettings();
-const cart = await hydrateCart(readCart(Astro.cookies));
+const cartLines = readCart(Astro.cookies);
+const cart = await hydrateCart(cartLines);
 const code = readDiscountCode(Astro.cookies);
 
 if (!settings.commerceEnabled) {
@@ -39,6 +41,8 @@ if (code) {
 
 const shipping = cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
 const total = Math.max(0, cart.subtotal - discount) + shipping;
+const idempotencyKey = randomUUID();
+const checkoutItems = JSON.stringify(cartLines);
 ---
 
 <ShopLayout title="تکمیل خرید" cartCount={cart.count} settings={settings} noindex>
@@ -54,6 +58,8 @@ const total = Math.max(0, cart.subtotal - discount) + shipping;
 
 	<div class="cart-layout">
 		<form class="panel" method="post" action="/shop/api/checkout" id="checkout-form">
+			<input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+			<input type="hidden" name="checkoutItems" value={checkoutItems} />
 			<div class="panel__head">اطلاعات تحویل</div>
 			<div class="panel__body">
 				<div class="form-grid">
@@ -102,6 +108,8 @@ const total = Math.max(0, cart.subtotal - discount) + shipping;
 				<p class="hint" style="margin-top:0.8rem">
 					با ثبت سفارش، شمارهٔ پیگیری نمایش داده می‌شود — آن را نگه دارید.
 				</p>
+				<p class="notice" role="note">ثبت سفارش به‌معنای پرداخت موفق نیست. وضعیت پرداخت در صفحهٔ سفارش نمایش داده می‌شود؛ اگر نتیجه نامشخص بود، پیش از تلاش دوباره وضعیت را بررسی کنید.</p>
+				<p class="hint">اطلاعات این فرم برای ثبت و پیگیری سفارش استفاده می‌شود. <a href="/privacy">حریم خصوصی</a> و <a href="/terms">شرایط فروش</a> را ببینید.</p>
 			</div>
 		</form>
 

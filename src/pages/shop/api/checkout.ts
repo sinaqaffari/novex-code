@@ -22,6 +22,7 @@ import {
 	ORDER_ACCESS_COOKIE,
 } from '../../../lib/commerce/order-access';
 import type { Order } from '../../../lib/commerce/types';
+import { readSettings } from '../../../lib/cms/settings';
 
 export const prerender = false;
 
@@ -119,6 +120,10 @@ function safeOrderRedirect(order: Order): string {
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 	const wantsJson = request.headers.get('accept')?.includes('application/json') ?? false;
+	if (!(await readSettings()).commerceEnabled) {
+		const message = 'فروشگاه غیرفعال است و سفارش تازه پذیرفته نمی‌شود.';
+		return wantsJson ? Response.json({ ok: false, message }, { status: 503 }) : redirect('/shop', 303);
+	}
 
 	try {
 		// Register optional payment adapters before deciding whether one is active.
