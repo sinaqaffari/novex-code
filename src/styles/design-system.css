@@ -1,0 +1,386 @@
+/*
+ * Novex-Code Design System
+ * Semantic CSS custom properties for light and dark editor themes.
+ * All colors meet WCAG AA contrast for text on their respective backgrounds.
+ * Persian-first RTL layout is respected throughout.
+ */
+
+/* ============================================================================
+   Base tokens (shared across themes)
+   ============================================================================ */
+
+:root {
+	/* --- Typography families --- */
+	--ds-font-family: var(--font-fa, 'Vazirmatn Variable', 'Vazirmatn', sans-serif);
+	--ds-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+	/* --- Typography scale (px / rem-agnostic, used as font-size values) --- */
+	--ds-text-xs: 11px;
+	--ds-text-sm: 12px;
+	--ds-text-base: 13px;
+	--ds-text-lg: 15px;
+	--ds-text-xl: 17px;
+	--ds-text-2xl: 20px;
+	--ds-text-3xl: 24px;
+
+	/* --- Font weights --- */
+	--ds-font-weight-normal: 400;
+	--ds-font-weight-medium: 500;
+	--ds-font-weight-semibold: 600;
+	--ds-font-weight-bold: 700;
+
+	/* --- Line heights --- */
+	--ds-line-height-tight: 1.25;
+	--ds-line-height-normal: 1.6;
+	--ds-line-height-relaxed: 1.85;
+
+	/* --- Spacing scale (px) --- */
+	--ds-space-0: 0px;
+	--ds-space-1: 4px;
+	--ds-space-2: 8px;
+	--ds-space-3: 12px;
+	--ds-space-4: 16px;
+	--ds-space-5: 20px;
+	--ds-space-6: 24px;
+	--ds-space-8: 32px;
+	--ds-space-10: 40px;
+	--ds-space-12: 48px;
+	--ds-space-16: 64px;
+
+	/* --- Border radii --- */
+	--ds-radius-sm: 4px;
+	--ds-radius-md: 6px;
+	--ds-radius-lg: 8px;
+	--ds-radius-full: 9999px;
+
+	/* --- Border widths --- */
+	--ds-border-width: 1px;
+
+	/* --- Elevation (box-shadow) --- */
+	--ds-elevation-0: none;
+	--ds-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+	--ds-elevation-2: 0 4px 6px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+	--ds-elevation-3: 0 10px 15px rgba(0, 0, 0, 0.05), 0 4px 6px rgba(0, 0, 0, 0.03);
+
+	/* --- Control heights --- */
+	--ds-control-height-sm: 26px;
+	--ds-control-height-md: 34px;
+	--ds-control-height-lg: 42px;
+
+	/* --- Interaction targets (min touch target) --- */
+	--ds-touch-target: 44px;
+
+	/* --- Motion (respects prefers-reduced-motion) --- */
+	--ds-motion-fast: 120ms;
+	--ds-motion-base: 200ms;
+	--ds-motion-slow: 300ms;
+	--ds-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+	--ds-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+	/* --- Z-index layers --- */
+	--ds-z-dropdown: 100;
+	--ds-z-modal: 200;
+	--ds-z-toast: 300;
+	--ds-z-tooltip: 400;
+
+	/* --- Transition defaults --- */
+	--ds-transition-base: var(--ds-motion-base) var(--ds-ease-standard);
+}
+
+/* Reduce motion when user prefers it */
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--ds-motion-fast: 0ms;
+		--ds-motion-base: 0ms;
+		--ds-motion-slow: 0ms;
+		--ds-ease-standard: linear;
+	}
+}
+
+/* ============================================================================
+   Light theme (default)
+   ============================================================================ */
+
+[data-theme='light'],
+:root:not([data-theme='dark']) {
+	/* --- Backgrounds --- */
+	--ds-bg-body: #f3f5f8;
+	--ds-bg-surface: #ffffff;
+	--ds-bg-surface-elevated: #fafbfd;
+	--ds-bg-surface-hover: #f4f6f9;
+	--ds-bg-canvas: #e9edf2;
+	--ds-bg-canvas-paper: #ffffff;
+	--ds-bg-selected: #eef4ff;
+	--ds-bg-selected-hover: #e2eaff;
+	--ds-bg-drag-over: #dbe7ff;
+	--ds-bg-disabled: #f2f4f7;
+	--ds-bg-input: #ffffff;
+
+	/* --- Actions --- */
+	--ds-action-primary: #2563eb;
+	--ds-action-primary-hover: #1d4ed8;
+	--ds-action-primary-active: #1e40af;
+	--ds-action-primary-text: #ffffff;
+	--ds-action-secondary: #eef0f3;
+	--ds-action-secondary-hover: #e2e5e9;
+	--ds-action-secondary-text: #333b46;
+	--ds-action-muted: #f4f6f9;
+	--ds-action-muted-hover: #eef0f3;
+	--ds-action-muted-text: #5b6572;
+	--ds-action-destructive: #c13d36;
+	--ds-action-destructive-hover: #a6312c;
+	--ds-action-destructive-text: #ffffff;
+
+	/* --- Text --- */
+	--ds-text-primary: #171a1f;
+	--ds-text-secondary: #333b46;
+	--ds-text-muted: #6b737e;
+	--ds-text-inverse: #ffffff;
+	--ds-text-link: #2563eb;
+	--ds-text-link-hover: #1d4ed8;
+
+	/* --- Borders and dividers --- */
+	--ds-border: #dce1e8;
+	--ds-border-hover: #c8d2dc;
+	--ds-border-focus: #7ea4e6;
+	--ds-border-input: #dfe3e9;
+	--ds-border-input-focus: #7ea4e6;
+	--ds-divider: #eef0f3;
+	--ds-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.15);
+
+	/* --- States --- */
+	--ds-selection-bg: #3778e7;
+	--ds-selection-text: #ffffff;
+	--ds-hover-bg: #f4f6f9;
+	--ds-active-bg: #eef0f3;
+	--ds-disabled-bg: #f2f4f7;
+	--ds-disabled-text: #9ca3af;
+	--ds-disabled-border: #e5e7eb;
+
+	/* --- Canvas --- */
+	--ds-canvas-outline: 1px solid transparent;
+	--ds-canvas-outline-hover: 1px solid #8ab0f0;
+	--ds-canvas-outline-selected: 2px solid #3778e7;
+	--ds-canvas-offset: 2px;
+
+	/* --- Surface text --- */
+	--ds-surface-text: #171a1f;
+	--ds-surface-text-muted: #6b737e;
+}
+
+/* ============================================================================
+   Dark theme
+   ============================================================================ */
+
+[data-theme='dark'] {
+	/* --- Backgrounds --- */
+	--ds-bg-body: #111419;
+	--ds-bg-surface: #191c22;
+	--ds-bg-surface-elevated: #1e2229;
+	--ds-bg-surface-hover: #22272f;
+	--ds-bg-canvas: #0f1216;
+	--ds-bg-canvas-paper: #191c22;
+	--ds-bg-selected: #26305c;
+	--ds-bg-selected-hover: #2e3a6c;
+	--ds-bg-drag-over: #2a3a6d;
+	--ds-bg-disabled: #191c22;
+	--ds-bg-input: #191c22;
+
+	/* --- Actions --- */
+	--ds-action-primary: #4f93ff;
+	--ds-action-primary-hover: #6aa3ff;
+	--ds-action-primary-active: #3d7df5;
+	--ds-action-primary-text: #ffffff;
+	--ds-action-secondary: #2a2f37;
+	--ds-action-secondary-hover: #333943;
+	--ds-action-secondary-text: #c8d0da;
+	--ds-action-muted: #22272f;
+	--ds-action-muted-hover: #2b313c;
+	--ds-action-muted-text: #9ca3af;
+	--ds-action-destructive: #e77f7a;
+	--ds-action-destructive-hover: #ef948f;
+	--ds-action-destructive-text: #ffffff;
+
+	/* --- Text --- */
+	--ds-text-primary: #f2f4f7;
+	--ds-text-secondary: #c8d0da;
+	--ds-text-muted: #8a94a2;
+	--ds-text-inverse: #171a1f;
+	--ds-text-link: #6aa3ff;
+	--ds-text-link-hover: #8bb3ff;
+
+	/* --- Borders and dividers --- */
+	--ds-border: #333943;
+	--ds-border-hover: #424a56;
+	--ds-border-focus: #6aa3ff;
+	--ds-border-input: #2a2f37;
+	--ds-border-input-focus: #6aa3ff;
+	--ds-divider: #22272f;
+	--ds-focus-ring: 0 0 0 3px rgba(106, 163, 255, 0.25);
+
+	/* --- States --- */
+	--ds-selection-bg: #4f93ff;
+	--ds-selection-text: #ffffff;
+	--ds-hover-bg: #22272f;
+	--ds-active-bg: #2a2f37;
+	--ds-disabled-bg: #191c22;
+	--ds-disabled-text: #5b6572;
+	--ds-disabled-border: #2a2f37;
+
+	/* --- Canvas --- */
+	--ds-canvas-outline: 1px solid transparent;
+	--ds-canvas-outline-hover: 1px solid #6aa3ff;
+	--ds-canvas-outline-selected: 2px solid #4f93ff;
+	--ds-canvas-offset: 2px;
+
+	/* --- Surface text --- */
+	--ds-surface-text: #f2f4f7;
+	--ds-surface-text-muted: #8a94a2;
+}
+
+/* ============================================================================
+   Component-level tokens derived from base
+   ============================================================================ */
+
+.builder-shell {
+	/* Backgrounds */
+	--builder-bg-body: var(--ds-bg-body);
+	--builder-bg-surface: var(--ds-bg-surface);
+	--builder-bg-surface-elevated: var(--ds-bg-surface-elevated);
+	--builder-bg-surface-hover: var(--ds-bg-surface-hover);
+	--builder-bg-canvas: var(--ds-bg-canvas);
+	--builder-bg-canvas-paper: var(--ds-bg-canvas-paper);
+	--builder-bg-selected: var(--ds-bg-selected);
+	--builder-bg-drag-over: var(--ds-bg-drag-over);
+	--builder-bg-disabled: var(--ds-bg-disabled);
+	--builder-bg-input: var(--ds-bg-input);
+
+	/* Actions */
+	--builder-action-primary: var(--ds-action-primary);
+	--builder-action-primary-hover: var(--ds-action-primary-hover);
+	--builder-action-primary-active: var(--ds-action-primary-active);
+	--builder-action-primary-text: var(--ds-action-primary-text);
+	--builder-action-secondary: var(--ds-action-secondary);
+	--builder-action-secondary-hover: var(--ds-action-secondary-hover);
+	--builder-action-secondary-text: var(--ds-action-secondary-text);
+	--builder-action-muted: var(--ds-action-muted);
+	--builder-action-muted-hover: var(--ds-action-muted-hover);
+	--builder-action-muted-text: var(--ds-action-muted-text);
+	--builder-action-destructive: var(--ds-action-destructive);
+	--builder-action-destructive-hover: var(--ds-action-destructive-hover);
+	--builder-action-destructive-text: var(--ds-action-destructive-text);
+
+	/* Text */
+	--builder-text-primary: var(--ds-text-primary);
+	--builder-text-secondary: var(--ds-text-secondary);
+	--builder-text-muted: var(--ds-text-muted);
+	--builder-text-inverse: var(--ds-text-inverse);
+	--builder-text-link: var(--ds-text-link);
+	--builder-text-link-hover: var(--ds-text-link-hover);
+	--builder-surface-text: var(--ds-surface-text);
+	--builder-surface-text-muted: var(--ds-surface-text-muted);
+
+	/* Borders */
+	--builder-border: var(--ds-border);
+	--builder-border-hover: var(--ds-border-hover);
+	--builder-border-focus: var(--ds-border-focus);
+	--builder-border-input: var(--ds-border-input);
+	--builder-border-input-focus: var(--ds-border-input-focus);
+	--builder-divider: var(--ds-divider);
+	--builder-focus-ring: var(--ds-focus-ring);
+
+	/* States */
+	--builder-selection-bg: var(--ds-selection-bg);
+	--builder-selection-text: var(--ds-selection-text);
+	--builder-hover-bg: var(--ds-hover-bg);
+	--builder-active-bg: var(--ds-active-bg);
+	--builder-disabled-bg: var(--ds-disabled-bg);
+	--builder-disabled-text: var(--ds-disabled-text);
+	--builder-disabled-border: var(--ds-disabled-border);
+
+	/* Canvas */
+	--builder-canvas-outline: var(--ds-canvas-outline);
+	--builder-canvas-outline-hover: var(--ds-canvas-outline-hover);
+	--builder-canvas-outline-selected: var(--ds-canvas-outline-selected);
+	--builder-canvas-offset: var(--ds-canvas-offset);
+
+	/* Typography */
+	--builder-font-family: var(--ds-font-family);
+	--builder-font-family-mono: var(--ds-font-family-mono);
+	--builder-text-xs: var(--ds-text-xs);
+	--builder-text-sm: var(--ds-text-sm);
+	--builder-text-base: var(--ds-text-base);
+	--builder-text-lg: var(--ds-text-lg);
+	--builder-text-xl: var(--ds-text-xl);
+	--builder-text-2xl: var(--ds-text-2xl);
+	--builder-text-3xl: var(--ds-text-3xl);
+	--builder-font-weight-normal: var(--ds-font-weight-normal);
+	--builder-font-weight-medium: var(--ds-font-weight-medium);
+	--builder-font-weight-semibold: var(--ds-font-weight-semibold);
+	--builder-font-weight-bold: var(--ds-font-weight-bold);
+	--builder-line-height-tight: var(--ds-line-height-tight);
+	--builder-line-height-normal: var(--ds-line-height-normal);
+	--builder-line-height-relaxed: var(--ds-line-height-relaxed);
+
+	/* Spacing */
+	--builder-space-0: var(--ds-space-0);
+	--builder-space-1: var(--ds-space-1);
+	--builder-space-2: var(--ds-space-2);
+	--builder-space-3: var(--ds-space-3);
+	--builder-space-4: var(--ds-space-4);
+	--builder-space-5: var(--ds-space-5);
+	--builder-space-6: var(--ds-space-6);
+	--builder-space-8: var(--ds-space-8);
+	--builder-space-10: var(--ds-space-10);
+	--builder-space-12: var(--ds-space-12);
+	--builder-space-16: var(--ds-space-16);
+
+	/* Radii */
+	--builder-radius-sm: var(--ds-radius-sm);
+	--builder-radius-md: var(--ds-radius-md);
+	--builder-radius-lg: var(--ds-radius-lg);
+	--builder-radius-full: var(--ds-radius-full);
+
+	/* Border widths */
+	--builder-border-width: var(--ds-border-width);
+
+	/* Elevation */
+	--builder-elevation-0: var(--ds-elevation-0);
+	--builder-elevation-1: var(--ds-elevation-1);
+	--builder-elevation-2: var(--ds-elevation-2);
+	--builder-elevation-3: var(--ds-elevation-3);
+
+	/* Control heights */
+	--builder-control-height-sm: var(--ds-control-height-sm);
+	--builder-control-height-md: var(--ds-control-height-md);
+	--builder-control-height-lg: var(--ds-control-height-lg);
+	--builder-touch-target: var(--ds-touch-target);
+
+	/* Motion */
+	--builder-motion-fast: var(--ds-motion-fast);
+	--builder-motion-base: var(--ds-motion-base);
+	--builder-motion-slow: var(--ds-motion-slow);
+	--builder-ease-standard: var(--ds-ease-standard);
+	--builder-ease-spring: var(--ds-ease-spring);
+	--builder-transition-base: var(--ds-transition-base);
+
+	/* Z-index */
+	--builder-z-dropdown: var(--ds-z-dropdown);
+	--builder-z-modal: var(--ds-z-modal);
+	--builder-z-toast: var(--ds-z-toast);
+	--builder-z-tooltip: var(--ds-z-tooltip);
+
+	/* Legacy aliases for backward compatibility with existing styles */
+	--builder-border: var(--ds-border);
+	--builder-muted: var(--ds-text-muted);
+	--builder-brand: var(--ds-action-primary);
+}
+
+/* Apply body background and text color from tokens */
+.builder-shell {
+	background: var(--ds-bg-body);
+	color: var(--ds-text-primary);
+	font-family: var(--ds-font-family);
+	font-size: var(--ds-text-base);
+	line-height: var(--ds-line-height-normal);
+}

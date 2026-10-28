@@ -7,6 +7,7 @@ import {
 	type AutosaveStatus,
 } from '../../lib/builder/autosave.ts';
 import { exportPageDocument, hiddenAtBreakpoint, importPageDocument, validatePageDocument } from '../../lib/builder/document.ts';
+import { buildResponsiveCss } from '../../lib/builder/render.ts';
 import { resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
 import {
 	addNode,
@@ -23,7 +24,7 @@ import {
 	updateNodeStyles,
 } from '../../lib/builder/operations.ts';
 import { commitDocument, createDocumentHistory, redoDocument, undoDocument } from '../../lib/builder/history.ts';
-import { BUILDER_THEME_LIST, themeVariables } from '../../lib/builder/themes.ts';
+import { BUILDER_THEME_LIST, themeStyleText, themeVariables } from '../../lib/builder/themes.ts';
 import { applyTemplate, listStarterTemplates } from '../../lib/builder/templates.ts';
 import { productGridApiPath } from '../../lib/commerce/product-binding.ts';
 import { faMoney } from '../../lib/cms/fa.ts';
@@ -40,6 +41,7 @@ import type {
 } from '../../lib/builder/types.ts';
 import '../../styles/builder.css';
 import '../../styles/builder-editor.css';
+import '../../styles/design-system.css';
 
 interface Props {
 	initialDocument: PageDocument;
@@ -126,8 +128,56 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const mediaTargetRef = useRef<string | null>(null);
 	const document = history.present;
 	const selectedNode = selectedId ? findNode(document.nodes, selectedId) : null;
+	const [previewOpen, setPreviewOpen] = useState(false);
+// Simple/Pro mode and theme preferences
+const [mode, setMode] = useState<'simple' | 'pro'>(() => {
+	if (typeof localStorage !== 'undefined') {
+		const stored = localStorage.getItem('novex-editor-mode');
+		return stored === 'simple' || stored === 'pro' ? stored : 'pro';
+	}
+	return 'pro';
+});
+const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
+	if (typeof localStorage !== 'undefined') {
+		const stored = localStorage.getItem('novex-editor-theme');
+		if (stored === 'light' || stored === 'dark') return stored;
+	}
+	if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+		return 'dark';
+	}
+	return 'light';
+});
 
-	async function refreshRevisionHistory(): Promise<void> {
+useEffect(() => {
+	const root = window.document.documentElement;
+	root.setAttribute('data-theme', editorTheme);
+	if (typeof localStorage !== 'undefined') {
+		localStorage.setItem('novex-editor-theme', editorTheme);
+	}
+}, [editorTheme]);
+
+useEffect(() => {
+	if (typeof localStorage !== 'undefined') {
+		localStorage.setItem('novex-editor-mode', mode);
+	}
+}, [mode]);
+
+useEffect(() => {
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && previewOpen) {
+			setPreviewOpen(false);
+		}
+	}
+	if (typeof window !== 'undefined') {
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}
+}, [previewOpen]);
+
+const toggleMode = () => setMode((prev) => (prev === 'simple' ? 'pro' : 'simple'));
+const toggleTheme = () => setEditorTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+
+async function refreshRevisionHistory(): Promise<void> {
 		const requestId = ++revisionHistoryRequestRef.current;
 		setRevisionLoading(true);
 		try {
@@ -679,6 +729,23 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					</label>
 				</div>
 				<div className="builder-toolbar__center">
+					<div className="builder-mode-switch" role="group" aria-label="حالت ویرایش">
+						<button
+							type="button"
+							className={`builder-mode-btn${mode === 'simple' ? ' is-active' : ''}`}
+							onClick={() => toggleMode()}
+							aria-pressed={mode === 'simple'}
+						>ساده</button>
+						<button
+							type="button"
+							className={`builder-mode-btn${mode === 'pro' ? ' is-active' : ''}`}
+							onClick={() => toggleMode()}
+							aria-pressed={mode === 'pro'}
+						>حرفه‌ای</button>
+					</div>
+					<button className="builder-icon-button builder-theme-toggle" type="button" onClick={toggleTheme} title={editorTheme === 'light' ? 'تیره کردن تم ویرایشگر' : 'روشن کردن تم ویرایشگر'} aria-label={editorTheme === 'light' ? 'تیره کردن تم ویرایشگر' : 'روشن کردن تم ویرایشگر'}>
+						{editorTheme === 'light' ? '🌙' : '☀️'}
+					</button>
 					<div className={`builder-save-state builder-save-state--${status}`} role="status" aria-live="polite">
 						<span className="builder-save-state__dot" />{STATUS_LABELS[status]}
 					</div>
@@ -686,11 +753,21 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					{status === 'conflict' ? <button className="builder-link-button" type="button" onClick={reloadServerVersion}>بارگیری نسخهٔ تازه</button> : null}
 				</div>
 				<div className="builder-toolbar__actions">
-	<button className="builder-icon-button" type="button" title={`واگرد (Ctrl/⌘ Z) — ${history.past.length} مرحلهٔ قبلی`} aria-label={`واگرد، ${history.past.length} مرحلهٔ قبلی در دسترس است`} data-testid="undo" disabled={!history.past.length} onClick={undo}>↶{history.past.length ? <span className="builder-history-count">{history.past.length}</span> : null}</button>
-		<button className="builder-icon-button" type="button" title={`ازنو (Ctrl/⌘ Shift Z) — ${history.future.length} مرحلهٔ بعدی`} aria-label={`ازنو، ${history.future.length} مرحلهٔ بعدی در دسترس است`} data-testid="redo" disabled={!history.future.length} onClick={redo}>↷{history.future.length ? <span className="builder-history-count">{history.future.length}</span> : null}</button>
+					<button className="builder-icon-button" type="button" title={`واگرد (Ctrl/⌘ Z) — ${history.past.length} مرحلهٔ قبلی`} aria-label={`واگرد، ${history.past.length} مرحلهٔ قبلی در دسترس است`} data-testid="undo" disabled={!history.past.length} onClick={undo}>↶{history.past.length ? <span className="builder-history-count">{history.past.length}</span> : null}</button>
+					<button className="builder-icon-button" type="button" title={`ازنو (Ctrl/⌘ Shift Z) — ${history.future.length} مرحلهٔ بعدی`} aria-label={`ازنو، ${history.future.length} مرحلهٔ بعدی در دسترس است`} data-testid="redo" disabled={!history.future.length} onClick={redo}>↷{history.future.length ? <span className="builder-history-count">{history.future.length}</span> : null}</button>
+					{mode === 'pro' ? (
+						<div className="builder-breakpoints" role="group" aria-label="اندازهٔ پیش‌نمایش">
+							{(["desktop", "tablet", "mobile"] as const).map((size) => (
+								<button type="button" key={size} className={viewport === size ? 'is-active' : ''} aria-pressed={viewport === size} onClick={() => setViewport(size)}>
+									<span aria-hidden="true">{size === 'desktop' ? '▰' : size === 'tablet' ? '▭' : '▯'}</span>{BREAKPOINT_LABELS[size]}
+								</button>
+							))}
+						</div>
+						) : null}
 					<button className="builder-toolbar-button" type="button" data-testid="save-page" onClick={() => void saveNow().catch(() => undefined)}>ذخیره</button>
 					{canPublish ? <button className="builder-toolbar-button builder-toolbar-button--publish" type="button" data-testid="publish-page" disabled={publishBusy} onClick={() => void publish()}>{publishBusy ? 'در حال انتشار…' : 'انتشار'}</button> : null}
 					{isPublished ? <a className="builder-toolbar-button builder-toolbar-button--quiet" href={`/pages/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">نمایش منتشرشده</a> : <button className="builder-toolbar-button builder-toolbar-button--quiet" type="button" disabled title="پس از انتشار در دسترس است">پس از انتشار</button>}
+					<button className="builder-icon-button builder-preview-toggle" type="button" title="پیش‌نمایش صفحه" aria-label="پیش‌نمایش صفحه" onClick={() => setPreviewOpen(true)}>👁️</button>
 				</div>
 			</header>
 
@@ -760,15 +837,8 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					) : null}
 				</aside>
 
-				<main className="builder-canvas-area" aria-label="پیش‌نمایش صفحه">
+<main className="builder-canvas-area" aria-label="پیش‌نمایش صفحه">
 					<div className="builder-canvas-toolbar">
-						<div className="builder-breakpoints" role="group" aria-label="اندازهٔ پیش‌نمایش">
-							{(['desktop', 'tablet', 'mobile'] as const).map((size) => (
-								<button type="button" key={size} className={viewport === size ? 'is-active' : ''} aria-pressed={viewport === size} onClick={() => setViewport(size)}>
-									<span aria-hidden="true">{size === 'desktop' ? '▰' : size === 'tablet' ? '▭' : '▯'}</span>{BREAKPOINT_LABELS[size]}
-								</button>
-							))}
-						</div>
 						<span className="builder-canvas-hint">برای انتخاب کلیک کنید · برای ویرایش متن دوبار کلیک کنید</span>
 					</div>
 					<div className={`builder-canvas-scroll builder-canvas-scroll--${viewport}`}>
@@ -875,10 +945,23 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					</section>
 				</div>
 			) : null}
+			{previewOpen ? (
+				<div className="builder-preview-backdrop" onClick={() => setPreviewOpen(false)}>
+					<div className="builder-preview-modal" onClick={(event) => event.stopPropagation()}>
+						<div className="builder-preview-modal__header">
+							<h2>پیشنویس صفحه</h2>
+							<button type="button" onClick={() => setPreviewOpen(false)} aria-label="بستن پیشننویس">×</button>
+						</div>
+						<div className="builder-preview-modal__frame">
+							<DocumentPreview document={document} viewport={viewport} />
+						</div>
+					</div>
+				</div>
+			) : null}
 		</div>
 	);
 
-	function startDrag(event: DragEvent<HTMLElement>, id: string): void {
+function startDrag(event: DragEvent<HTMLElement>, id: string): void {
 		event.dataTransfer.effectAllowed = 'move';
 		event.dataTransfer.setData('text/novex-builder-node', id);
 	}
@@ -1367,6 +1450,86 @@ function PageInspector({ document, onDescription, onTheme }: PageInspectorProps)
 					<p className="builder-field-hint">عنوان صفحه را از نوار بالا ویرایش کنید. توضیحات حداکثر ۲۰۰ نویسه است.</p>
 				</section>
 				<section className="builder-field-group"><h3>سند</h3><p className="builder-field-hint">نسخهٔ طرحوارهٔ {document.schemaVersion} · {countNodes(document.nodes).toLocaleString('fa-IR')} مؤلفه</p></section>
+			</div>
+		</div>
+	);
+}
+
+function DocumentPreview({ document, viewport }: { document: PageDocument; viewport: Breakpoint }) {
+	const responsiveCss = buildResponsiveCss(document);
+	const themeCss = themeStyleText(document.themeId);
+	const containerStyle: CSSProperties = themeCss ? { ...(themeCss as unknown as Record<string, string>) } : {};
+	return (
+		<div className="builder-document-preview" style={containerStyle}>
+			{responsiveCss ? <style dangerouslySetInnerHTML={{ __html: responsiveCss }} /> : null}
+			{document.title || document.description ? (
+				<header className="builder-document-preview__intro">
+					{document.title ? <h1 className="builder-document-preview__title">{document.title}</h1> : null}
+					{document.description ? <p className="builder-document-preview__description">{document.description}</p> : null}
+				</header>
+			) : null}
+			<div className="builder-document-preview__content" data-testid="document-preview-content">
+				{document.nodes.map((node) => (
+					<ReadOnlyNode key={node.id} node={node} viewport={viewport} />
+				))}
+			</div>
+		</div>
+	);
+}
+
+function ReadOnlyNode({ node, viewport }: { node: BuilderNode; viewport: Breakpoint }) {
+	const style = previewStyle(node, viewport);
+	const hidden = hiddenAtBreakpoint(node, viewport);
+	if (hidden) {
+		return <div data-builder-id={node.id} className="builder-read-only-node--hidden" />;
+	}
+	if (node.type === 'Container') {
+		return (
+			<div data-builder-id={node.id} className="builder-read-only-node builder-read-only-node--container" style={style}>
+				<div className={`nvx-builder-node nvx-builder-container nvx-builder-container--${node.props.background}`} data-layout={node.props.layout} data-max-width={node.props.maxWidth} style={{ gap: node.props.gap, padding: node.props.padding }}>
+					{node.children.length ? node.children.map((child) => <ReadOnlyNode key={child.id} node={child} viewport={viewport} />) : <div className="builder-container-empty">بدون مؤلفه</div>}
+				</div>
+			</div>
+		);
+	}
+	if (node.type === 'Heading') {
+		const Tag = `h${node.props.level}` as 'h1' | 'h2' | 'h3' | 'h4';
+		return (
+			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
+				<Tag className={`nvx-builder-node nvx-builder-heading nvx-builder-heading--${node.props.size} nvx-builder-color--${node.props.color}`}>{node.props.text}</Tag>
+			</div>
+		);
+	}
+	if (node.type === 'Text') {
+		return (
+			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
+				<p className={`nvx-builder-node nvx-builder-text nvx-builder-text--${node.props.size} nvx-builder-color--${node.props.color}`}>{node.props.text}</p>
+			</div>
+		);
+	}
+	if (node.type === 'Image') {
+		return (
+			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
+				<figure className="nvx-builder-node nvx-builder-image">
+					<div className="nvx-builder-image__frame" data-aspect={node.props.aspectRatio} data-fit={node.props.fit}>
+						{node.props.src ? <img src={resolveBuilderImageSource(node.props.src)} alt={node.props.alt} loading="lazy" decoding="async" /> : <div className="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>تصویر انتخاب نشده است</div>}
+					</div>
+					{node.props.caption ? <figcaption className="nvx-builder-image__caption">{node.props.caption}</figcaption> : null}
+				</figure>
+			</div>
+		);
+	}
+	if (node.type === 'ProductGrid') {
+		return (
+			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
+				<ProductGridPreview node={node} />
+			</div>
+		);
+	}
+	return (
+		<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
+			<div className="nvx-builder-button-wrap" data-align={node.props.align}>
+				<a className={`nvx-builder-button nvx-builder-button--${node.props.variant}`} href={node.props.href} onClick={(event) => event.preventDefault()}>{node.props.label || 'دکمه'}</a>
 			</div>
 		</div>
 	);
