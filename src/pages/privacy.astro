@@ -1,0 +1,44 @@
+---
+import ShopLayout from '../layouts/ShopLayout.astro';
+import '../styles/policies.css';
+import { readSettings } from '../lib/cms/settings';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([readSettings(), hydrateCart(readCart(Astro.cookies))]);
+---
+
+<ShopLayout title="حریم خصوصی" description={`اطلاعات و داده‌های پردازش‌شده در ${settings.siteTitle}.`} cartCount={cart.count} settings={settings}>
+	<div class="policy-page">
+		<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><a href="/policies">سیاست‌ها</a><span aria-hidden="true">/</span><span aria-current="page">حریم خصوصی</span></nav>
+		<header class="policy-page__intro"><span class="policy-page__eyebrow">داده‌ها و حریم خصوصی</span><h1>حریم خصوصی</h1><p>این توضیح، رفتار فعلی سامانه را خلاصه می‌کند؛ صاحب سایت باید آن را با شیوهٔ واقعی نگهداری و الزامات محل فعالیت تطبیق دهد.</p></header>
+
+		<section class="policy-page__section">
+			<h2>اطلاعاتی که هنگام سفارش ثبت می‌شود</h2>
+			<ul>
+				<li>نام، شمارهٔ تماس، شهر و نشانی برای ایجاد و تحویل سفارش؛</li>
+				<li>ایمیل و یادداشت، فقط اگر خریدار وارد کند؛</li>
+				<li>اقلام، قیمت‌های محاسبه‌شده در سرور، تخفیف و وضعیت سفارش.</li>
+			</ul>
+			<p>قیمت و موجودی از داده‌های فروشگاه خوانده می‌شوند؛ مقدارهای ارسالی مرورگر به‌تنهایی مبنای مبلغ سفارش نیستند.</p>
+		</section>
+
+		<section class="policy-page__section">
+			<h2>کوکی‌ها و پیگیری سفارش</h2>
+			<p>برای نگه‌داری موقت سبد خرید و کد تخفیف از کوکی استفاده می‌شود. پس از ثبت سفارش، دسترسی به جزئیات سفارش با کوکی دسترسی و تأیید شمارهٔ تماس کنترل می‌شود؛ شمارهٔ سفارش به‌تنهایی برای مشاهدهٔ نشانی و جزئیات کافی نیست.</p>
+		</section>
+
+		<section class="policy-page__section">
+			<h2>نگه‌داری و دسترسی</h2>
+			<p>در پیکربندی پیش‌فرض، داده‌های فروشگاه در فایل JSON سرور نگه‌داری می‌شوند و مدیران دارای مجوز به آن‌ها دسترسی دارند. مدت نگه‌داری و برنامهٔ حذف خودکار در این نسخه تعریف نشده است؛ صاحب سایت باید این موارد را مشخص کند.</p>
+			<p>در صورت نصب و پیکربندی افزونهٔ پرداخت، اطلاعات لازم برای شروع یا تأیید پرداخت ممکن است به ارائه‌دهندهٔ آن افزونه برسد. درگاه یا ارائه‌دهنده‌ای در این صفحه از پیش فرض نشده است.</p>
+		</section>
+
+		<section class="policy-page__section">
+			<h2>درخواست و پرسش</h2>
+			<p>برای پرسش دربارهٔ اطلاعات سفارش، ابتدا از صفحهٔ <a href="/shop/track">پیگیری سفارش</a> استفاده کنید. راه تماس عمومی، اگر تنظیم شده باشد، در <a href="/contact">صفحهٔ تماس</a> نمایش داده می‌شود.</p>
+			<p class="policy-page__notice">این متن راهنمای آغازین است، نه تضمین انطباق حقوقی یا امنیتی. پیش از دریافت سفارش واقعی، مسئول سایت باید آن را بازبینی و تکمیل کند.</p>
+		</section>
+	</div>
+</ShopLayout>

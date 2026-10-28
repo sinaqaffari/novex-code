@@ -1,112 +1,220 @@
 ---
-import { Image } from 'astro:assets';
-import { getCollection } from 'astro:content';
-import BaseHead from '../../components/BaseHead.astro';
-import Footer from '../../components/Footer.astro';
-import FormattedDate from '../../components/FormattedDate.astro';
-import Header from '../../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import BlogPreview from '../../components/store/BlogPreview.astro';
+import { faNumber } from '../../lib/cms/fa';
+import { listPosts } from '../../lib/cms/posts';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
 
-const posts = (await getCollection('blog')).sort(
-	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+export const prerender = false;
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const activeTag = (Astro.url.searchParams.get('tag') ?? '').trim();
+const [cart, allPosts] = await Promise.all([
+	hydrateCart(readCart(Astro.cookies)),
+	listPosts(),
+]);
+const publishedPosts = allPosts.filter((post) => !post.draft && post.id.endsWith('.md'));
+const posts = publishedPosts.filter((post) =>
+	activeTag ? post.tags.includes(activeTag) : true,
+).filter((post) =>
+	query
+		? `${post.title} ${post.description} ${post.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase())
+		: true,
 );
+const tags = [...new Set(publishedPosts.flatMap((post) => post.tags))].slice(0, 12);
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-		<style>
-			main {
-				width: 960px;
-			}
-			ul {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 2rem;
-				list-style-type: none;
-				margin: 0;
-				padding: 0;
-			}
-			ul li {
-				width: calc(50% - 1rem);
-			}
-			ul li * {
-				text-decoration: none;
-				transition: 0.2s ease;
-			}
-			ul li:first-child {
-				width: 100%;
-				margin-bottom: 1rem;
-				text-align: center;
-			}
-			ul li:first-child img {
-				width: 100%;
-			}
-			ul li:first-child .title {
-				font-size: 2.369rem;
-			}
-			ul li img {
-				margin-bottom: 0.5rem;
-				border-radius: 12px;
-			}
-			ul li a {
-				display: block;
-			}
-			.title {
-				margin: 0;
-				color: rgb(var(--black));
-				line-height: 1;
-			}
-			.date {
-				margin: 0;
-				color: rgb(var(--gray));
-			}
-			ul li a:hover h4,
-			ul li a:hover .date {
-				color: rgb(var(--accent));
-			}
-			ul a:hover img {
-				box-shadow: var(--box-shadow);
-			}
-			@media (max-width: 720px) {
-				ul {
-					gap: 0.5em;
-				}
-				ul li {
-					width: 100%;
-					text-align: center;
-				}
-				ul li:first-child {
-					margin-bottom: 0;
-				}
-				ul li:first-child .title {
-					font-size: 1.563em;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<Header />
-		<main>
-			<section>
-				<ul>
-					{posts.map((post) => (
-						<li>
-							<a href={`/blog/${post.id}/`}>
-								{post.data.heroImage && (
-									<Image width={720} height={360} src={post.data.heroImage} alt="" />
-								)}
-								<h4 class="title">{post.data.title}</h4>
-								<p class="date">
-									<FormattedDate date={post.data.pubDate} />
-								</p>
-							</a>
-						</li>
+<ShopLayout title="مجله" description="نوشته‌ها و راهنماهای فنی نووکس‌کد" cartCount={cart.count}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">مجله</span>
+	</nav>
+
+	<header class="blog-intro">
+		<span class="blog-intro__eyebrow">مجله</span>
+		<h1 class="blog-intro__title">نوشته‌ها و راهنماها</h1>
+		<p class="blog-intro__desc">مطالب منتشرشده دربارهٔ توسعه، طراحی و تجربهٔ راست‌به‌چپ.</p>
+	</header>
+
+	{publishedPosts.length > 0 && (
+		<form method="get" class="blog-toolbar" role="search">
+			<div class="blog-toolbar__search">
+				<label class="sr-only" for="blogQ">جست‌وجو در مجله</label>
+				<input
+					id="blogQ"
+					name="q"
+					value={query}
+					placeholder="عنوان، توضیح یا برچسب…"
+					aria-label="جست‌وجو در مجله"
+					dir="auto"
+				/>
+				{activeTag && <input type="hidden" name="tag" value={activeTag} />}
+				<button type="submit" class="blog-toolbar__btn">جست‌وجو</button>
+			</div>
+
+			{tags.length > 0 && (
+				<div class="blog-toolbar__tags" aria-label="فیلتر برچسب‌ها">
+					<a href="/blog" class={`blog-toolbar__tag${!activeTag ? ' blog-toolbar__tag--active' : ''}`}>همه</a>
+					{tags.map((tag) => (
+						<a
+							href={`/blog?${new URLSearchParams({ ...(query ? { q: query } : {}), tag }).toString()}`}
+							class={`blog-toolbar__tag${activeTag === tag ? ' blog-toolbar__tag--active' : ''}`}
+						>
+							{tag}
+						</a>
 					))}
-				</ul>
-			</section>
-		</main>
-		<Footer />
-	</body>
-</html>
+					{activeTag && <a href="/blog" class="blog-toolbar__tag blog-toolbar__tag--remove" aria-label="حذف فیلتر برچسب">×</a>}
+				</div>
+			)}
+		</form>
+	)}
+
+	{publishedPosts.length === 0 ? (
+		<div class="empty blog-empty" role="status">
+			<h2 class="empty__title">هنوز نوشته‌ای منتشر نشده است</h2>
+			<p class="empty__desc">نوشته‌های منتشرشدهٔ مجله در این بخش نمایش داده می‌شوند.</p>
+			<a class="btn btn--outline" href="/">بازگشت به خانه</a>
+		</div>
+	) : posts.length === 0 ? (
+		<div class="empty blog-empty" role="status">
+			<h2 class="empty__title">نوشته‌ای با این فیلترها پیدا نشد</h2>
+			<p class="empty__desc">عبارت جست‌وجو یا برچسب انتخاب‌شده را تغییر دهید.</p>
+			<a class="btn btn--outline" href="/blog">پاک‌کردن فیلترها</a>
+		</div>
+	) : (
+		<>
+			<div class="blog-grid">
+				{posts.map((post) => <BlogPreview post={post} />)}
+			</div>
+			<p class="hint blog-count">{faNumber(posts.length)} نوشته در این فهرست</p>
+		</>
+	)}
+</ShopLayout>
+
+<style>
+	.blog-intro {
+		margin-block: var(--space-6) var(--space-5);
+		padding: clamp(var(--space-4), 3vw, var(--space-8));
+		border: 1px solid var(--brand-line);
+		border-radius: var(--radius-lg);
+		background:
+			radial-gradient(ellipse at 95% 0%, rgba(37, 99, 235, 0.1), transparent 24rem),
+			linear-gradient(135deg, #eef4ff 0%, #ffffff 75%);
+		animation: store-enter 420ms cubic-bezier(0.2, 0.7, 0.25, 1) both;
+	}
+
+	.blog-intro__eyebrow {
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-semibold);
+		color: var(--brand-ink);
+	}
+
+	.blog-intro__title {
+		font-size: clamp(var(--text-2xl), 4vw, var(--text-4xl));
+		margin-block: var(--space-2);
+	}
+
+	.blog-intro__desc {
+		max-width: 55ch;
+		color: var(--ink-soft);
+		font-size: var(--text-base);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.blog-toolbar {
+		display: grid;
+		gap: var(--space-3);
+		margin-block-end: var(--space-6);
+		padding: var(--space-4);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		background: var(--surface);
+	}
+
+	.blog-toolbar__search {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.blog-toolbar__search input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.55rem 0.85rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font: inherit;
+	}
+
+	.blog-toolbar__search input:focus {
+		outline: 2px solid var(--brand-line);
+		border-color: var(--brand);
+	}
+
+	.blog-toolbar__btn {
+		padding: 0.55rem 1rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface-2);
+		color: var(--ink);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.blog-toolbar__btn:hover {
+		border-color: var(--brand);
+		color: var(--brand);
+	}
+
+	.blog-toolbar__tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.blog-toolbar__tag {
+		padding: 0.2rem 0.65rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--surface-2);
+		color: var(--ink-soft);
+		font-size: var(--text-sm);
+	}
+
+	.blog-toolbar__tag--active {
+		border-color: var(--brand);
+		background: var(--brand);
+		color: #fff;
+	}
+
+	.blog-toolbar__tag--remove {
+		width: 2rem;
+		text-align: center;
+		background: var(--danger-soft);
+		border-color: var(--danger-line);
+		color: var(--danger);
+	}
+
+	.blog-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+		gap: var(--space-4);
+	}
+
+	.blog-empty {
+		margin-block: var(--space-5) var(--space-8);
+	}
+
+	.blog-count {
+		margin-block: var(--space-4) var(--space-8);
+	}
+
+	@media (min-width: 768px) {
+		.blog-toolbar {
+			grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1.2fr);
+			align-items: center;
+		}
+	}
+</style>

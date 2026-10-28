@@ -1,13 +1,31 @@
 // @ts-check
 
 import mdx from '@astrojs/mdx';
+import node from '@astrojs/node';
+import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig, fontProviders } from 'astro/config';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://example.com',
-	integrations: [mdx(), sitemap()],
+	site: process.env.SITE_URL ?? 'https://example.com',
+	// The CMS writes to `src/content/blog` at runtime, so the panel (and the
+	// pages that read its data) must be rendered on demand, not prerendered.
+	output: 'server',
+	adapter: node({ mode: 'standalone' }),
+	devToolbar: { enabled: false },
+	// The panel is routinely opened through a preview proxy, so the dev server
+	// must accept the forwarded host instead of rejecting it.
+	server: {
+		allowedHosts: true,
+	},
+	// آداپتور Node نشانی درخواست را به `localhost` تثبیت می‌کند، پس محافظ CSRF
+	// داخلی آسترو پشت دامنهٔ واقعی و پروکسی پیش‌نمایش همهٔ فرم‌ها را رد می‌کند.
+	// همان قاعده در `src/middleware.ts` با میزبان واقعی درخواست اجرا می‌شود.
+	security: {
+		checkOrigin: false,
+	},
+	integrations: [mdx(), sitemap(), react()],
 	fonts: [
 		{
 			provider: fontProviders.local(),

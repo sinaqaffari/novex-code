@@ -1,0 +1,155 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { readSettings } from '../../lib/cms/settings';
+
+const settings = await readSettings();
+const nextParam = Astro.url.searchParams.get('next') ?? '/cms';
+const safeNext = nextParam.startsWith('/cms') ? nextParam : '/cms';
+const isDev = import.meta.env.DEV;
+const signedOut = Astro.url.searchParams.get('flash') === 'logged-out';
+
+export const prerender = false;
+---
+
+<CmsLayout title="ورود به پنل مدیریت" variant="auth">
+	<div class="auth-card">
+		<div class="auth-card__brand">
+			<span class="brand__mark" aria-hidden="true">ن</span>
+			<span>
+				<span class="brand__title" style="font-weight:700">{settings.siteTitle}</span>
+				<br />
+				<span class="brand__subtitle" style="color:var(--muted);font-size:.72rem">
+					پنل مدیریت محتوای فارسی
+				</span>
+			</span>
+		</div>
+
+		{signedOut && (
+			<div class="alert alert--info" role="status" style="margin-block-end:1rem">
+				<Icon name="check" size={16} />
+				<span>با موفقیت از حساب خارج شدید. برای ادامه دوباره وارد شوید.</span>
+			</div>
+		)}
+
+		<h1 class="auth-card__title">خوش آمدید 👋</h1>
+		<p class="auth-card__subtitle">
+			برای مدیریت نوشته‌ها، رسانه‌ها و تنظیمات سایت، وارد حساب مدیر شوید.
+		</p>
+
+		<form class="auth-form" method="post" action="/cms/api/login" data-login-form>
+			<input type="hidden" name="next" value={safeNext} />
+
+			<div class="field">
+				<label class="label" for="cms-username">نام کاربری</label>
+				<input
+					id="cms-username"
+					class="input ltr"
+					type="text"
+					name="username"
+					autocomplete="username"
+					required
+					autofocus
+					placeholder="admin"
+					dir="ltr"
+				/>
+			</div>
+
+			<div class="field">
+				<label class="label" for="cms-password">گذرواژه</label>
+				<span class="password-field">
+					<input
+						id="cms-password"
+						class="input"
+						type="password"
+						name="password"
+						autocomplete="current-password"
+						required
+						placeholder="••••••••"
+						dir="ltr"
+					/>
+					<button
+						class="password-toggle"
+						type="button"
+						data-password-toggle
+						aria-label="نمایش گذرواژه"
+						aria-pressed="false"
+					>
+						<Icon name="eye" size={17} />
+					</button>
+				</span>
+			</div>
+
+			<p class="error-text" role="alert" data-login-error hidden></p>
+
+			<button class="btn btn--primary" type="submit" data-login-submit>
+				<Icon name="shield" size={17} />
+				<span>ورود به پنل</span>
+			</button>
+		</form>
+
+		{
+			isDev && (
+				<p class="auth-footer">
+					<span class="pill-hint">محیط توسعه</span>{' '}
+					نام کاربری <code class="ltr">admin</code> و گذرواژه <code class="ltr">novex-admin</code> است.
+					برای محیط عملیاتی، متغیرهای <code class="ltr">CMS_USERNAME</code> و{' '}
+					<code class="ltr">CMS_PASSWORD</code> را تنظیم کنید.
+				</p>
+			)
+		}
+		<p class="auth-back"><a href="/">بازگشت به سایت</a></p>
+	</div>
+</CmsLayout>
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('[data-login-form]');
+	const errorBox = document.querySelector<HTMLElement>('[data-login-error]');
+	const submit = document.querySelector<HTMLButtonElement>('[data-login-submit]');
+	const toggle = document.querySelector<HTMLButtonElement>('[data-password-toggle]');
+	const password = form?.querySelector<HTMLInputElement>('input[name="password"]');
+
+	toggle?.addEventListener('click', () => {
+		if (!password) return;
+		const visible = password.type === 'text';
+		password.type = visible ? 'password' : 'text';
+		toggle.setAttribute('aria-pressed', String(!visible));
+		toggle.setAttribute('aria-label', visible ? 'نمایش گذرواژه' : 'پنهان کردن گذرواژه');
+	});
+
+	form?.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		if (!errorBox || !submit || !form) return;
+
+		errorBox.hidden = true;
+		submit.disabled = true;
+		submit.querySelector('span')!.textContent = 'در حال ورود…';
+
+		try {
+			const response = await fetch(form.action, {
+				method: 'POST',
+				headers: { accept: 'application/json' },
+				body: new FormData(form),
+			});
+			const payload = (await response.json()) as {
+				ok?: boolean;
+				message?: string;
+				redirect?: string;
+			};
+
+			if (response.ok && payload.ok) {
+				window.location.assign(payload.redirect ?? '/cms');
+				return;
+			}
+
+			errorBox.textContent = payload.message ?? 'ورود ناموفق بود. دوباره تلاش کنید.';
+			errorBox.hidden = false;
+		} catch {
+			errorBox.textContent = 'ارتباط با سرور برقرار نشد. اتصال شبکه را بررسی کنید.';
+			errorBox.hidden = false;
+		} finally {
+			submit.disabled = false;
+			submit.querySelector('span')!.textContent = 'ورود به پنل';
+		}
+	});
+</script>

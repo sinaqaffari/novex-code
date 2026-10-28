@@ -1,0 +1,198 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faDate, faMoney, faNumber, faPercent } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { listDiscounts } from '../../../lib/commerce/discounts';
+
+export const prerender = false;
+
+const [discounts, settings] = await Promise.all([listDiscounts(), readSettings()]);
+const active = discounts.filter((discount) => discount.active).length;
+const totalUses = discounts.reduce((sum, discount) => sum + discount.usedCount, 0);
+---
+
+<CmsLayout
+	title="کدهای تخفیف"
+	subtitle={`${faNumber(discounts.length)} کد — ${faNumber(active)} فعال — ${faNumber(totalUses)} بار استفاده شده`}
+	breadcrumbs={[{ label: 'فروشگاه' }, { label: 'کدهای تخفیف' }]}
+>
+	<div class="detail-grid">
+		<section class="card">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title">فهرست کدها</h2>
+					<p class="card__hint">با خاموش‌کردن هر کد، استفاده از آن در فروشگاه متوقف می‌شود.</p>
+				</div>
+			</div>
+
+			{discounts.length ? (
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th scope="col">کد</th>
+								<th scope="col">مقدار</th>
+								<th scope="col">حداقل سفارش</th>
+								<th scope="col">استفاده</th>
+								<th scope="col">انقضا</th>
+								<th scope="col">وضعیت</th>
+								<th scope="col"><span class="sr-only">عملیات</span></th>
+							</tr>
+						</thead>
+						<tbody>
+							{discounts.map((discount) => (
+								<tr>
+									<td>
+										<code class="mono" style="font-weight:700">{discount.code}</code>
+										<span class="cell-product__meta">
+											{discount.type === 'percent' ? 'درصدی' : 'مبلغ ثابت'}
+										</span>
+									</td>
+									<td class="num nowrap">
+										{discount.type === 'percent'
+											? faPercent(discount.value)
+											: faMoney(discount.value, settings.currency)}
+									</td>
+									<td class="num nowrap">
+										{discount.minSubtotal
+											? faMoney(discount.minSubtotal, settings.currency)
+											: 'ندارد'}
+									</td>
+									<td class="num">
+										{faNumber(discount.usedCount)}
+										{discount.usageLimit ? ` / ${faNumber(discount.usageLimit)}` : ''}
+									</td>
+									<td class="num nowrap">
+										{discount.expiresAt ? faDate(discount.expiresAt) : 'بدون انقضا'}
+									</td>
+									<td>
+										{discount.active ? (
+											<span class="badge badge--success">
+												<span class="badge__dot" />
+												فعال
+											</span>
+										) : (
+											<span class="badge badge--neutral">
+												<span class="badge__dot" />
+												غیرفعال
+											</span>
+										)}
+									</td>
+									<td>
+										<div class="table__actions">
+											<form method="post" action={`/cms/api/discounts/${discount.id}?action=toggle`}>
+												<button class="btn btn--outline btn--sm" type="submit">
+													{discount.active ? 'خاموش' : 'روشن'}
+												</button>
+											</form>
+											<form
+												method="post"
+												action={`/cms/api/discounts/${discount.id}?action=delete`}
+												data-confirm={`کد «${discount.code}» حذف شود؟`}
+											>
+												<button class="btn btn--ghost btn--sm" type="submit" aria-label="حذف کد">
+													<Icon name="trash" size={15} />
+												</button>
+											</form>
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<div class="empty">
+					<span class="empty__icon"><Icon name="ticket" size={22} /></span>
+					<span class="empty__title">هنوز کد تخفیفی نساخته‌اید</span>
+					<span>از فرم کنار همین صفحه اولین کد را بسازید.</span>
+				</div>
+			)}
+		</section>
+
+		<aside class="stack">
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">کد تازه</h2>
+						<p class="card__hint">حداکثر ۲۴ نویسهٔ لاتین</p>
+					</div>
+				</div>
+				<form class="card__body stack" method="post" action="/cms/api/discounts">
+					<label class="field">
+						<span class="label">کد</span>
+						<input
+							class="input ltr"
+							type="text"
+							name="code"
+							required
+							placeholder="YALDA30"
+							dir="ltr"
+							style="text-transform:uppercase"
+						/>
+					</label>
+
+					<div class="field-row">
+						<label class="field">
+							<span class="label">نوع</span>
+							<select class="select" name="type">
+								<option value="percent">درصدی</option>
+								<option value="fixed">مبلغ ثابت</option>
+							</select>
+						</label>
+
+						<label class="field">
+							<span class="label">مقدار</span>
+							<input class="input num" type="text" inputmode="numeric" name="value" required placeholder="۳۰" />
+						</label>
+					</div>
+
+					<label class="field">
+						<span class="label">
+							حداقل مبلغ سفارش
+							<span class="label__meta">اختیاری</span>
+						</span>
+						<input class="input num" type="text" inputmode="numeric" name="minSubtotal" placeholder="۵۰۰٬۰۰۰" />
+					</label>
+
+					<div class="field-row">
+						<label class="field">
+							<span class="label">سقف استفاده</span>
+							<input class="input num" type="number" name="usageLimit" min="1" placeholder="۱۰۰" />
+						</label>
+						<label class="field">
+							<span class="label">تاریخ انقضا</span>
+							<input class="input" type="date" name="expiresAt" />
+						</label>
+					</div>
+
+					<label class="switch">
+						<input type="hidden" name="active" value="false" />
+						<input type="checkbox" name="active" value="true" checked />
+						<span class="switch__track" aria-hidden="true"></span>
+						<span>همین حالا فعال باشد</span>
+					</label>
+
+					<button class="btn btn--primary btn--sm" type="submit">
+						<Icon name="plus" size={14} />
+						<span>ساخت کد تخفیف</span>
+					</button>
+				</form>
+			</section>
+
+			<section class="card">
+				<div class="card__head">
+					<h2 class="card__title">راهنما</h2>
+				</div>
+				<div class="card__body">
+					<ul class="hint" style="margin:0;padding-inline-start:1.1rem;line-height:2">
+						<li>کدها در تسویه‌حساب فروشگاه اعتبارسنجی می‌شوند.</li>
+						<li>اگر سفارشی لغو شود، مصرف کد به‌صورت خودکار آزاد می‌شود.</li>
+						<li>برای کمپین‌های زمان‌دار، تاریخ انقضا بگذارید.</li>
+					</ul>
+				</div>
+			</section>
+		</aside>
+	</div>
+</CmsLayout>

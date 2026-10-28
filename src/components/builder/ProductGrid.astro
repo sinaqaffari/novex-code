@@ -1,0 +1,58 @@
+---
+import type { BuilderNode } from '../../lib/builder/types.ts';
+import { resolveProductGridData } from '../../lib/builder/product-grid.ts';
+import { faMoney } from '../../lib/cms/fa.ts';
+
+interface Props {
+	node: Extract<BuilderNode, { type: 'ProductGrid' }>;
+	className?: string;
+	style?: string;
+}
+
+const { node, className = 'nvx-builder-node', style } = Astro.props;
+const { status, currency, products } = await resolveProductGridData(node.props.binding);
+---
+
+<section
+	class:list={[className, 'nvx-builder-product-grid']}
+	data-builder-id={node.id}
+	data-product-grid
+	data-selection={node.props.binding.selection}
+	style={style}
+	aria-labelledby={`product-grid-${node.id}`}
+>
+	{node.props.heading ? <h2 id={`product-grid-${node.id}`} class="nvx-builder-product-grid__heading">{node.props.heading}</h2> : null}
+	{status === 'error' ? (
+		<p class="nvx-builder-product-grid__state" role="alert">بارگیری محصولات در حال حاضر ممکن نیست. کمی بعد دوباره تلاش کنید.</p>
+	) : status === 'disabled' ? (
+		<p class="nvx-builder-product-grid__state" role="status">فروشگاه در حال حاضر غیرفعال است.</p>
+	) : products.length === 0 ? (
+		<p class="nvx-builder-product-grid__state" role="status">{node.props.emptyMessage}</p>
+	) : (
+		<div class="nvx-builder-product-grid__items">
+			{products.map((product) => (
+				<article class="nvx-builder-product-card" data-product-slug={product.slug}>
+					<a class="nvx-builder-product-card__link" href={`/shop/${encodeURIComponent(product.slug)}`} aria-label={`مشاهدهٔ ${product.name}`}>
+						<div class="nvx-builder-product-card__image">
+							{product.image ? <img src={product.image} alt={product.name} loading="lazy" decoding="async" /> : <span role="img" aria-label={`تصویر ${product.name} ثبت نشده است`}>تصویر ثبت نشده</span>}
+						</div>
+						<div class="nvx-builder-product-card__body">
+							<span class="nvx-builder-product-card__category">{product.category}</span>
+							<h3>{product.name}</h3>
+							{product.description ? <p>{product.description}</p> : null}
+							<div class="nvx-builder-product-card__foot">
+								<span class="nvx-builder-product-card__price">
+									{product.compareAtPrice ? <del>{faMoney(product.compareAtPrice, currency)}</del> : null}
+									<strong>{faMoney(product.price, currency)}</strong>
+								</span>
+								<span class:list={['nvx-builder-product-card__availability', !product.inStock && 'is-unavailable']}>
+									{product.inStock ? 'موجود' : 'ناموجود'}
+								</span>
+							</div>
+						</div>
+					</a>
+				</article>
+			))}
+		</div>
+	)}
+</section>

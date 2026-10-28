@@ -1,0 +1,58 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: novex-code:latest
+    container_name: novex-code
+    restart: unless-stopped
+    # سیگنال‌ها و پروسه‌های یتیم را درست مدیریت می‌کند.
+    init: true
+    ports:
+      - '${PORT:-4321}:4321'
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4321
+      TZ: ${TZ:-Asia/Tehran}
+      # نشانی عمومی؛ در canonical، og:url و فید RSS استفاده می‌شود.
+      SITE_URL: ${SITE_URL:-http://localhost:4321}
+      # حساب مدیر — پیش از انتشار عمومی تغییر دهید.
+      CMS_USERNAME: ${CMS_USERNAME:-admin}
+      CMS_PASSWORD: ${CMS_PASSWORD:-novex-admin}
+      # CMS_PASSWORD_HASH: ${CMS_PASSWORD_HASH}
+      CMS_SESSION_SECRET: ${CMS_SESSION_SECRET:-}
+      # کلیدهای افزونه فقط از environment/secret manager خوانده می‌شوند.
+      NOVEX_PLUGIN_KAVEH_NEG_SMS_API_KEY: ${NOVEX_PLUGIN_KAVEH_NEG_SMS_API_KEY:-}
+      NOVEX_PLUGIN_ZARINPAL_GATEWAY_MERCHANT_ID: ${NOVEX_PLUGIN_ZARINPAL_GATEWAY_MERCHANT_ID:-}
+      # پشت پروکسی HTTPS این را true بگذارید.
+      CMS_COOKIE_SECURE: ${CMS_COOKIE_SECURE:-false}
+    volumes:
+      # تنظیمات سایت + دادهٔ فروشگاه
+      - novex-data:/app/data
+      # نوشته‌هایی که از پنل ذخیره می‌شوند
+      - novex-blog:/app/src/content/blog
+      # تصویرهای بارگذاری‌شده
+      - novex-uploads:/app/src/assets/uploads
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4321/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  novex-data:
+  novex-blog:
+  novex-uploads:

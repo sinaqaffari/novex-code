@@ -1,0 +1,56 @@
+{
+	"name": "درگاه پرداخت زرین‌پال",
+	"version": "1.0.0",
+	"description": "آداپتر سمت‌سرور درخواست و تأیید پرداخت زرین‌پال؛ اتصال زنده و تراکنش واقعی در این مخزن آزمایش نشده است.",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-zarinpal",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"payment",
+		"zarinpal",
+		"gateway",
+		"ecommerce",
+		"iran"
+	],
+	"hooks": [
+		"shop.payment.initiate",
+		"shop.payment.verify"
+	],
+	"capabilities": [
+		"cms:widgets",
+		"options:read",
+		"options:write",
+		"admin:page",
+		"commerce:payments",
+		"secrets:read"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات زرین‌پال",
+				"description": "وضعیت شناسهٔ محیطی، حالت Sandbox و تنظیمات بازگشت"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "merchantId",
+			"label": "شناسه تاجر (Merchant ID)",
+			"type": "text",
+			"help": "در متغیر محیطی اختصاصی افزونه تنظیم می‌شود؛ مقدار خام در پنل یا فایل JSON ذخیره نمی‌شود.",
+			"secret": true
+		},
+		{
+			"key": "isSandbox",
+			"label": "حالت آزمایشی (Sandbox)",
+			"type": "switch",
+			"default": true,
+			"help": "با فعال‌بودن، کد افزونه endpoint آزمایشی تنظیم‌شده را انتخاب می‌کند؛ این گزینه اتصال سرویس را بررسی یا تضمین نمی‌کند."
+		}
+	],
+	"id": "zarinpal-gateway",
+	"apiVersion": 1
+}

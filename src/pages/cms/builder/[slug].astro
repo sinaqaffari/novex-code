@@ -1,0 +1,21 @@
+---
+import BuilderLayout from '../../../layouts/BuilderLayout.astro';
+import BuilderEditor from '../../../components/builder/BuilderEditor.tsx';
+import { can } from '../../../lib/cms/rbac';
+import { getDraftPage } from '../../../lib/builder/store';
+import { isValidPageSlug } from '../../../lib/builder/document';
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? '';
+if (!isValidPageSlug(slug)) {
+	Astro.response.status = 404;
+}
+const role = Astro.locals.cmsUser?.role ?? 'subscriber';
+if (!can(role, 'cms.pages:write')) return Astro.redirect('/cms/pages');
+const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
+---
+
+<BuilderLayout title={record?.draft.title ?? 'صفحه'}>
+	{record ? <BuilderEditor client:load initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+</BuilderLayout>

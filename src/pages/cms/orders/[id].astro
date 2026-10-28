@@ -1,0 +1,278 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faDate, faDateTime, faMoney, faNumber } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { getOrder } from '../../../lib/commerce/orders';
+import { ORDER_STATUSES, orderStatusLabel, orderStatusTone, isRevenue } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const id = decodeURIComponent(Astro.params.id ?? '');
+const order = await getOrder(id);
+
+if (!order) Astro.response.status = 404;
+
+const settings = await readSettings();
+
+const steps = [
+	{ key: 'pending', label: 'ثبت سفارش' },
+	{ key: 'paid', label: 'پرداخت' },
+	{ key: 'processing', label: 'آماده‌سازی' },
+	{ key: 'shipped', label: 'ارسال' },
+	{ key: 'delivered', label: 'تحویل' },
+] as const;
+
+const currentStep = order ? steps.findIndex((step) => step.key === order.status) : -1;
+const isClosed = order?.status === 'cancelled' || order?.status === 'refunded';
+const currency = settings.currency;
+---
+
+{
+	order ? (
+		<CmsLayout
+			title={`سفارش ${order.number}`}
+			subtitle={`${faDateTime(order.createdAt)} — ${order.customerName}`}
+			breadcrumbs={[
+				{ label: 'فروشگاه' },
+				{ label: 'سفارش‌ها', href: '/cms/orders' },
+				{ label: order.number },
+			]}
+		>
+			<Fragment slot="actions">
+				<a class="btn btn--outline btn--sm" href="/cms/orders">
+					<Icon name="arrow" size={15} />
+					<span>بازگشت به سفارش‌ها</span>
+				</a>
+			</Fragment>
+
+			<div class="detail-grid">
+				<div class="stack">
+					<section class="card">
+						<div class="card__head">
+							<div>
+								<h2 class="card__title">اقلام سفارش</h2>
+								<p class="card__hint">{faNumber(order.items.length)} قلم کالا</p>
+							</div>
+							<span class={`badge badge--${orderStatusTone(order.status)}`}>
+								<span class="badge__dot" />
+								{orderStatusLabel(order.status)}
+							</span>
+						</div>
+
+						<div class="table-wrap">
+							<table class="table">
+								<thead>
+									<tr>
+										<th scope="col">کالا</th>
+										<th scope="col">قیمت واحد</th>
+										<th scope="col">تعداد</th>
+										<th scope="col">جمع</th>
+									</tr>
+								</thead>
+								<tbody>
+									{order.items.map((item) => (
+										<tr>
+											<td>
+												<span class="cell-product__name">{item.name}</span>
+												<span class="cell-product__meta ltr">{item.sku}</span>
+											</td>
+											<td class="num nowrap">{faMoney(item.price, currency)}</td>
+											<td class="num">{faNumber(item.quantity)}</td>
+											<td class="num nowrap">{faMoney(item.price * item.quantity, currency)}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+
+						<div class="card__body">
+							<div class="totals">
+								<div class="totals__row">
+									<span>جمع کالاها</span>
+									<span class="num">{faMoney(order.subtotal, currency)}</span>
+								</div>
+								{order.discount > 0 && (
+									<div class="totals__row" style="color:var(--success)">
+										<span>
+											تخفیف {order.discountCode && <code class="ltr">{order.discountCode}</code>}
+										</span>
+										<span class="num">− {faMoney(order.discount, currency)}</span>
+									</div>
+								)}
+								<div class="totals__row">
+									<span>ارسال</span>
+									<span class="num">
+										{order.shipping === 0 ? 'رایگان' : faMoney(order.shipping, currency)}
+									</span>
+								</div>
+								<div class="totals__row totals__row--grand">
+									<span>مبلغ نهایی</span>
+									<span class="num">{faMoney(order.total, currency)}</span>
+								</div>
+							</div>
+						</div>
+					</section>
+
+					<section class="card">
+						<div class="card__head">
+							<div>
+								<h2 class="card__title">یادداشت داخلی</h2>
+								<p class="card__hint">فقط در پنل دیده می‌شود</p>
+							</div>
+						</div>
+						<form
+							class="card__body stack"
+							method="post"
+							action={`/cms/api/orders/${order.id}`}
+						>
+							<input type="hidden" name="action" value="note" />
+							<label class="field">
+								<span class="sr-only">یادداشت</span>
+								<textarea class="textarea" name="note" rows="3" placeholder="مثلاً: مشتری خواستار ارسال با پست پیشتاز است."
+									>{order.note ?? ''}</textarea
+								>
+							</label>
+							<div class="row row--between">
+								<span class="hint">این یادداشت با ذخیرهٔ سفارش همیشه در دسترس است.</span>
+								<button class="btn btn--outline btn--sm" type="submit">
+									<Icon name="save" size={14} />
+									<span>ذخیرهٔ یادداشت</span>
+								</button>
+							</div>
+						</form>
+					</section>
+				</div>
+
+				<aside class="stack">
+					<section class="card">
+						<div class="card__head">
+							<h2 class="card__title">تغییر وضعیت</h2>
+						</div>
+						<form class="card__body stack" method="post" action={`/cms/api/orders/${order.id}`}>
+							<input type="hidden" name="action" value="status" />
+							<label class="field">
+								<span class="label">وضعیت جدید</span>
+								<select class="select" name="status">
+									{ORDER_STATUSES.map((status) => (
+										<option value={status.value} selected={status.value === order.status}>
+											{status.label}
+										</option>
+									))}
+								</select>
+							</label>
+							<button class="btn btn--primary btn--sm" type="submit">
+								<Icon name="check" size={14} />
+								<span>ثبت وضعیت</span>
+							</button>
+							<p class="hint">
+								با لغو یا بازگشت وجه، موجودی کالاها به‌صورت خودکار به انبار برمی‌گردد.
+							</p>
+						</form>
+					</section>
+
+					<section class="card">
+						<div class="card__head">
+							<h2 class="card__title">مشتری</h2>
+						</div>
+						<div class="card__body">
+							<dl class="dl">
+								<div class="dl__row">
+									<dt>نام</dt>
+									<dd>{order.customerName}</dd>
+								</div>
+								<div class="dl__row">
+									<dt>تلفن</dt>
+									<dd class="num ltr">{order.phone}</dd>
+								</div>
+								{order.email && (
+									<div class="dl__row">
+										<dt>ایمیل</dt>
+										<dd class="ltr">{order.email}</dd>
+									</div>
+								)}
+								<div class="dl__row">
+									<dt>شهر</dt>
+									<dd>{order.city}</dd>
+								</div>
+								<div class="dl__row">
+									<dt>نشانی</dt>
+									<dd style="max-width:22ch">{order.address}</dd>
+								</div>
+							</dl>
+						</div>
+					</section>
+
+					<section class="card">
+						<div class="card__head">
+							<h2 class="card__title">مسیر سفارش</h2>
+						</div>
+						<div class="card__body">
+							{isClosed ? (
+								<div class="alert alert--warning" role="note">
+									<Icon name="info" size={16} />
+									<span>این سفارش {orderStatusLabel(order.status)} است و مسیر عادی را طی نمی‌کند.</span>
+								</div>
+							) : (
+								<ol class="timeline">
+									{steps.map((step, index) => (
+										<li
+											class:list={[
+												'timeline__item',
+												index < currentStep && 'timeline__item--done',
+												index === currentStep && 'timeline__item--current',
+											]}
+										>
+											<span class="timeline__dot" aria-hidden="true" />
+											<span class="timeline__text">
+												<strong>{step.label}</strong>
+												<span class="hint">
+													{index < currentStep
+														? 'انجام شد'
+														: index === currentStep
+															? 'مرحلهٔ جاری'
+															: 'در انتظار'}
+												</span>
+											</span>
+										</li>
+									))}
+								</ol>
+							)}
+
+							<div class="alert alert--info" role="note" style="margin-block-start:.8rem">
+								<Icon name="receipt" size={16} />
+								<span class="num">
+									ثبت: {faDate(order.createdAt)} — آخرین تغییر: {faDate(order.updatedAt)}
+								</span>
+							</div>
+						</div>
+					</section>
+
+					<section class="card">
+						<div class="card__body">
+							<div class="row row--between">
+								<span class="muted" style="font-size:.8rem">وضعیت مالی</span>
+								<span class={`badge badge--${isRevenue(order.status) ? 'success' : 'neutral'}`}>
+									{isRevenue(order.status) ? 'درآمد قطعی' : 'درآمد نشده'}
+								</span>
+							</div>
+						</div>
+					</section>
+				</aside>
+			</div>
+		</CmsLayout>
+	) : (
+		<CmsLayout title="سفارش پیدا نشد" subtitle="شناسهٔ سفارش معتبر نیست یا حذف شده است.">
+			<section class="card">
+				<div class="empty">
+					<span class="empty__icon"><Icon name="alert" size={22} /></span>
+					<span class="empty__title">سفارشی با این شناسه وجود ندارد</span>
+					<a class="btn btn--primary" href="/cms/orders" style="margin-top:.6rem">
+						<Icon name="arrow" size={15} />
+						<span>بازگشت به سفارش‌ها</span>
+					</a>
+				</div>
+			</section>
+		</CmsLayout>
+	)
+}

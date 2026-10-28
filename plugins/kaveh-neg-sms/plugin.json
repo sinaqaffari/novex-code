@@ -1,0 +1,61 @@
+{
+	"name": "پیامک کاوه‌نگار",
+	"version": "1.0.0",
+	"description": "پیکربندی کلید و شمارهٔ فرستنده و ارائهٔ توابع سروری SMS/OTP؛ گردش‌کار خرید به ارسال پیامک وصل نیست.",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-kaveh-neg-sms",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"sms",
+		"kavenegar",
+		"notification",
+		"iran",
+		"admin"
+	],
+	"hooks": [],
+	"capabilities": [
+		"options:read",
+		"options:write",
+		"admin:page",
+		"secrets:read"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات پیامک کاوه‌نگار",
+				"description": "وضعیت کلید محیطی، شماره فرستنده و قالب‌های پیامک"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "apiKey",
+			"label": "کلید API کاوه‌نگار",
+			"type": "text",
+			"placeholder": "xxxxxxxxxxxxxxxx",
+			"help": "در متغیر محیطی اختصاصی افزونه تنظیم می‌شود؛ مقدار خام در پنل یا فایل JSON ذخیره نمی‌شود.",
+			"secret": true
+		},
+		{
+			"key": "senderNumber",
+			"label": "شماره فرستنده (خط عددی)",
+			"type": "text",
+			"placeholder": "شمارهٔ خط ثبت‌شده",
+			"maxLength": 20,
+			"help": "شمارهٔ فرستنده‌ای که برای حساب شما در کاوه‌نگار ثبت شده است."
+		},
+		{
+			"key": "defaultTemplate",
+			"label": "نام قالب تأیید OTP",
+			"type": "text",
+			"placeholder": "نام قالب ثبت‌شده در پنل کاوه‌نگار",
+			"maxLength": 80,
+			"help": "نام قالب Verify Lookup است، نه متن پیام. تا زمانی که قالب خود را ثبت نکرده‌اید، این گزینه را خالی بگذارید."
+		}
+	],
+	"id": "kaveh-neg-sms",
+	"apiVersion": 1
+}

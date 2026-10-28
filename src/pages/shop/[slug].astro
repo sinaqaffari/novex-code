@@ -1,0 +1,260 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
+import ProductCard from '../../components/store/ProductCard.astro';
+import ProductArtwork from '../../components/store/ProductArtwork.astro';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { getProduct, listProducts } from '../../lib/commerce/products';
+import { SHIPPING } from '../../lib/commerce/orders';
+import { faMoney, faNumber, faDate } from '../../lib/cms/fa';
+
+export const prerender = false;
+
+const { slug = '' } = Astro.params;
+const product = await getProduct(slug);
+
+if (!product || product.status !== 'active') {
+	return Astro.redirect('/shop');
+}
+
+const [settings, cart, relatedResult] = await Promise.all([
+	readSettings(),
+	hydrateCart(readCart(Astro.cookies)),
+	listProducts({ status: 'active', category: product.category, sort: 'newest', perPage: 5 }),
+]);
+if (!settings.commerceEnabled) return Astro.redirect('/shop');
+const relatedProducts = relatedResult.items.filter((item) => item.id !== product.id).slice(0, 4);
+const onSale =
+	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+const percentOff = onSale
+	? Math.round(((product.compareAtPrice! - product.price) / product.compareAtPrice!) * 100)
+	: 0;
+const soldOut = product.stock === 0;
+const lowStock = product.stock > 0 && product.stock <= 3;
+const errorMessage = Astro.url.searchParams.get('error') ?? '';
+const added = Astro.url.searchParams.get('added') === '1';
+---
+
+<ShopLayout title={product.name} description={product.description} cartCount={cart.count} settings={settings}>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">{product.name}</span>
+	</nav>
+
+	<div class="product-detail-page">
+		<div class="product-detail-grid">
+			<div class="product-media">
+				<div class="product-media__main">
+					<ProductArtwork product={product} variant="detail" />
+				</div>
+			</div>
+
+			<div class="product-info">
+				<div class="product-meta">
+					<span class="badge badge--brand">{product.category}</span>
+					{onSale && <span class="badge badge--warning num">{faNumber(percentOff)}٪ تخفیف</span>}
+					{soldOut ? (
+						<span class="badge badge--danger">ناموجود</span>
+					) : lowStock ? (
+						<span class="badge badge--warning">موجودی کم</span>
+					) : (
+						<span class="badge badge--success">موجود</span>
+					)}
+				</div>
+
+				<h1>{product.name}</h1>
+				<p class="product-desc">
+					{product.description || 'برای این محصول هنوز توضیحی ثبت نشده است.'}
+				</p>
+
+				<section class="buy-box" aria-label="خرید محصول">
+					<div class="buy-box__row">
+						<span class="product-price">
+							{onSale && (
+								<span class="product-price--was num">
+									{faMoney(product.compareAtPrice!, settings.currency)}
+								</span>
+							)}
+							<span class="product-price--now num">{faMoney(product.price, settings.currency)}</span>
+						</span>
+						<span class="product-sku ltr">{product.sku}</span>
+					</div>
+
+					{lowStock && <p class="hint">فقط {faNumber(product.stock)} عدد باقی مانده است.</p>}
+					{errorMessage && <p class="alert alert--error" role="alert">{errorMessage}</p>}
+					{added && <p class="alert alert--success" role="status">محصول به سبد خرید اضافه شد.</p>}
+
+					{soldOut ? (
+						<p class="notice" role="status">این محصول در حال حاضر موجود نیست.</p>
+					) : (
+						<form method="post" action="/shop/api/cart" class="buy-form">
+							<input type="hidden" name="action" value="add" />
+							<input type="hidden" name="productId" value={product.id} />
+							<input type="hidden" name="redirect" value={`/shop/${product.slug}?added=1`} />
+							<label class="sr-only" for="quantity">تعداد</label>
+							<input
+								id="quantity"
+								name="quantity"
+								type="number"
+								min="1"
+								max={product.stock}
+								value="1"
+								inputmode="numeric"
+								class="qty-input"
+							/>
+							<button class="btn btn--primary btn--lg" type="submit">افزودن به سبد خرید</button>
+							{cart.count > 0 && <a class="btn btn--outline" href="/shop/cart">رفتن به سبد</a>}
+						</form>
+					)}
+
+					<p class="shipping-note">
+						هزینهٔ ارسال بر اساس مبلغ سبد خرید محاسبه می‌شود؛ برای سفارش‌های بالاتر از{' '}
+						{faMoney(SHIPPING.freeThreshold, settings.currency)} رایگان است.
+					</p>
+				</section>
+
+				<section class="product-specs" aria-labelledby="product-specs-title">
+					<h2 id="product-specs-title">اطلاعات ثبت‌شده</h2>
+					<dl>
+						<div><dt>دسته‌بندی</dt><dd>{product.category}</dd></div>
+						<div><dt>کد کالا</dt><dd class="ltr">{product.sku}</dd></div>
+						<div><dt>آخرین ویرایش</dt><dd>{faDate(product.updatedAt)}</dd></div>
+						<div><dt>موجودی</dt><dd>{soldOut ? 'ناموجود' : `${faNumber(product.stock)} عدد`}</dd></div>
+					</dl>
+				</section>
+			</div>
+		</div>
+	</div>
+
+	{relatedProducts.length > 0 && (
+		<section class="section related-products" aria-labelledby="related-products-title">
+			<div class="section__head">
+				<h2 id="related-products-title">محصولات دیگر در این دسته</h2>
+				<a class="section__subtitle" href={`/shop?category=${encodeURIComponent(product.category)}`}>دیدن دسته</a>
+			</div>
+			<div class="product-grid">
+				{relatedProducts.map((related) => <ProductCard product={related} currency={settings.currency} />)}
+			</div>
+		</section>
+	)}
+</ShopLayout>
+
+<style>
+	.product-detail-page {
+		max-width: 1100px;
+		margin-inline: auto;
+		padding-block: var(--space-6) var(--space-8);
+	}
+
+	.product-detail-grid {
+		display: grid;
+		align-items: start;
+		gap: var(--space-6);
+	}
+
+	@media (min-width: 960px) {
+		.product-detail-grid {
+			grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr);
+			gap: var(--space-10);
+		}
+	}
+
+	.product-info {
+		min-width: 0;
+		display: grid;
+		align-content: start;
+		gap: var(--space-4);
+	}
+
+	.product-info h1 {
+		font-size: clamp(var(--text-2xl), 3vw, var(--text-4xl));
+	}
+
+	.product-desc {
+		margin: 0;
+		max-width: 60ch;
+		font-size: var(--text-lg);
+		color: var(--ink-soft);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.buy-box {
+		gap: var(--space-4);
+		padding: clamp(1rem, 2.5vw, 1.5rem);
+	}
+
+	.buy-box__row,
+	.buy-form {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+	}
+
+	.product-sku {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	.shipping-note {
+		font-size: var(--text-sm);
+		color: var(--muted);
+		line-height: 1.7;
+	}
+
+	.product-specs {
+		padding-block-start: var(--space-3);
+		border-block-start: 1px solid var(--line);
+	}
+
+	.product-specs h2 {
+		font-size: var(--text-lg);
+		margin-block-end: var(--space-3);
+	}
+
+	.product-specs dl {
+		margin: 0;
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.product-specs dl > div {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--space-3);
+	}
+
+	.product-specs dt {
+		color: var(--muted);
+	}
+
+	.product-specs dd {
+		margin: 0;
+		color: var(--ink);
+		font-weight: var(--font-weight-medium);
+		text-align: end;
+	}
+
+	@media (max-width: 640px) {
+		.product-detail-page {
+			padding-block: var(--space-4);
+		}
+
+		.buy-form {
+			align-items: stretch;
+		}
+
+		.buy-form .btn {
+			flex: 1 1 100%;
+		}
+	}
+</style>

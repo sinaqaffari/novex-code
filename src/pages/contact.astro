@@ -1,0 +1,46 @@
+---
+import ShopLayout from '../layouts/ShopLayout.astro';
+import '../styles/policies.css';
+import { readSettings } from '../lib/cms/settings';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([readSettings(), hydrateCart(readCart(Astro.cookies))]);
+const configuredEmail = settings.authorEmail.trim();
+const contactEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configuredEmail) ? configuredEmail : '';
+---
+
+<ShopLayout title="تماس" description={`راه‌های ارتباط با ${settings.siteTitle}.`} cartCount={cart.count} settings={settings}>
+	<div class="policy-page">
+		<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><span aria-current="page">تماس</span></nav>
+		<header class="policy-page__intro">
+			<span class="policy-page__eyebrow">ارتباط</span>
+			<h1>تماس با {settings.siteTitle}</h1>
+			<p>راه‌های ارتباطی فقط وقتی نمایش داده می‌شوند که مدیر سایت آن‌ها را در تنظیمات ثبت کرده باشد.</p>
+		</header>
+
+		<section class="policy-page__section" aria-labelledby="contact-email-title">
+			<h2 id="contact-email-title">پیام دربارهٔ سایت</h2>
+			{contactEmail ? (
+				<p>برای پیام عمومی، از نشانی تنظیم‌شدهٔ سایت استفاده کنید: <a class="policy-page__email" href={`mailto:${contactEmail}`}>{contactEmail}</a></p>
+			) : (
+				<p class="policy-page__notice" role="status">نشانی ایمیل تماس در تنظیمات سایت ثبت نشده یا معتبر نیست؛ این صفحه فرم ارسال پیام ندارد.</p>
+			)}
+			<p>شمارهٔ تماس، نشانی پستی و ساعات پاسخ‌گویی در این نسخه پیکربندی نشده‌اند و برای آن‌ها اطلاعاتی نمایش داده نمی‌شود.</p>
+		</section>
+
+		{settings.commerceEnabled ? (
+			<section class="policy-page__section" aria-labelledby="contact-order-title">
+				<h2 id="contact-order-title">پیگیری سفارش</h2>
+				<p>برای مشاهدهٔ وضعیت ثبت‌شده، شمارهٔ سفارش و همان شمارهٔ تماسی را که هنگام خرید وارد کرده‌اید در صفحهٔ پیگیری سفارش وارد کنید.</p>
+				<a class="btn btn--primary" href="/shop/track">پیگیری سفارش</a>
+			</section>
+		) : null}
+
+		<section class="policy-page__section">
+			<h2>اطلاعات سیاست‌ها</h2>
+			<p>متن‌های توضیحی حریم خصوصی و فروش در <a href="/policies">راهنمای سیاست‌ها</a> قرار دارند. صاحب سایت باید آن‌ها را پیش از استفادهٔ عملیاتی بازبینی و تکمیل کند.</p>
+		</section>
+	</div>
+</ShopLayout>

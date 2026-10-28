@@ -1,0 +1,95 @@
+---
+/* چیدمان عمومی سایت و فروشگاه با پوستهٔ مشترک راست‌به‌چپ. */
+
+import '@fontsource-variable/vazirmatn';
+import persianFontUrl from '@fontsource-variable/vazirmatn/files/vazirmatn-arabic-wght-normal.woff2?url';
+import Header from '../components/store/Header.astro';
+import Footer from '../components/store/Footer.astro';
+import '../styles/store.css';
+import { readSettings, type SiteSettings } from '../lib/cms/settings';
+import { applyFilters } from '../lib/plugins/hooks';
+import { ensurePluginsBooted } from '../lib/plugins/registry';
+import { absoluteUrl, publicOrigin } from '../lib/urls';
+
+interface Props {
+	title: string;
+	description?: string;
+	cartCount?: number;
+	settings?: SiteSettings;
+	type?: 'website' | 'article';
+	image?: string;
+	publishedAt?: string;
+	noindex?: boolean;
+}
+
+const {
+	title,
+	description = '',
+	cartCount,
+	settings: suppliedSettings,
+	type = 'website',
+	image,
+	publishedAt,
+	noindex = false,
+} = Astro.props;
+const settings = suppliedSettings ?? await readSettings();
+const origin = publicOrigin(Astro.request);
+const canonical = absoluteUrl(Astro.request, Astro.url.pathname);
+const resolvedImage = (() => {
+	if (!image) return undefined;
+	try {
+		const url = new URL(image, origin);
+		return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : undefined;
+	} catch {
+		return undefined;
+	}
+})();
+const pageTitle = title === settings.siteTitle ? title : `${title} | ${settings.siteTitle}`;
+const pageDescription = description || settings.siteDescription;
+
+await ensurePluginsBooted();
+const pluginHead = await applyFilters<string>('site.head', '', {
+	title: pageTitle,
+	description: pageDescription,
+	url: canonical,
+	type,
+	image: resolvedImage,
+	publishedAt,
+	siteName: settings.siteTitle,
+	indexable: !noindex,
+});
+const pluginHasCanonical = pluginHead.includes('rel="canonical"');
+---
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="preload" href={persianFontUrl} as="font" type="font/woff2" crossorigin />
+		<meta name="color-scheme" content="light" />
+		<title>{pageTitle}</title>
+		<meta name="description" content={pageDescription} />
+		{noindex && <meta name="robots" content="noindex, nofollow" />}
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta property="og:title" content={pageTitle} />
+		<meta property="og:description" content={pageDescription} />
+		<meta property="og:type" content={type} />
+		<meta property="og:locale" content="fa_IR" />
+		<meta property="og:url" content={canonical} />
+		{type === 'article' && publishedAt && <meta property="article:published_time" content={publishedAt} />}
+		{resolvedImage && <meta property="og:image" content={resolvedImage} />}
+		{!pluginHasCanonical && <link rel="canonical" href={canonical} />}
+		<Fragment set:html={pluginHead} />
+	</head>
+	<body class="store">
+		<a class="sr-only" href="#main">پرش به محتوای اصلی</a>
+
+		<Header cartCount={cartCount} settings={settings} />
+
+		<main id="main" class="container">
+			<slot />
+		</main>
+
+		<Footer settings={settings} />
+	</body>
+</html>
