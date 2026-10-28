@@ -1,0 +1,49 @@
+{
+	"name": "سئوی صفحات عمومی",
+	"version": "1.0.0",
+	"description": "نشانی canonical، کارت Twitter و دادهٔ ساختاریافته را به فرادادهٔ پایهٔ Open Graph پوسته اضافه می‌کند.",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-seo",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"seo",
+		"opengraph",
+		"jsonld"
+	],
+	"hooks": [
+		"site.head"
+	],
+	"capabilities": [
+		"site:render",
+		"options:read",
+		"admin:page"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "وضعیت و تنظیمات سئو",
+				"description": "وضعیت شناسهٔ شبکهٔ اجتماعی و دادهٔ ساختاریافته"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "twitterHandle",
+			"label": "نام کاربری Twitter",
+			"type": "text",
+			"help": "فقط شناسهٔ لاتین، عدد و زیرخط پذیرفته می‌شود؛ با یا بدون @."
+		},
+		{
+			"key": "enableJsonLd",
+			"label": "افزودن دادهٔ ساختاریافته (JSON-LD)",
+			"type": "switch",
+			"default": true,
+			"help": "برای نوشته‌ها schema از نوع BlogPosting ساخته می‌شود؛ صفحه‌های noindex مستثنا هستند."
+		}
+	],
+	"id": "seo-meta",
+	"apiVersion": 1
+}

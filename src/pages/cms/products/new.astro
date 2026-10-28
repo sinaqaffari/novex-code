@@ -1,0 +1,36 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import ProductForm from '../../../components/cms/ProductForm.astro';
+import { listMedia } from '../../../lib/cms/media';
+import { readSettings } from '../../../lib/cms/settings';
+import { listProducts } from '../../../lib/commerce/products';
+
+export const prerender = false;
+
+const [media, settings, catalog] = await Promise.all([
+	listMedia(),
+	readSettings(),
+	listProducts({ perPage: 1 }),
+]);
+---
+
+<CmsLayout
+	title="محصول تازه"
+	subtitle="یک محصول بسازید و آن را پیش‌نویس نگه دارید تا وقتی آمادهٔ فروش شد منتشر شود."
+	breadcrumbs={[{ label: 'فروشگاه' }, { label: 'محصولات', href: '/cms/products' }, { label: 'محصول تازه' }]}
+>
+	<Fragment slot="actions">
+		<a class="btn btn--outline btn--sm" href="/cms/products">
+			<Icon name="arrow" size={15} />
+			<span>بازگشت به فهرست</span>
+		</a>
+	</Fragment>
+
+	<ProductForm
+		mode="new"
+		media={media}
+		categories={catalog.categories}
+		currency={settings.currency}
+	/>
+</CmsLayout>

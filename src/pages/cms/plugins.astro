@@ -1,0 +1,538 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import {
+	ensurePluginsBooted,
+	listInstalledPlugins,
+	PANEL_VERSION,
+	pluginOptions,
+} from '../../lib/plugins/registry';
+import { hasPluginSecret, pluginSecretEnvironmentName } from '../../lib/plugins/secrets';
+import { PLUGIN_CAPABILITY_LABELS, type PluginCapability } from '../../lib/plugins/types';
+
+export const prerender = false;
+
+await ensurePluginsBooted();
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const status = Astro.url.searchParams.get('status') ?? 'all';
+const selectedId = Astro.url.searchParams.get('plugin') ?? '';
+const view = Astro.url.searchParams.get('view') ?? 'settings';
+
+const installed = listInstalledPlugins();
+const activeCount = installed.filter((plugin) => plugin.active).length;
+
+const matchesQuery = (haystack: string[]) =>
+	!query || haystack.join(' ').toLowerCase().includes(query.toLowerCase());
+
+const plugins = installed.filter((plugin) => {
+	if (status === 'active' && !plugin.active) return false;
+	if (status === 'inactive' && plugin.active) return false;
+	return matchesQuery([
+		plugin.manifest.name,
+		plugin.manifest.description,
+		plugin.manifest.author ?? '',
+		...(plugin.manifest.tags ?? []),
+	]);
+});
+
+const selected = installed.find((plugin) => plugin.id === selectedId);
+const missingPlugin = Boolean(selectedId) && !selected;
+const fa = (value: number | string) =>
+	String(value).replace(/[0-9]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+
+const filterHref = (nextStatus: string) => {
+	const params = new URLSearchParams();
+	if (query) params.set('q', query);
+	if (nextStatus !== 'all') params.set('status', nextStatus);
+	const suffix = params.toString();
+	return suffix ? `/cms/plugins?${suffix}` : '/cms/plugins';
+};
+
+const detailHref = (id: string, nextView: 'settings' | 'readme') =>
+	`/cms/plugins?plugin=${encodeURIComponent(id)}&view=${nextView}`;
+
+const tabs = [
+	{ value: 'all', label: 'همه', count: installed.length },
+	{ value: 'active', label: 'فعال', count: activeCount },
+	{ value: 'inactive', label: 'غیرفعال', count: installed.length - activeCount },
+];
+
+const hookLabels: Record<string, string> = {
+	'site.head': 'فرادادهٔ سایت',
+	'site.footer': 'پاورقی سایت',
+	'cms.dashboard.widgets': 'داشبورد پنل',
+	'shop.payment.initiate': 'آغاز پرداخت',
+	'shop.payment.verify': 'تأیید پرداخت',
+};
+---
+
+<CmsLayout
+	title="افزونه‌ها"
+	subtitle={`${fa(activeCount)} افزونهٔ فعال از ${fa(installed.length)} — سازگار با پنل نسخهٔ ${fa(PANEL_VERSION)}`}
+>
+	<Fragment slot="actions">
+		<a class="btn btn--sm" href="#plugin-docs">ساخت افزونه</a>
+	</Fragment>
+
+	<section class="card">
+		<div class="card__head">
+			<div class="filterbar grow">
+				<nav class="segmented" aria-label="پالایش وضعیت افزونه">
+					{tabs.map((tab) => (
+						<a href={filterHref(tab.value)} aria-current={status === tab.value ? 'page' : undefined}>
+							{tab.label}
+							<span class="segmented__count num">{fa(tab.count)}</span>
+						</a>
+					))}
+				</nav>
+
+				<form method="get" action="/cms/plugins" class="toolbar" style="margin-inline-start:auto">
+					{status !== 'all' && <input type="hidden" name="status" value={status} />}
+					<label class="search">
+						<Icon name="search" size={15} />
+						<input class="input" type="search" name="q" value={query} placeholder="جست‌وجوی افزونه…" />
+					</label>
+					<button class="btn btn--sm" type="submit">جست‌وجو</button>
+				</form>
+			</div>
+		</div>
+
+		{missingPlugin && (
+			<div class="card__body">
+				<p class="alert alert--warning">افزونه‌ای با شناسهٔ «{selectedId}» نصب نشده است.</p>
+			</div>
+		)}
+
+		{plugins.length ? (
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">افزونه</th>
+							<th scope="col">وضعیت</th>
+							<th scope="col">اتصال‌ها و پنل</th>
+							<th scope="col" style="text-align:end">عملیات</th>
+						</tr>
+					</thead>
+					<tbody>
+						{plugins.map((plugin) => {
+							const declaredHooks = (plugin.manifest.hooks ?? []).map((hook) => hookLabels[hook] ?? hook);
+							const panelPage = plugin.manifest.admin?.pages?.[0];
+							const hasSettings = (plugin.manifest.settings ?? []).length > 0;
+
+							return (
+								<tr>
+									<td>
+										<div class="cell-product">
+											<span class="plugin-mark" aria-hidden="true">
+												<Icon name="layers" size={15} />
+											</span>
+											<span>
+												<a class="cell-product__name" href={detailHref(plugin.id, 'readme')}>
+													{plugin.manifest.name}
+												</a>
+												<span class="cell-product__meta">{plugin.manifest.description}</span>
+												<span class="cell-product__meta num">
+													نسخهٔ {plugin.manifest.version}
+													{plugin.manifest.author && ` — ${plugin.manifest.author}`}
+												</span>
+											</span>
+										</div>
+										{plugin.error && (
+											<span class="error-text" style="display:block;margin-top:4px">
+												{plugin.error}
+											</span>
+										)}
+										{!plugin.active && plugin.missingDependencies?.length ? (
+											<span class="hint" style="display:block;margin-top:4px">
+												نیازمند فعال‌بودن: {plugin.missingDependencies.join('، ')}
+											</span>
+										) : null}
+									</td>
+
+									<td>
+										<span
+											class:list={['badge', plugin.active ? 'badge--success' : 'badge--neutral']}
+										>
+											{plugin.active ? 'فعال' : 'غیرفعال'}
+										</span>
+									</td>
+
+									<td>
+										<div class="tag-list">
+											{declaredHooks.length ? (
+												declaredHooks.map((label) => <span class="badge badge--neutral">{label}</span>)
+											) : (
+												<span class="muted">بدون اتصال خودکار</span>
+											)}
+										{panelPage && <span class="badge badge--brand">پنل اختصاصی</span>}
+									</div>
+								</td>
+
+									<td>
+										<div class="table__actions">
+											<form method="post" action="/cms/api/plugins">
+												<input type="hidden" name="pluginId" value={plugin.id} />
+												<input
+													type="hidden"
+													name="action"
+													value={plugin.active ? 'deactivate' : 'activate'}
+												/>
+												<button class="btn btn--sm" type="submit">
+													{plugin.active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}
+												</button>
+													</form>
+
+												{plugin.active && panelPage && (
+													<a
+														class="btn btn--sm btn--primary"
+														href={`/cms/plugins/${plugin.id}/${panelPage.path}`}
+														title={panelPage.description}
+													>پنل افزونه</a>
+												)}
+
+												{plugin.active && hasSettings && (
+												<a class="btn btn--sm btn--ghost" href={detailHref(plugin.id, 'settings')}>
+													تنظیمات
+												</a>
+											)}
+
+											<a class="btn btn--sm btn--ghost" href={detailHref(plugin.id, 'readme')}>
+												جزئیات
+											</a>
+
+											{!plugin.active && (
+												<form
+													method="post"
+													action="/cms/api/plugins"
+													data-confirm={`داده‌های «${plugin.manifest.name}» پاک شود؟ این کار تنظیمات افزونه را حذف می‌کند.`}
+												>
+													<input type="hidden" name="pluginId" value={plugin.id} />
+													<input type="hidden" name="action" value="uninstall" />
+													<button class="btn btn--sm btn--danger" type="submit">
+														حذف داده‌ها
+													</button>
+												</form>
+											)}
+										</div>
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="layers" size={20} /></span>
+				<span class="empty__title">
+					{query ? 'افزونه‌ای با این جست‌وجو پیدا نشد' : 'هیچ افزونه‌ای نصب نشده است'}
+				</span>
+				<span>
+					هر افزونه یک پوشه در <code class="mono">plugins/</code> است که یک{' '}
+					<code class="mono">plugin.json</code> و یک <code class="mono">index.ts</code> دارد.
+				</span>
+			</div>
+		)}
+	</section>
+
+	{
+		selected && (
+			<section class="card">
+				<div class="card__head">
+					<div>
+						<h2 class="card__title">{selected.manifest.name}</h2>
+						<p class="card__hint">
+							{view === 'readme' ? 'مستندات افزونه (readme.txt)' : 'تنظیمات افزونه'}
+						</p>
+					</div>
+					<div class="row">
+						<a class="btn btn--sm btn--ghost" href={detailHref(selected.id, view === 'readme' ? 'settings' : 'readme')}>
+							{view === 'readme' ? 'تنظیمات' : 'مستندات'}
+						</a>
+						<a class="btn btn--sm btn--ghost" href="/cms/plugins">
+							بستن
+						</a>
+					</div>
+				</div>
+
+				<div class="card__body" style="border-bottom:1px solid var(--line)">
+					<div class="stack" style="gap:10px">
+						<div>
+							<span class="label">دسترسی‌های اعلام‌شده</span>
+							{selected.manifest.capabilities?.length ? (
+								<div class="tag-list" style="margin-top:6px">
+									{selected.manifest.capabilities.map((capability: PluginCapability) => (
+										<span class="badge badge--neutral mono" dir="ltr" title={PLUGIN_CAPABILITY_LABELS[capability]}>
+											{capability}
+										</span>
+									))}
+								</div>
+							) : (
+								<p class="hint">این افزونه هیچ دسترسی اضافه‌ای نخواسته است.</p>
+							)}
+						</div>
+
+						{selected.manifest.admin?.pages?.length ? (
+							<div>
+								<span class="label">صفحه‌های این افزونه</span>
+								<div class="row" style="margin-top:6px;flex-wrap:wrap">
+									{selected.manifest.admin.pages.map((page) =>
+										selected.active ? (
+											<a class="btn btn--sm" href={`/cms/plugins/${selected.id}/${page.path}`}>
+												{page.title}
+											</a>
+										) : (
+											<span class="badge badge--neutral">{page.title}</span>
+										),
+									)}
+								</div>
+							</div>
+						) : null}
+					</div>
+				</div>
+
+				{view === 'settings' ? (
+					selected.manifest.settings?.length ? (
+						<form method="post" action="/cms/api/plugins" class="card__body">
+							<input type="hidden" name="pluginId" value={selected.id} />
+							<input type="hidden" name="action" value="save-options" />
+
+							<div class="stack" style="gap:12px;max-width:520px">
+								{selected.manifest.settings.map((setting) =>
+									setting.secret ? (
+										<div class="field">
+											<span class="label">{setting.label}</span>
+											<span class:list={['badge', hasPluginSecret(selected.id, setting.key) ? 'badge--success' : 'badge--warning']}>
+												{hasPluginSecret(selected.id, setting.key) ? 'در محیط اجرا تنظیم شده' : 'تنظیم نشده'}
+											</span>
+											<code class="mono ltr" dir="ltr">{pluginSecretEnvironmentName(selected.id, setting.key)}</code>
+											<span class="hint">{setting.help ?? 'مقدار محرمانه از محیط استقرار خوانده می‌شود و در فایل افزونه ذخیره نمی‌شود.'}</span>
+										</div>
+									) : setting.type === 'switch' ? (
+										<label class="switch-row" style="border:1px solid var(--line);border-radius:5px">
+											<span class="switch-row__text">
+												<span>{setting.label}</span>
+												{setting.help && <span class="hint">{setting.help}</span>}
+											</span>
+											<span class="switch">
+												<input type="hidden" name={`opt_${setting.key}`} value="false" />
+												<input
+													type="checkbox"
+													name={`opt_${setting.key}`}
+													value="true"
+													checked={Boolean(
+														pluginOptions(selected.id)[setting.key] ?? setting.default ?? false,
+													)}
+												/>
+												<span class="switch__track" />
+											</span>
+										</label>
+									) : (
+										<div class="field">
+											<label class="label" for={`opt-${selected.id}-${setting.key}`}>
+												{setting.label}
+											</label>
+											<input
+										class="input"
+										id={`opt-${selected.id}-${setting.key}`}
+										type={setting.type === 'number' ? 'number' : 'text'}
+										inputmode={setting.type === 'number' ? 'numeric' : undefined}
+										min={setting.min}
+										max={setting.max}
+										step={setting.type === 'number' ? (setting.step ?? 1) : undefined}
+										dir={setting.type === 'number' ? 'ltr' : undefined}
+										name={`opt_${setting.key}`}
+												value={String(pluginOptions(selected.id)[setting.key] ?? setting.default ?? '')}
+												placeholder={setting.placeholder ?? ''}
+											/>
+											{setting.help && <span class="hint">{setting.help}</span>}
+										</div>
+									),
+								)}
+
+								<div class="row">
+									<button class="btn btn--sm btn--primary" type="submit">ذخیرهٔ تنظیمات</button>
+								</div>
+							</div>
+						</form>
+					) : (
+						<div class="card__body">
+							<p class="hint">این افزونه تنظیماتی ندارد.</p>
+						</div>
+					)
+				) : (
+					<div class="card__body stack" style="gap:16px">
+							<dl class="dl">
+								<div class="dl__row">
+									<dt>شناسه</dt>
+									<dd class="mono ltr">{selected.manifest.id}</dd>
+								</div>
+								<div class="dl__row">
+									<dt>نسخهٔ API</dt>
+									<dd class="num">{selected.manifest.apiVersion}</dd>
+								</div>
+								<div class="dl__row">
+									<dt>نسخه</dt>
+									<dd class="num">{selected.manifest.version}</dd>
+								</div>
+							<div class="dl__row">
+								<dt>نیازمند پنل</dt>
+								<dd class="num">{selected.manifest.requires ?? '—'}</dd>
+							</div>
+								<div class="dl__row">
+									<dt>آزموده‌شده تا</dt>
+									<dd class="num">{selected.manifest.testedUpTo ?? '—'}</dd>
+								</div>
+								<div class="dl__row">
+									<dt>قلاب‌ها</dt>
+									<dd class="tag-list" dir="ltr">
+										{selected.manifest.hooks?.length ? selected.manifest.hooks.map((hook) => <code class="badge badge--neutral mono">{hook}</code>) : '—'}
+									</dd>
+								</div>
+								{selected.manifest.requiresPlugins?.length ? (
+									<div class="dl__row">
+										<dt>وابستگی‌ها</dt>
+										<dd class="tag-list">
+											{selected.manifest.requiresPlugins.map((dependency) => <code class="badge badge--neutral mono" dir="ltr">{dependency}</code>)}
+										</dd>
+									</div>
+								) : null}
+							<div class="dl__row">
+								<dt>مجوز</dt>
+								<dd>
+									{selected.manifest.licenseUri ? (
+										<a class="ltr" href={selected.manifest.licenseUri} target="_blank" rel="noreferrer">
+											{selected.manifest.license ?? 'MIT'}
+										</a>
+									) : (
+										<span class="ltr">{selected.manifest.license ?? 'MIT'}</span>
+									)}
+								</dd>
+							</div>
+							<div class="dl__row">
+								<dt>پوشه</dt>
+								<dd class="mono ltr">plugins/{selected.id}</dd>
+							</div>
+							{selected.manifest.textDomain && (
+								<div class="dl__row">
+									<dt>Text Domain</dt>
+									<dd class="mono ltr">{selected.manifest.textDomain}</dd>
+								</div>
+							)}
+							{selected.manifest.tags?.length ? (
+								<div class="dl__row">
+									<dt>برچسب‌ها</dt>
+									<dd class="tag-list">
+										{selected.manifest.tags.map((tag) => (
+											<span class="badge badge--neutral mono">{tag}</span>
+										))}
+									</dd>
+								</div>
+							) : null}
+						</dl>
+
+						{selected.readme ? (
+							<div class="stack" style="gap:12px">
+								{selected.readme.sections.map((section) => (
+									<details class="readme-section" open={section.title === 'Description'}>
+										<summary>{section.title}</summary>
+										<pre class="readme-body">{section.body}</pre>
+									</details>
+								))}
+							</div>
+						) : (
+							<p class="hint">
+								این افزونه فایل <code class="mono">readme.txt</code> ندارد.
+							</p>
+						)}
+					</div>
+				)}
+			</section>
+		)
+	}
+
+	<section class="card" id="plugin-docs">
+		<div class="card__head">
+			<div>
+				<h2 class="card__title">ساخت افزونه</h2>
+					<p class="card__hint">
+						قرارداد افزونهٔ نووکس: شناسه و API نسخه‌دار، قلاب‌های میزبان با مجوز صریح، تنظیمات اعتبارسنجی‌شده و صفحه‌های مستقل.
+					</p>
+			</div>
+		</div>
+		<div class="card__body stack" style="gap:12px">
+			<table class="table">
+				<thead>
+					<tr>
+							<th scope="col">قرارداد Novex</th>
+							<th scope="col">نقش</th>
+					</tr>
+				</thead>
+				<tbody>
+						<tr><td class="ltr"><code class="mono">id</code> + <code class="mono">apiVersion</code></td><td>هویت پایدار و نسخهٔ مستقل قرارداد میزبان؛ ناسازگاری مانع فعال‌سازی است.</td></tr>
+						<tr><td class="ltr"><code class="mono">version</code> + <code class="mono">requires</code></td><td>نسخهٔ SemVer افزونه و حداقل نسخهٔ پنل.</td></tr>
+						<tr><td class="ltr"><code class="mono">hooks</code> + <code class="mono">capabilities</code></td><td>فقط نقاط توسعهٔ فهرست‌شده با توانایی لازم پذیرفته می‌شوند.</td></tr>
+						<tr><td class="ltr"><code class="mono">requiresPlugins</code></td><td>وابستگی‌های فعال لازم؛ افزونهٔ پایه تا غیرفعال‌شدن وابسته قابل خاموش‌کردن نیست.</td></tr>
+						<tr><td class="ltr"><code class="mono">settings</code></td><td>فرم‌های declarative با بررسی نوع، بازه، گام و طول روی سرور.</td></tr>
+						<tr><td class="ltr"><code class="mono">admin.pages</code></td><td>صفحه‌های مستقل زیر <code class="mono">/cms/plugins/&lt;id&gt;/&lt;path&gt;</code>.</td></tr>
+						<tr><td class="ltr"><code class="mono">activate</code> / <code class="mono">deactivate</code> / <code class="mono">uninstall</code></td><td>چرخهٔ عمر با بازگردانی ثبت ناموفق و پاک‌سازی دادهٔ افزونه.</td></tr>
+						<tr><td class="ltr"><code class="mono">readme.txt</code></td><td>مستندات اختیاری نصب، توضیح، پرسش‌ها و تغییرات.</td></tr>
+				</tbody>
+			</table>
+
+			<pre class="code-block ltr" dir="ltr"><code>{`// plugins/hello/plugin.json
+{
+  "id": "hello",
+  "apiVersion": 1,
+  "name": "سلام دنیا",
+  "version": "1.0.0",
+  "description": "یک افزونهٔ نمونه.",
+  "capabilities": ["site:render"],
+  "license": "MIT",
+  "requires": "2.0.0",
+  "testedUpTo": "2.0.0",
+  "textDomain": "novex-hello",
+  "tags": ["demo"],
+  "hooks": ["site.footer"]
+}
+
+// plugins/hello/index.ts
+import type { PluginApi } from '../../src/lib/plugins/types';
+
+export function register(api: PluginApi) {
+  api.addFilter('site.footer', (value) =>
+    \`\${String(value)} — ساخته‌شده با افزونهٔ «سلام دنیا»\`
+  );
+}`}</code></pre>
+
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">توانایی</th>
+						<th scope="col">چه چیزی می‌دهد</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr><td class="ltr"><code class="mono">site:render</code></td><td>افزودن تگ به <code class="mono">site.head</code> و <code class="mono">site.footer</code></td></tr>
+					<tr><td class="ltr"><code class="mono">cms:widgets</code></td><td>ویجت داشبورد از راه <code class="mono">cms.dashboard.widgets</code></td></tr>
+						<tr><td class="ltr"><code class="mono">content:read</code></td><td><code class="mono">api.getPosts()</code> — فقط خواندن</td></tr>
+						<tr><td class="ltr"><code class="mono">commerce:payments</code></td><td>قلاب‌های ساخت و تأیید پرداخت؛ دسترسی مستقل و صریح</td></tr>
+						<tr><td class="ltr"><code class="mono">secrets:read</code></td><td>خواندن رازهای فقط‌محیطی که در همان مانیفست اعلام شده‌اند؛ مقدار در پنل نمایش داده نمی‌شود</td></tr>
+						<tr><td class="ltr"><code class="mono">options:read</code> / <code class="mono">options:write</code></td><td>خواندن و ذخیرهٔ تنظیمات غیرمحرمانهٔ اعلان‌شدهٔ همان افزونه</td></tr>
+					<tr><td class="ltr"><code class="mono">admin:page</code></td><td>صفحهٔ اختصاصی زیر <code class="mono">/cms/plugins/&lt;id&gt;/&lt;path&gt;</code></td></tr>
+				</tbody>
+			</table>
+
+				<p class="hint">
+					قلاب‌های میزبان: <code class="mono">site.head</code>، <code class="mono">site.footer</code>،{' '}
+					<code class="mono">cms.dashboard.widgets</code>، <code class="mono">shop.payment.initiate</code> و{' '}
+					<code class="mono">shop.payment.verify</code>. اولویت پیش‌فرض ۱۰ است و عدد کوچک‌تر زودتر اجرا می‌شود.
+					هر قلاب باید هم در مانیفست و هم با capability متناظر اعلام شود؛ قلاب ناشناخته، undeclared
+					یا فاقد مجوز با خطای روشن رد می‌شود. افزونه‌ها در همین پردازهٔ Node اجرا می‌شوند و sandbox نیستند.
+				</p>
+				<p class="hint">این قرارداد افزونهٔ بومی TypeScript برای نووکس‌کد است؛ بستهٔ PHP وردپرس اجرا نمی‌شود و افزونهٔ ثالث بدون بازبینی کد پذیرفته نیست.</p>
+		</div>
+	</section>
+</CmsLayout>

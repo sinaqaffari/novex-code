@@ -1,63 +1,430 @@
-# Astro Starter Kit: Blog
+# نووکس‌کد — مجله و فروشگاه با پنل مدیریت فارسی
+
+یک برنامهٔ Astro/TypeScript با سایت عمومی، CMS و یک جریان پایهٔ فروش محصول تا ثبت سفارش.
+این پروژه جایگزین کامل WordPress یا یک سامانهٔ فروش production-ready نیست. دادهٔ
+تجارت در فایل JSON محلی و با قفل فقط درون همان پروسه نگه‌داری می‌شود؛ این روش برای
+چند نمونهٔ هم‌زمان، تراکنش بین‌پروسه‌ای یا بار عملیاتی تضمین پایگاه‌داده‌ای نمی‌دهد.
+پرداخت آنلاین اختیاری است و آداپتر زرین‌پال در این مخزن با تراکنش واقعی یا مستندات
+جاری ارائه‌دهنده تأیید نشده است. فهرست محصولات و داشبورد در نصب تازه خالی شروع می‌شود.
 
 ```sh
-npm create astro@latest -- --template blog
+cp .env.example .env
+npm install
+npm run dev      # http://localhost:4321  →  پنل: http://localhost:4321/cms
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+> نیازمند Node.js نسخهٔ **22.23.4** یا بالاتر (الزام Astro 7).
+>
+> ورود فقط برای توسعهٔ محلی: `http://localhost:4321/cms/login` با نام کاربری `admin` و گذرواژهٔ `novex-admin`؛ این مقادیر پیش‌فرض توسعه‌اند، نه اعتبارنامهٔ امن برای production. پیش از انتشار عمومی، `CMS_USERNAME`، هش scrypt در `CMS_PASSWORD_HASH` و `CMS_SESSION_SECRET` را از secret manager تنظیم کنید.
 
-Features:
+---
 
-- ✅ Minimal styling (make it your own!)
-- ✅ 100/100 Lighthouse performance
-- ✅ SEO-friendly with canonical URLs and Open Graph data
-- ✅ Sitemap support
-- ✅ RSS Feed support
-- ✅ Markdown & MDX support
+## ۱. اجرا با Docker
 
-## 🚀 Project Structure
+دو راه دارید: تصویر آماده یا فایل compose.
 
-Inside of your Astro project, you'll see the following folders and files:
+```sh
+# راه ساده — compose
+cp .env.example .env
+docker compose up --build -d
+docker compose logs -f app      # دیدن لاگ‌ها
+docker compose down             # توقف
+```
+
+```sh
+# یا ساخت و اجرای دستی تصویر
+docker build -t novex-code .
+docker run -d --name novex-code -p 4321:4321 \
+  -e CMS_SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e CMS_PASSWORD="یک-گذرواژهٔ-قوی" \
+  -v novex-data:/app/data \
+  -v novex-blog:/app/src/content/blog \
+  -v novex-uploads:/app/src/assets/uploads \
+  novex-code:latest
+```
+
+سپس سایت روی `http://localhost:4321`، پنل روی `http://localhost:4321/cms` و بررسی
+سلامت روی `http://localhost:4321/api/health` در دسترس است.
+
+### چه چیزی پایدار می‌ماند؟
+
+| والیوم | مسیر داخل کانتینر | محتوا |
+| --- | --- | --- |
+| `novex-data` | `/app/data` | تنظیمات سایت، دادهٔ فروشگاه (`commerce.json`) و صفحه‌های Builder (`builder-pages.json`) |
+| `novex-blog` | `/app/src/content/blog` | نوشته‌هایی که از پنل ذخیره می‌شوند |
+| `novex-uploads` | `/app/src/assets/uploads` | تصویرهای بارگذاری‌شده |
+
+تصویر چندمرحله‌ای است (`deps` → `build` → `runtime`)، با کاربر غیرروت `node` اجرا
+می‌شود و یک `HEALTHCHECK` روی `/api/health` دارد. اگر به‌جای والیوم از bind mount
+استفاده می‌کنید، مالکیت پوشه‌ها را به کاربر `node` (UID 1000) بدهید.
+
+### متغیرهای محیطی
+
+| متغیر | پیش‌فرض | توضیح |
+| --- | --- | --- |
+| `PORT` | `4321` | پورت سرور |
+| `HOST` | `0.0.0.0` | در Docker باید `0.0.0.0` باشد |
+| `TZ` | `Asia/Tehran` | منطقهٔ زمانی سرور |
+| `COMMERCE_DB_FILE` | `data/commerce.json` | مسیر اختیاری فایل JSON فروشگاه؛ ذخیره‌ساز فقط برای یک پروسه است، نه جایگزین PostgreSQL |
+| `SITE_URL` | — | نشانی عمومی برای canonical، `og:url` و فید RSS؛ برای شروع پرداخت آنلاین، نشانی عمومی HTTPS الزامی است |
+| `CMS_USERNAME` | `admin` | نام کاربری مدیر |
+| `CMS_PASSWORD` | `novex-admin` | گذرواژهٔ ساده — فقط توسعه |
+| `CMS_PASSWORD_HASH` | — | هش scrypt؛ در محیط عملیاتی جایگزین گذرواژهٔ ساده |
+| `CMS_SESSION_SECRET` | موقت | کلید امضای نشست؛ در عملیات الزامی و به‌عنوان کلید جایگزین کوکی دسترسی سفارش |
+| `NOVEX_ORDER_ACCESS_SECRET` | `CMS_SESSION_SECRET` | کلید اختصاصی اختیاری برای امضای کوکی دسترسی به سفارش |
+| `CMS_COOKIE_SECURE` | `true` در production | اگر پشت HTTPS نیستید `false` بگذارید |
+
+---
+
+## ۲. پنل مدیریت (`/cms`)
+
+| نشانی | کاربرد |
+| --- | --- |
+| `/cms` | داشبورد: درآمد، سفارش‌ها، نمودار ۱۴ روزه، موجودی کم، پربازدیدترین محصولات |
+| `/cms/posts` | فهرست نوشته‌ها با جست‌وجو، پالایش و صفحه‌بندی |
+| `/cms/posts/new` | ویرایشگر مارک‌داون با پیش‌نمایش زنده |
+| `/cms/pages` | فهرست صفحه‌های ساخته‌شده با Builder |
+| `/cms/pages/new` | ساخت پیش‌نویس صفحه با نامک پایدار |
+| `/cms/builder/<slug>` | ویرایشگر دیداری سه‌ناحیه‌ای و پیش‌نمایش واکنش‌گرا |
+| `/pages/<slug>` | نسخهٔ منتشرشدهٔ SSR صفحهٔ Builder |
+| `/cms/media` | کتابخانهٔ رسانه، بارگذاری و حذف تصویر |
+| `/cms/products` | محصولات: قیمت، قیمت پیش از تخفیف، موجودی، SKU، وضعیت، ویژه |
+| `/cms/orders` | سفارش‌ها با پالایش وضعیت و صفحه‌بندی |
+| `/cms/orders/<id>` | جزئیات سفارش، خط زمانی، تغییر وضعیت، یادداشت داخلی |
+| `/cms/customers` | مشتریان با تعداد سفارش و ارزش طول عمر (LTV) |
+| `/cms/discounts` | کدهای تخفیف درصدی/ثابت با سقف استفاده و تاریخ انقضا |
+| `/cms/settings` | تنظیمات سایت، تاریخ، ارقام و ماژول فروشگاه |
+| `/cms/search` | جست‌وجوی سراسری در نوشته‌ها، محصولات و سفارش‌ها |
+| `/cms/language` | قرارداد زبان و چیدمان و راهنمای نگهداری RTL |
+| `/cms/plugins` | فهرست افزونه‌ها: وضعیت، قلاب‌ها، تنظیمات و readme |
+| `/cms/plugins/<id>/<page>` | صفحه‌ای که خود افزونه می‌سازد |
+| `/api/plugins/<id>/<path>` | API عمومی `GET` که افزونه صریحاً اعلام کرده باشد |
+| `/cms/api/plugins/<id>/<path>` | API افزونه پشت نشست پنل و مجوز افزونه‌ها |
+
+### صفحه‌ساز دیداری
+
+Builder از سند JSON نسخه‌دار و اعتبارسنجی سمت سرور استفاده می‌کند؛ مؤلفه‌های آغازین آن بخش، تیتر، متن ساده، تصویر و دکمه‌اند. Grid به‌صورت چیدمان شبکه‌ایِ بخش کار می‌کند و استایل‌ها فقط از توکن‌های کنترل‌شده می‌آیند. ویرایشگر ساختار، پیش‌نمایش و بازرس تنظیمات را کنار هم می‌آورد؛ متن و تیتر با دوبارکلیک روی بوم ویرایش می‌شوند و جابه‌جایی، رونوشت، حذف، واگرد/ازنو، پیش‌نمایش رومیزی/تبلت/موبایل و ذخیرهٔ خودکار دارد. سند JSON قابل ورود و خروج است. انتشار یک snapshot جداگانه برای SSR در `/pages/<slug>` می‌سازد؛ ویرایش‌های بعدی تا انتشار دوباره روی صفحهٔ عمومی اثر نمی‌گذارند.
+
+قالب‌های آماده و ذخیره‌شده و سه تم توکنی قابل‌استفادهٔ مجدد هستند؛ از جمله یک صفحهٔ آغاز فروشگاه که به مسیرهای واقعی کاتالوگ، سبد، پرداخت و اطلاعات سایت پیوند می‌دهد و محصول یا آمار ساختگی ندارد. این قالب، سایت‌کیت چندمسیره نیست و مسیرهای فروشگاه موجود همچنان مستقل از Builder رندر می‌شوند. داده در `data/builder-pages.json` می‌ماند؛ ذخیرهٔ نسخه‌ها با شمارهٔ مورد انتظار تعارض ویرایش هم‌زمان را رد می‌کند و حداکثر ۲۵ revision اخیر را نگه می‌دارد. ذخیره‌ساز فایل برای اجرای تک‌پروسه‌ای است و قفل بین‌پروسه‌ای/چندنمونه‌ای ندارد؛ برای چند replica باید پشت ذخیره‌ساز تراکنشی قرار بگیرد. سند صفحه JavaScript یا CSS دلخواه نمی‌پذیرد. جزئیات مسیرها، schema و محدودیت‌ها در [`docs/builder.md`](docs/builder.md) آمده است.
+
+### ورود و امنیت
+
+پنل با حساب‌های نقش‌دار و کوکی HMAC محافظت می‌شود؛ همهٔ مسیرهای `/cms`، به‌جز
+صفحه و API ورود، از `src/middleware.ts` عبور می‌کنند. مجوزها در سرور و بر اساس مسیر
+و روش درخواست کنترل می‌شوند و برای مسیر CMS ناشناخته دسترسی مدیریتی لازم است.
+نقش `subscriber` فقط نوشته‌های منتشرشده و محصولات فعال را می‌بیند. مشارکت‌کننده
+می‌تواند پیش‌نویس‌های مخزن مشترک را بسازد و ویرایش کند، اما نمی‌تواند نوشتهٔ منتشرشده
+را تغییر دهد، منتشر یا حذف کند و به سفارش‌ها و اطلاعات مشتری دسترسی ندارد. نوشته‌ها
+هنوز مالک/نویسندهٔ حسابی ندارند؛ این مجوزها جداسازی پیش‌نویس‌ها بر اساس نویسنده نیستند. صفحهٔ تنظیمات و کدهای تخفیف فقط برای مدیر قابل‌ویرایش
+است؛ ویرایشگر می‌تواند رسانه بارگذاری کند اما حذف رسانه برای مدیر محفوظ است. نقش کاربر
+از فایل کاربران در هر درخواست پنل تازه‌خوانی می‌شود تا غیرفعال‌سازی یا تنزل نقش فوراً
+اثر کند. کنترل‌های ناسازگار با مجوز از رابط پنهان می‌شوند و API نیز جداگانه محافظت
+می‌شود. درخواست‌های cross-site تغییر‌دهندهٔ داده رد می‌شوند؛ پاسخ‌ها، از جمله تغییرمسیرهای
+ورود، با `cache-control: no-store` و `x-robots-tag: noindex` هستند. پس از پنج تلاش
+ناموفق، ورود برای پنج دقیقه قفل می‌شود (محدودسازی تلاش‌ها فقط درون همان پروسه است).
+
+آزمون‌های واحد، جدول نقش/مسیر و چند قاعدهٔ دسترسی را پوشش می‌دهند؛ یک smoke test
+دستی HTTP هم نقش‌های اصلی و تغییر فوری نقش/غیرفعال‌سازی نشست را بررسی کرده است.
+آزمون HTTP خودکار و ممیزی مستقل امنیتی هنوز لازم‌اند؛ این تغییر به‌تنهایی گواه ممیزی
+مستقل نیست.
+
+### جایگاه و دامنهٔ فعلی افزونه‌ها
+
+وردپرس و ابزارهای ساخت صفحه صرفاً منابع الهام برای چند الگوی رابط‌اند؛ این جدول ادعای
+برابری یا برتری محصولی/امنیتی نیست. افزونه‌های فعلی برای کدهای داخلی و بازبینی‌شده‌اند؛
+هنوز فروشگاه بسته‌ها، نصب/به‌روزرسانی امضاشده، مهاجرت نسخه‌ای داده یا sandbox کد شخص ثالث نداریم.
+
+| سطح فعلی | پیاده‌سازی | محدودیت صریح |
+| --- | --- | --- |
+| مدیریت افزونه | `/cms/plugins`، جست‌وجو، وضعیت، تنظیمات و صفحه‌های اختصاصی | نصب و به‌روزرسانی بسته از پنل وجود ندارد |
+| قرارداد اجرا | `plugin.json` نسخه‌دار، `PluginApi`، lifecycle و نقاط توسعهٔ کنترل‌شده | کد هنگام build باندل می‌شود، اما ماژول پیاده‌سازی فقط هنگام فعال‌سازی یا اقدام lifecycle/page بارگذاری می‌شود |
+| دسترسی | capabilityهای اعلام‌شده و قلاب‌های میزبان با capability متناظر | اجرای درون همان پردازه؛ نه مرز امنیتی برای کد نامطمئن |
+| تنظیمات | طرح نوع‌دار با اعتبارسنجی سمت سرور و ذخیرهٔ اتمیک دسته‌ای؛ رازها فقط از env خوانده می‌شوند | پنل رازها را ویرایش نمی‌کند؛ تزریق و چرخش در اختیار secret manager است |
+| CMS / فروشگاه | صفحه‌ها، ویجت داشبورد، API routeهای پنل/عمومی، رسانه، تنظیمات و سفارش‌ها | بعضی حوزه‌ها مانند تاکسونومی/منو و زباله‌دان پیاده نشده‌اند |
+| دادهٔ عملیاتی | مسیر/روش مجوزدهی در middleware و آزمون‌های واحد | HTTP E2E و ممیزی مستقل RBAC هنوز لازم است |
+
+### قرارداد API
+
+پایانه‌های هستهٔ پنل زیر `/cms/api/*` قرار دارند و منبع‌محور طراحی شده‌اند:
 
 ```text
-├── public/
-├── src/
-│   ├── assets/
-│   ├── components/
-│   ├── content/
-│   ├── layouts/
-│   └── pages/
-├── astro.config.mjs
-├── README.md
-├── package.json
-└── tsconfig.json
+GET    /cms/api/products            فهرست (query, status, page)
+POST   /cms/api/products            ساخت (پاسخ: { ok, id, redirect })
+POST   /cms/api/products/<id>       ویرایش / action=duplicate|status|delete
+DELETE /cms/api/products/<id>       حذف
+POST   /cms/api/orders/<id>         action=status|note
+POST   /cms/api/discounts          ساخت کد
+POST   /cms/api/discounts/<id>      action=toggle|delete
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+خطاها همیشه به یک شکل برمی‌گردند — با ارسال `Accept: application/json` از بازگشت
+HTML جلوگیری می‌کنید:
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+```json
+{ "ok": false, "message": "نام محصول الزامی است.", "field": "name" }
+```
 
-The `src/content/` directory contains "collections" of related Markdown and MDX documents. Use `getCollection()` to retrieve posts from `src/content/blog/`, and type-check your frontmatter using an optional schema. See [Astro's Content Collections docs](https://docs.astro.build/en/guides/content-collections/) to learn more.
+---
 
-Any static assets, like images, can be placed in the `public/` directory.
+## ۳. پلتفرم افزونه‌ها
 
-## 🧞 Commands
+هدف معماری، افزونهٔ میزبان‌محور و قابل نسخه‌بندی در Astro/TypeScript است — نه بازتولید چرخهٔ WordPress.
+این قرارداد PHP اجرا نمی‌کند و با بسته‌های افزونهٔ WordPress سازگار نیست. فرمت `readme.txt`
+را می‌توان برای مستندات استفاده کرد، اما هویت، سازگاری، مجوزها و قلاب‌ها از قرارداد Novex
+می‌آیند. وضعیت فعلی هنوز بازار بسته یا اجرای کد شخص ثالث را پشتیبانی نمی‌کند؛ جزئیات در
+«محدودیت‌های امنیتی و فاز بعد» آمده است.
+صفحهٔ مدیریت: `/cms/plugins`.
 
-All commands are run from the root of the project, from a terminal:
+### قرارداد نسخه‌دار
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+هر افزونهٔ داخلی در `plugins/<id>/` سه فایل اصلی دارد:
 
-## 👀 Want to learn more?
+```text
+plugins/seo-meta/
+├─ plugin.json     شناسه، API version، نیازمندی‌ها، مجوزها و تنظیمات
+├─ index.ts        register / activate / deactivate / uninstall
+└─ readme.txt      مستندات اختیاری؛ قالب شناخته‌شدهٔ WordPress
+```
 
-Check out [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+نمونهٔ مانیفست:
 
-## Credit
+```json
+{
+  "id": "seo-meta",
+  "apiVersion": 1,
+  "name": "سئوی صفحات عمومی",
+  "version": "1.0.0",
+  "description": "مدیریت فرادادهٔ صفحات عمومی",
+  "requires": "2.0.0",
+  "requiresPlugins": [],
+  "capabilities": ["site:render", "options:read"],
+  "hooks": ["site.head"],
+  "settings": [
+    { "key": "enableJsonLd", "label": "دادهٔ ساختاریافته", "type": "switch", "default": true }
+  ]
+}
+```
 
-This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
+`id` باید با نام پوشه منطبق باشد؛ `apiVersion` مستقل از نسخهٔ خود افزونه است.
+مانیفست، SemVer، capabilityها، وابستگی‌ها، مسیر صفحه‌های پنل و تنظیمات هنگام
+کشف افزونه اعتبارسنجی می‌شوند. نسخهٔ API پشتیبانی‌نشده یا قرارداد خراب، افزونه را
+غیرقابل‌فعال‌سازی می‌کند و خطا در فهرست دیده می‌شود.
+
+### API و مرز دسترسی
+
+```ts
+import type { PluginApi } from '../../src/lib/plugins/types';
+
+export function register(api: PluginApi) {
+  api.addFilter('site.head', (value) => `${String(value)}<meta name="example" content="value">`);
+}
+```
+
+قرارداد رسمی افزونه از `PluginApi` می‌گذرد؛ تنظیمات و capabilityها از نسخهٔ
+ثابتِ میزبان می‌آیند. capabilityهای runtime-immutable هستند و مجوزها از مجموعهٔ
+داخلی ارزیابی می‌شوند، نه از نوع‌نمایی TypeScript. این محدودیت API sandbox نیست.
+
+| قلاب میزبان | capability لازم | رفتار خطا |
+| --- | --- | --- |
+| `site.head`, `site.footer` | `site:render` | خطای همان افزونه جدا می‌شود و خروجی قبلی می‌ماند |
+| `cms.dashboard.widgets` | `cms:widgets` | خطای همان افزونه جدا می‌شود |
+| `shop.payment.initiate`, `shop.payment.verify` | `commerce:payments` | fail-closed؛ خطای پردازش پرداخت به موفقیت تبدیل نمی‌شود |
+
+هر قلاب باید هم در `hooks` مانیفست و هم با capability متناظر اعلام شود؛ قلاب ناشناخته
+یا از نوع نادرست رد می‌شود. اولویت باید عدد صحیح محدود باشد. `options:read` و
+`options:write` فقط روی کلیدهای غیرمحرمانهٔ اعلام‌شده اعمال می‌شوند. برای تنظیم‌های
+`secret: true`، افزونه باید `secrets:read` داشته باشد و از `api.getSecret(key)` استفاده کند؛
+مقدار از `NOVEX_PLUGIN_<PLUGIN_ID>_<SETTING_KEY>` در محیط اجرا خوانده می‌شود و پنل فقط
+وضعیت وجود آن را نشان می‌دهد. نمونه‌ها: `NOVEX_PLUGIN_KAVEH_NEG_SMS_API_KEY` و
+`NOVEX_PLUGIN_ZARINPAL_GATEWAY_MERCHANT_ID`.
+
+### API routeهای افزونه
+
+مانیفست می‌تواند مسیرهای ثابت و جداگانه‌ای برای API اعلام کند؛ handler هم باید در
+`index.ts` وجود داشته باشد. مسیر wildcard، پارامتر پویای مسیر و تغییرمسیر به صفحه‌های
+میزبان پذیرفته نمی‌شود:
+
+```json
+{
+  "capabilities": ["api:cms", "content:read"],
+  "routes": [{ "path": "audit", "access": "cms", "methods": ["GET"] }]
+}
+```
+
+- `access: "cms"` زیر `/cms/api/plugins/<id>/<path>` نصب می‌شود. GET به
+  `cms.plugins:read` و POST به `cms.plugins:write` نیاز دارد؛ نشست CMS، مجوز سرور و
+  بررسی CSRF روی POST همگی اجباری‌اند. POST فقط JSON object تا ۶۴ کیبی‌بایت می‌پذیرد.
+  handler، URL، بدنهٔ parseشده و کاربر مجاز را می‌گیرد، نه کوکی یا headerهای خام.
+- `access: "public"` فقط GET را می‌پذیرد و به `api:public` نیاز دارد. API عمومی
+  هیچ متد نوشتن، راز، پیش‌نویس، header دلخواه یا پاسخ خام HTTP ندارد. نوشته‌های عمومی
+  فقط با `getPublicPosts()` و تنظیم‌هایی که صریحاً `public: true` دارند با
+  `getPublicOption()` قابل خواندن‌اند؛ هر دو به capability جداگانه نیاز دارند.
+- تمام پاسخ‌ها JSON، بدون cache و حداکثر ۲۵۶ کیبی‌بایت‌اند. API عمومی CORS باز ندارد؛
+  endpointهای callback، دانلود و نوشتن عمومی در این قرارداد پشتیبانی نمی‌شوند.
+
+نمونهٔ handler پنل در `plugins/content-audit/index.ts` مسیر `audit` را پیاده می‌کند.
+صفحه‌های اختصاصی افزونه می‌توانند از endpoint متناظر خود برای UIهای تعاملی استفاده کنند؛
+مسیرها فقط برای افزونهٔ فعال و سالم اجرا می‌شوند.
+
+### تنظیمات، lifecycle و وابستگی‌ها
+
+- مقادیر تنظیمات پیش از ذخیره در سرور بر اساس نوع، بازه، گام و طول بررسی می‌شوند؛
+  ارسال یک فرم تنظیمات در یک نوشتن اتمیک انجام می‌شود.
+- ماژول‌های `index.ts` به‌شکل lazy وارد می‌شوند: شروع registry کد افزونه‌های غیرفعال را ارزیابی نمی‌کند؛
+  بارگذاری‌های هم‌زمان ادغام و ماژول موفق در طول عمر پردازه cache می‌شود.
+- `activate()` پیش از ثبت وضعیت فعال اجرا می‌شود؛ شکست registration/activation قلاب‌ها
+  را پاک می‌کند و وضعیت «فعال» ثبت نمی‌شود. خطای قلاب‌های ارائه‌ای از پرداخت جدا شده است.
+- وابستگی‌های `requiresPlugins` باید فعال باشند. افزونه‌ای که افزونهٔ فعال دیگری
+  به آن وابسته است، تا غیرفعال‌شدن وابسته خاموش یا حذف داده نمی‌شود.
+- وضعیت در `data/plugins.json` ذخیره می‌شود. JSON خراب یا schema ناسازگار fail-closed
+  می‌شود و فایل اصلی دست‌نخورده می‌ماند. نوشتن اتمیک و صف درون‌پردازه‌ای است، نه دیتابیس
+  چندپردازه‌ای.
+- `apiVersion` فعلی `1` است؛ در این فاز مهاجرت خودکار دادهٔ افزونه بین نسخه‌ها وجود ندارد.
+
+### محدودیت امنیتی و فاز بعد
+
+افزونه‌ها در build با `import.meta.glob` وارد باندل می‌شوند و ماژول‌های پیاده‌سازی به‌صورت
+lazy بارگذاری می‌شوند؛ بنابراین بدنهٔ کد افزونهٔ غیرفعال هنگام شروع registry اجرا نمی‌شود.
+پس از یک بار import، Node ماژول را حتی پس از غیرفعال‌سازی cache می‌کند. کد همچنان در همان
+پردازهٔ Node و با دسترسی‌های آن اجرا می‌شود؛ lazy loading sandbox یا جداسازی از حافظه،
+شبکه و ماژول‌های Node نیست، بنابراین فقط کد داخلی و بازبینی‌شده را وارد کنید. کد افزونه در build باندل می‌شود؛
+نصب ZIP یا اجرای PHP از پنل وجود ندارد. نصب بسته از پنل، امضای بسته، به‌روزرسانی امن، مهاجرت نسخه‌ای
+و چرخش/مدیریت رازها در secret manager هنوز نیازمند فاز مستقل‌اند. رازهای
+جدید باید از environment یا secret manager میزبان تزریق شوند و در تنظیمات JSON نمی‌روند.
+مقادیر plaintext قدیمی در `data/plugins.json` برای حفظ داده خودکار حذف نمی‌شوند؛ پیش از ارتقا
+آن‌ها را به محیط منتقل و با تأیید مدیر پاک‌سازی کنید.
+در نتیجه این سیستم هنوز «برتر از Elementor یا WordPress» ارزیابی نشده است؛ برای چنین
+ادعایی باید ماتریس نیازمندی و آزمون مقایسه‌ای مشخص شود.
+
+## ۴. سیستم طراحی پنل
+
+پنل یک سیستم طراحی کوچک و ثابت دارد؛ صفحه‌ها فقط از توکن‌ها استفاده می‌کنند:
+
+- سطح‌ها با **خط** جدا می‌شوند، نه با سایه؛ سایه فقط برای لایه‌های شناور.
+- یک رنگ تأکیدی (`#2563eb`) و سه رنگ معنادار (موفق، هشدار، خطر) — بقیه خنثی.
+- مقیاس اندازهٔ ۴/۸/۱۲/۱۶/۲۴ و مقیاس متن ۱۱/۱۲/۱۳/۱۶/۲۰.
+- جدول‌ها ستون‌محور و فشرده‌اند؛ فرم‌ها برچسب بالا و راهنمای زیر فیلد دارند.
+
+---
+
+## ۵. فروشگاه (`/shop`)
+
+| نشانی | کاربرد |
+| --- | --- |
+| `/shop` | فهرست محصولات فعال، پیشنهاد ویژه |
+| `/shop/<slug>` | جزئیات محصول، موجودی، افزودن به سبد |
+| `/shop/cart` | سبد خرید، تعداد، کد تخفیف، هزینهٔ ارسال |
+| `/shop/checkout` | اطلاعات تحویل و ثبت سفارش |
+| `/shop/order/<NVX-…>` | صورتحساب، خط زمانی وضعیت، اطلاعات تحویل |
+| `/shop/track` | پیگیری با شمارهٔ سفارش و شمارهٔ تماس |
+
+رفتار پیاده‌سازی فعلی — پیش از استفاده باید با سیاست واقعی فروشگاه تطبیق داده شود:
+
+- کد فعلی هزینهٔ پایهٔ ارسال را `۴۵٬۰۰۰` و آستانهٔ ارسال رایگان را `۱٬۰۰۰٬۰۰۰` تومان می‌گیرد؛ این‌ها مقادیر hard-coded هستند، نه تنظیمات کسب‌وکار.
+- تخفیف از جمع کالاها بیشتر نمی‌شود؛ مبلغ نهایی = `max(0, جمع − تخفیف) + ارسال`.
+- قیمت‌ها و موجودی در سرور خوانده می‌شوند؛ خطوط تکراری جمع و سقف تعداد اعتبارسنجی می‌شود.
+- ثبت سفارش دارای کلید idempotency پایدار است؛ در یک پروسه callback وضعیت را به‌شکل اتمیک تغییر می‌دهد و نتیجهٔ مبهم پرداخت را لغو/بازپرداخت فرض نمی‌کند.
+- وضعیت‌ها: `pending → paid → processing → shipped → delivered` و شاخه‌های `cancelled` / `refunded`.
+- این سازوکار، پرداخت واقعی را ثابت نمی‌کند: آداپتر زرین‌پال و قرارداد provider هنوز با مستندات رسمی/تراکنش واقعی تأیید نشده‌اند؛ ذخیره‌ساز JSON نیز قفل چندپروسه‌ای ندارد.
+- دسترسی به سفارش با کوکی امضاشده یا جریان تأیید شمارهٔ سفارش و تماس انجام می‌شود.
+
+ماژول فروشگاه از `/cms/settings` قابل خاموش‌کردن است؛ در آن حالت لینک‌های فروشگاه،
+داشبورد تجاری و صفحه‌های خرید کنار می‌روند و مجله سر جایش می‌ماند.
+
+---
+
+## ۶. مجلهٔ عمومی
+
+`/`، `/blog`، `/blog/<slug>` و `/about` همگی فارسی و راست‌به‌چپ‌اند و از همان
+تنظیمات سایت تغذیه می‌شوند. برخلاف نسخهٔ قبلی، فهرست و متن نوشته‌ها در زمان اجرا از
+`src/content/blog` خوانده می‌شوند؛ پس نوشتهٔ تازه‌ای که از پنل منتشر می‌شود، **بدون
+ساخت دوبارهٔ پروژه** در سایت دیده می‌شود.
+
+---
+
+## ۷. راست‌به‌چپ به‌عنوان قرارداد
+
+- `<html lang="fa" dir="rtl">` در `src/layouts/SiteLayout.astro` و `src/components/cms/CmsLayout.astro`.
+- چیدمان فقط با ویژگی‌های منطقی CSS (`margin-inline`, `padding-inline-start`,
+  `text-align: start`, `inset-inline-*`).
+- قلم فارسی [وزیرمتن](https://github.com/rastikerdar/vazirmatn) به‌صورت self-hosted.
+- همهٔ عددها با `Intl.NumberFormat('fa-IR')` و همهٔ تاریخ‌ها با تقویم هجری شمسی
+  (`fa-IR-u-ca-persian`) در `src/lib/cms/fa.ts` قالب می‌شوند.
+- متن لاتین (نامک، نشانی، ایمیل، کد، بلوک کد) با `dir="ltr"` و `unicode-bidi: isolate` جدا می‌شود.
+
+```sh
+npm run check:rtl     # بررسی خودکار؛ در صورت نقض قرارداد با کد خطا خارج می‌شود
+```
+
+اسکریپت، ویژگی‌های فیزیکی CSS، متن انگلیسی جاافتاده در رابط کاربری، صفحه‌های بدون
+چیدمان درست و نبودِ قلم فارسی را تشخیص می‌دهد. اگر جایی عمداً به ویژگی فیزیکی نیاز
+بود، همان خط را با `rtl-check-ignore` علامت بزنید.
+
+---
+
+## ۸. ساختار پروژه
+
+```text
+src/
+├─ middleware.ts                 # محافظت از /cms (صفحه، API و رسانه)
+├─ layouts/
+│  ├─ SiteLayout.astro           # پوستهٔ عمومی فارسی (مجله)
+│  └─ ShopLayout.astro           # پوستهٔ فروشگاه
+├─ components/cms/               # CmsLayout، Icon، PostEditor، ProductForm، Pagination
+├─ lib/
+│  ├─ cms/                       # auth، posts، media، settings، fa، http، input
+│  ├─ commerce/                  # types، db، validation، products، orders، discounts، cart، stats
+│  ├─ plugins/                   # types، hooks، store، lazy-module، registry، html
+│  └─ errors.ts                  # AppError با پیام و فیلد فارسی
+├─ plugins/                      # افزونه‌ها (هر کدام یک پوشه + plugin.json)
+├─ pages/
+│  ├─ index / blog / about       # سایت عمومی
+│  ├─ shop/                      # فروشگاه، سبد، تسویه، پیگیری
+│  ├─ cms/                       # پنل مدیریت و APIها
+│  ├─ media/[...path].ts         # سرو عمومی تصویرهای بارگذاری‌شده
+│  └─ api/health.ts              # بررسی سلامت (Docker healthcheck)
+└─ styles/                       # cms.css و shop.css — سیستم طراحی RTL
+```
+
+داده‌های زمان اجرا در `data/` (`cms-settings.json` و `commerce.json`) و
+`src/content/blog/` و `src/assets/uploads/` نگه‌داری می‌شوند و در Git نیستند.
+
+---
+
+## ۹. دادهٔ فروشگاه
+
+در نصب تازه، `data/commerce.json` فقط با ساختار خالی ایجاد می‌شود؛ هیچ محصول،
+مشتری، سفارش، تخفیف یا شاخص ساختگی درج نمی‌شود. مدیر می‌تواند محصول واقعی را از
+`/cms/products` ثبت کند. اگر فایل موجود خراب یا ناخواندنی باشد، برنامه خطا می‌دهد و
+آن را با دادهٔ خالی جایگزین نمی‌کند. فایل‌محور بودن فروشگاه محدودیت تک‌پروسه‌ای دارد؛
+برای چند نمونه یا بار عملیاتی باید در فاز بعد به PostgreSQL و مهاجرت‌های نسخه‌دار منتقل شود.
+
+برای یک محیط نمایشی **محلی و اختیاری**، `npm run seed:demo` فقط پیش‌نمایش می‌دهد؛
+برای اعمال آن اجرا کنید:
+
+```sh
+npm run seed:demo -- --apply
+```
+
+این فرمان شش محصول با برچسب «پیش‌نویس نمایشی» و وضعیت draft، قیمت و موجودی صفر
+می‌افزاید تا در پنل `/cms/products` دیده شوند. این محصولات قابل فروش نیستند و باید
+پیش از انتشار با دادهٔ واقعی تکمیل شوند. seed تکرارپذیر است، داده‌های موجود را حفظ
+می‌کند، هرگز سفارش/مشتری/تخفیف یا نتیجهٔ پرداخت نمی‌سازد و در `NODE_ENV=production`
+از نوشتن امتناع می‌کند.
+
+---
+
+## ۱۰. اسکریپت‌ها
+
+```sh
+npm run dev        # سرور توسعه
+npm run build      # ساخت خروجی سروری (adapter: node standalone)
+npm run preview    # پیش‌نمایش خروجی
+npm run check      # astro check (نوع‌ها + قالب‌ها)
+npm run check:rtl  # بررسی قرارداد راست‌به‌چپ
+```
+
+## ۱۱. قالب اصلی
+
+این پروژه از قالب وبلاگ Astro (بر پایهٔ Bear Blog، با مجوز MIT) شروع شده و سپس
+پوستهٔ عمومی، پنل مدیریت و ماژول فروشگاه از نو نوشته شده‌اند.

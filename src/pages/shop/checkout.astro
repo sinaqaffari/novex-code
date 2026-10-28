@@ -1,0 +1,149 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
+import { faMoney, faNumber } from '../../lib/cms/fa';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
+import { computeDiscount } from '../../lib/commerce/discounts';
+import { SHIPPING } from '../../lib/commerce/orders';
+import { readDatabase } from '../../lib/commerce/db';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
+const code = readDiscountCode(Astro.cookies);
+
+if (!settings.commerceEnabled) {
+	return Astro.redirect('/shop');
+}
+
+if (cart.lines.length === 0) {
+	return Astro.redirect('/shop/cart');
+}
+
+let discount = 0;
+let discountCode = '';
+if (code) {
+	const db = await readDatabase();
+	try {
+		const applied = computeDiscount(db, code, cart.subtotal);
+		if (applied) {
+			discount = applied.amount;
+			discountCode = applied.discount.code;
+		}
+	} catch {
+		discount = 0;
+	}
+}
+
+const shipping = cart.subtotal >= SHIPPING.freeThreshold ? 0 : SHIPPING.fee;
+const total = Math.max(0, cart.subtotal - discount) + shipping;
+---
+
+<ShopLayout title="تکمیل خرید" cartCount={cart.count} settings={settings} noindex>
+	<nav class="breadcrumbs" aria-label="مسیر">
+		<a href="/shop">فروشگاه</a>
+		<span aria-hidden="true">/</span>
+		<a href="/shop/cart">سبد خرید</a>
+		<span aria-hidden="true">/</span>
+		<span>تکمیل خرید</span>
+	</nav>
+
+	<h1 class="page-title">تکمیل خرید</h1>
+
+	<div class="cart-layout">
+		<form class="panel" method="post" action="/shop/api/checkout" id="checkout-form">
+			<div class="panel__head">اطلاعات تحویل</div>
+			<div class="panel__body">
+				<div class="form-grid">
+					<div class="field field--full">
+						<label class="label" for="customerName">نام و نام خانوادگی</label>
+						<input class="input" id="customerName" name="customerName" required maxlength="120" autocomplete="name" />
+					</div>
+					<div class="field">
+						<label class="label" for="phone">شمارهٔ تماس</label>
+						<input
+							class="input"
+							id="phone"
+							name="phone"
+							required
+							inputmode="tel"
+							placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+							autocomplete="tel"
+							dir="ltr"
+						/>
+					</div>
+					<div class="field">
+						<label class="label" for="email">ایمیل (اختیاری)</label>
+						<input class="input" id="email" name="email" type="email" dir="ltr" autocomplete="email" />
+					</div>
+					<div class="field">
+						<label class="label" for="city">شهر</label>
+						<input class="input" id="city" name="city" required maxlength="60" autocomplete="address-level2" />
+					</div>
+					<div class="field field--full">
+						<label class="label" for="address">نشانی کامل</label>
+						<textarea
+							class="textarea"
+							id="address"
+							name="address"
+							required
+							maxlength="400"
+							autocomplete="street-address"
+						></textarea>
+					</div>
+					<div class="field field--full">
+						<label class="label" for="note">یادداشت برای ما (اختیاری)</label>
+						<textarea class="textarea" id="note" name="note" maxlength="500"></textarea>
+					</div>
+				</div>
+
+				<p class="hint" style="margin-top:0.8rem">
+					با ثبت سفارش، شمارهٔ پیگیری نمایش داده می‌شود — آن را نگه دارید.
+				</p>
+			</div>
+		</form>
+
+		<aside class="order-summary">
+			<div class="panel">
+				<div class="panel__head">
+					<span>سفارش شما</span>
+					<span class="hint num">{faNumber(cart.count)} عدد</span>
+				</div>
+				<div class="panel__body totals">
+					{cart.lines.map((line) => (
+						<div class="totals__row">
+							<span>{line.product.name} × {faNumber(line.quantity)}</span>
+							<span class="num">{faMoney(line.total, settings.currency)}</span>
+						</div>
+					))}
+					<hr style="border:0;border-top:1px solid var(--line);margin:0.2rem 0" />
+					<div class="totals__row">
+						<span>جمع کالاها</span>
+						<span class="num">{faMoney(cart.subtotal, settings.currency)}</span>
+					</div>
+					<div class="totals__row">
+						<span>ارسال</span>
+						<span class="num">{shipping === 0 ? 'رایگان' : faMoney(shipping, settings.currency)}</span>
+					</div>
+					{discount > 0 && (
+						<div class="totals__row" style="color:var(--success)">
+							<span>تخفیف ({discountCode})</span>
+							<span class="num">− {faMoney(discount, settings.currency)}</span>
+						</div>
+					)}
+					<div class="totals__row totals__row--grand">
+						<span>قابل پرداخت</span>
+						<span class="num">{faMoney(total, settings.currency)}</span>
+					</div>
+					<input type="hidden" name="discountCode" value={discountCode} form="checkout-form" />
+					<button class="btn btn--primary btn--block" type="submit" form="checkout-form" style="margin-top:0.6rem">
+						ثبت سفارش
+					</button>
+					<a class="btn btn--ghost btn--block" href="/shop/cart">بازگشت به سبد</a>
+				</div>
+			</div>
+		</aside>
+	</div>
+</ShopLayout>

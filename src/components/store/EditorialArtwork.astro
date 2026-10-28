@@ -1,0 +1,61 @@
+---
+import { publicImageSrc } from '../../lib/cms/public-image';
+
+interface Props {
+	post: {
+		title: string;
+		slug: string;
+		heroImage?: string;
+	};
+}
+
+const { post } = Astro.props;
+const image = publicImageSrc(post.heroImage);
+const artKind = post.slug === 'docker'
+	? 'docker'
+	: post.slug === 'panel-farsi'
+		? 'rtl'
+		: post.slug === 'rahnamaye-kharid'
+			? 'commerce'
+			: 'generic';
+---
+
+{image ? (
+	<img class="editorial-art__image" src={image} alt={post.title} loading="lazy" decoding="async" />
+) : (
+	<div class={`editorial-art editorial-art--${artKind}`} role="img" aria-label={`پیش‌نمایش موضوعی مقالهٔ ${post.title}؛ تصویر اصلی ثبت نشده است`}>
+		<div class="editorial-art__top" dir="ltr">
+			<span>{artKind === 'docker' ? 'deployment / compose' : artKind === 'rtl' ? 'layout / logical-css' : artKind === 'commerce' ? 'store / checkout' : 'novex / field-notes'}</span>
+			<span>نووکس‌کد · یادداشت فنی</span>
+		</div>
+		{artKind === 'docker' ? (
+			<div class="editorial-art__code" dir="ltr">
+				<span><b>$ docker</b> compose up --build -d</span>
+				<span><span class="editorial-art__number">01</span>data/</span>
+				<span><span class="editorial-art__number">02</span>src/content/blog/</span>
+				<span><span class="editorial-art__number">03</span>src/assets/uploads/</span>
+			</div>
+		) : artKind === 'rtl' ? (
+			<div class="editorial-art__code" dir="ltr">
+				<span><b>.layout</b> &#123;</span>
+				<span><span class="editorial-art__number">01</span>direction: rtl;</span>
+				<span><span class="editorial-art__number">02</span>padding-inline: 1rem;</span>
+				<span><span class="editorial-art__number">03</span>margin-inline-start: auto;</span>
+			</div>
+		) : artKind === 'commerce' ? (
+			<div class="editorial-art__flow" dir="rtl">
+				<span class="editorial-art__step">سبد</span><span class="editorial-art__arrow" aria-hidden="true">←</span>
+				<span class="editorial-art__step">پرداخت</span><span class="editorial-art__arrow" aria-hidden="true">←</span>
+				<span class="editorial-art__step">پیگیری</span>
+			</div>
+		) : (
+			<div class="editorial-art__code" dir="ltr">
+				<span><b>const</b> notes = &#123;</span>
+				<span><span class="editorial-art__number">01</span>practice: true,</span>
+				<span><span class="editorial-art__number">02</span>direction: 'rtl'</span>
+				<span>&#125;;</span>
+			</div>
+		)}
+		<span class="editorial-art__note">نمای موضوعی با کد و محتوای همین راهنما</span>
+	</div>
+)}

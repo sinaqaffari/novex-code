@@ -1,0 +1,603 @@
+---
+import Icon from './Icon.astro';
+import { faDate, faNumber } from '../../lib/cms/fa';
+import type { MediaItem } from '../../lib/cms/media';
+
+interface EditorPost {
+	id: string;
+	title: string;
+	description: string;
+	slug: string;
+	pubDate: string;
+	updatedDate?: string;
+	heroImage: string;
+	tags: string[];
+	draft: boolean;
+	body: string;
+}
+
+interface Props {
+	mode: 'new' | 'edit';
+	post?: EditorPost;
+	media: MediaItem[];
+	canPublish?: boolean;
+	canManageMedia?: boolean;
+}
+
+const { mode, post, media, canPublish = true, canManageMedia = false } = Astro.props;
+const isEdit = mode === 'edit' && post;
+
+const values = {
+	title: post?.title ?? '',
+	description: post?.description ?? '',
+	slug: post?.slug ?? '',
+	pubDate: post?.pubDate ? post.pubDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+	heroImage: post?.heroImage ?? '',
+	tags: post?.tags?.join('، ') ?? '',
+	draft: post?.draft ?? true,
+	body: post?.body ?? '',
+};
+
+const heroOptions = media.map((item) => ({
+	value: item.reference,
+	label: item.builtin ? `${item.name} — تصویر همراه قالب` : item.name,
+	preview: item.previewUrl,
+}));
+
+if (values.heroImage && !heroOptions.some((option) => option.value === values.heroImage)) {
+	heroOptions.unshift({
+		value: values.heroImage,
+		label: `${values.heroImage} — مسیر دستی`,
+		preview: '',
+	});
+}
+
+const activeHero = media.find((item) => item.reference === values.heroImage);
+const initialWords = values.body
+	.replace(/```[\s\S]*?```/g, ' ')
+	.replace(/[#>*_~`|\-[\]()!]/g, ' ')
+	.split(/\s+/)
+	.filter(Boolean).length;
+
+const toolbar = [
+	{ action: 'bold', label: 'درشت', icon: 'bold' as const, shortcut: 'Ctrl+B' },
+	{ action: 'italic', label: 'ایتالیک', icon: 'italic' as const, shortcut: 'Ctrl+I' },
+	{ action: 'heading', label: 'سرتیتر', icon: 'heading' as const, shortcut: '' },
+	{ action: 'list', label: 'فهرست', icon: 'list' as const, shortcut: '' },
+	{ action: 'quote', label: 'نقل‌قول', icon: 'quote' as const, shortcut: '' },
+	{ action: 'code', label: 'کد', icon: 'code' as const, shortcut: '' },
+	{ action: 'link', label: 'پیوند', icon: 'link' as const, shortcut: 'Ctrl+K' },
+];
+---
+
+<form class="stack" id="post-form" data-post-form data-mode={mode} data-id={post?.id ?? ''}>
+	<div class="editor">
+		<div class="editor-pane stack">
+		<section class="card">
+			<div class="card__body stack">
+				<label class="field">
+					<span class="label">
+						عنوان نوشته
+						<span class="label__meta">الزامی</span>
+					</span>
+					<input
+						class="input"
+						type="text"
+						name="title"
+						value={values.title}
+						required
+						maxlength="200"
+						placeholder="مثلاً: چطور تایپوگرافی فارسی را در وب درست پیاده کنیم؟"
+						data-field="title"
+					/>
+				</label>
+
+				<label class="field">
+					<span class="label">
+						خلاصهٔ نوشته
+						<span class="label__meta">برای فهرست و شبکه‌های اجتماعی</span>
+					</span>
+					<textarea
+						class="textarea"
+						name="description"
+						rows="2"
+						required
+						maxlength="300"
+						placeholder="در یک یا دو جمله بگویید این نوشته چه مشکلی را حل می‌کند."
+						data-field="description">{values.description}</textarea>
+					<span class="hint" data-description-count>
+						{faNumber(values.description.length)} از ۳۰۰ نویسه
+					</span>
+				</label>
+			</div>
+		</section>
+
+		<section class="card editor-pane">
+			<div class="row row--between" style="padding:.75rem 1rem .55rem">
+				<div class="row" role="tablist" aria-label="حالت ویرایش">
+					<button
+						class="btn btn--outline btn--sm"
+						type="button"
+						role="tab"
+						aria-selected="true"
+						data-tab="write"
+					>
+						<Icon name="edit" size={14} />
+						<span>نوشتن</span>
+					</button>
+					<button
+						class="btn btn--ghost btn--sm"
+						type="button"
+						role="tab"
+						aria-selected="false"
+						data-tab="preview"
+					>
+						<Icon name="eye" size={14} />
+						<span>پیش‌نمایش</span>
+					</button>
+				</div>
+				<div class="editor-meta">
+					<span data-word-count>{faNumber(initialWords)} واژه</span>
+					<span aria-hidden="true">—</span>
+					<span data-reading-time>۱ دقیقه مطالعه</span>
+				</div>
+			</div>
+
+			<div data-pane="write">
+				<div class="md-toolbar" role="toolbar" aria-label="قالب‌بندی متن">
+					{toolbar.map((item) => (
+						<Fragment>
+							<button
+								class="md-toolbar__button"
+								type="button"
+								data-md={item.action}
+								title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
+								aria-label={item.label}
+							>
+								<Icon name={item.icon} size={15} />
+							</button>
+							{item.action === 'heading' && <span class="md-toolbar__divider" aria-hidden="true" />}
+						</Fragment>
+					))}
+					<span class="grow"></span>
+					<span class="hint" style="padding-inline-end:.35rem">مارک‌داون پشتیبانی می‌شود</span>
+				</div>
+
+				<textarea
+					class="textarea md-area"
+					name="body"
+					rows="20"
+					dir="auto"
+					placeholder="داستان را از اینجا شروع کنید…"
+					data-body
+				>{values.body}</textarea>
+			</div>
+
+			<div data-pane="preview" hidden>
+				<div class="md-preview" data-preview>
+					<p class="muted">برای دیدن پیش‌نمایش، کمی بنویسید.</p>
+				</div>
+			</div>
+		</section>
+
+	</div>
+
+		<aside class="stack">
+		<section class="card">
+			<div class="card__head">
+				<h2 class="card__title">انتشار</h2>
+				{isEdit && post?.updatedDate && <span class="hint">آخرین ویرایش: {faDate(post.updatedDate)}</span>}
+			</div>
+			<div class="card__body stack" style="gap:.9rem">
+				<label class="field">
+					<span class="label">وضعیت</span>
+					{canPublish ? <span class="switch"><input type="checkbox" name="published" checked={!values.draft} data-published /><span class="switch__track" aria-hidden="true"></span><span data-published-label>{values.draft ? 'پیش‌نویس' : 'منتشرشده'}</span></span> : <span class="badge badge--warning">پیش‌نویس — انتشار نیازمند مجوز ویراستار است</span>}
+					<span class="hint">پیش‌نویس‌ها در مجله نمایش داده نمی‌شوند.</span>
+				</label>
+
+				<label class="field">
+					<span class="label">تاریخ انتشار</span>
+					<input class="input" type="date" name="pubDate" value={values.pubDate} required data-field="pubDate" />
+					<span class="hint">در سایت به تقویم هجری شمسی نمایش داده می‌شود.</span>
+				</label>
+
+				<label class="field">
+					<span class="label">
+						نامک (slug)
+						<span class="label__meta">لاتین و خط تیره</span>
+					</span>
+					<div class="input ltr slug-field" dir="ltr">
+						<span class="muted" style="font-size:.78rem">/blog/</span>
+						<input
+							class="input-plain"
+							type="text"
+							name="slug"
+							value={values.slug}
+							placeholder="persian-typography"
+							data-field="slug"
+							dir="ltr"
+						/>
+					</div>
+					<span class="hint">
+						{isEdit
+							? 'با تغییر نامک، آدرس عمومی نوشته عوض می‌شود.'
+							: 'خالی بگذارید تا خودکار از عنوان ساخته شود.'}
+					</span>
+				</label>
+
+				<label class="field">
+					<span class="label">
+						برچسب‌ها
+						<span class="label__meta">با ویرگول جدا کنید</span>
+					</span>
+					<input
+						class="input"
+						type="text"
+						name="tags"
+						value={values.tags}
+						placeholder="فارسی، تایپوگرافی، فرانت‌اند"
+					/>
+				</label>
+			</div>
+		</section>
+
+		<section class="card">
+			<div class="card__head">
+				<h2 class="card__title">تصویر شاخص</h2>
+				{canManageMedia && (
+					<a class="btn btn--ghost btn--sm" href="/cms/media" target="_blank" rel="noreferrer">
+						<Icon name="upload" size={14} />
+						<span>رسانه</span>
+					</a>
+				)}
+			</div>
+			<div class="card__body stack" style="gap:.7rem">
+				<div class="hero-preview">
+					{
+						activeHero ? (
+							<img src={activeHero.previewUrl} alt={`پیش‌نمایش ${activeHero.name}`} loading="lazy" />
+						) : (
+							<span class="hero-preview__empty">
+								تصویری انتخاب نشده است — نسبت پیشنهادی ۱۶:۹
+							</span>
+						)
+					}
+				</div>
+
+				<label class="field">
+					<span class="label">انتخاب از کتابخانه</span>
+					<select class="select" data-hero-select aria-label="انتخاب تصویر شاخص">
+						<option value="">بدون تصویر</option>
+						{heroOptions.map((option) => (
+							<option
+								value={option.value}
+								data-preview={option.preview}
+								selected={option.value === values.heroImage}
+							>
+								{option.label}
+							</option>
+						))}
+					</select>
+				</label>
+				<input type="hidden" name="heroImage" value={values.heroImage} data-hero-input />
+
+				<p class="hint">
+					تصویر در فهرست مجله و بالای نوشته استفاده می‌شود؛ تصاویر بهینه‌سازی خودکار آسترو عبور
+					می‌کنند.
+				</p>
+			</div>
+		</section>
+
+		<section class="card">
+			<div class="card__head">
+				<h2 class="card__title">راهنمای تایپوگرافی فارسی</h2>
+			</div>
+			<div class="card__body">
+				<ul class="hint" style="margin:0;padding-inline-start:1.1rem;line-height:2">
+					<li>نیم‌فاصله را با <kbd>Shift</kbd> + <kbd>Space</kbd> بگذارید: «می‌شود».</li>
+					<li>از گیومهٔ فارسی «…» به‌جای "…" استفاده کنید.</li>
+					<li>کدهای لاتین را داخل بک‌تیک بگذارید تا جهت‌شان حفظ شود.</li>
+				</ul>
+			</div>
+		</section>
+
+		</aside>
+	</div>
+
+	<div class="editor-actions">
+		<button class="btn btn--primary" type="submit" data-save>
+			<Icon name="save" size={16} />
+			<span>{isEdit ? 'ذخیرهٔ تغییرات' : 'ساخت نوشته'}</span>
+		</button>
+		<div class="row">
+			<span class="hint">میان‌بُر ذخیره: <kbd>Ctrl</kbd> + <kbd>S</kbd></span>
+			{isEdit && (
+				<a class="btn btn--outline btn--sm" href={`/blog/${post?.slug}`} target="_blank" rel="noreferrer">
+					<Icon name="external" size={14} />
+					<span>مشاهده در سایت</span>
+				</a>
+			)}
+		</div>
+	</div>
+</form>
+
+{
+	isEdit && (
+		<section class="card" style="margin-block-start:1.25rem;border-color:#f3d2d6">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title" style="color:var(--danger)">
+						حذف نوشته
+					</h2>
+					<p class="card__hint">این عملیات بازگشت‌پذیر نیست؛ فایل نوشته از مخزن حذف می‌شود.</p>
+				</div>
+			</div>
+			<div class="card__body">
+				<form
+					method="post"
+					action={`/cms/api/posts/${post?.id}?action=delete`}
+					data-confirm={`نوشتهٔ «${post?.title}» برای همیشه حذف شود؟`}
+				>
+					<button class="btn btn--danger" type="submit">
+						<Icon name="trash" size={15} />
+						<span>حذف این نوشته</span>
+					</button>
+				</form>
+			</div>
+		</section>
+	)
+}
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('[data-post-form]');
+	const body = document.querySelector<HTMLTextAreaElement>('[data-body]');
+	const wordCount = document.querySelector<HTMLElement>('[data-word-count]');
+	const readingTime = document.querySelector<HTMLElement>('[data-reading-time]');
+	const description = form?.querySelector<HTMLTextAreaElement>('textarea[name="description"]');
+	const descriptionCount = document.querySelector<HTMLElement>('[data-description-count]');
+	const published = document.querySelector<HTMLInputElement>('[data-published]');
+	const publishedLabel = document.querySelector<HTMLElement>('[data-published-label]');
+	const heroSelect = document.querySelector<HTMLSelectElement>('[data-hero-select]');
+	const heroInput = document.querySelector<HTMLInputElement>('[data-hero-input]');
+	const saveButton = document.querySelector<HTMLButtonElement>('[data-save]');
+	const previewPane = document.querySelector<HTMLElement>('[data-pane="preview"]');
+	const writePane = document.querySelector<HTMLElement>('[data-pane="write"]');
+	const previewBox = document.querySelector<HTMLElement>('[data-preview]');
+	const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+
+	const persianDigits = (value: number | string) =>
+		String(value).replace(/[0-9]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+
+	/* ---- live counters ---------------------------------------------------- */
+	const countWords = (text: string) =>
+		text
+			.replace(/```[\s\S]*?```/g, ' ')
+			.replace(/[#>*_~`|\-[\]()!]/g, ' ')
+			.split(/\s+/)
+			.filter(Boolean).length;
+
+	const refreshCounters = () => {
+		if (!body) return;
+		const words = countWords(body.value);
+		if (wordCount) wordCount.textContent = `${persianDigits(words)} واژه`;
+		if (readingTime) {
+			const minutes = Math.max(1, Math.round(words / 200));
+			readingTime.textContent = `${persianDigits(minutes)} دقیقه مطالعه`;
+		}
+	};
+
+	body?.addEventListener('input', refreshCounters);
+	refreshCounters();
+
+	description?.addEventListener('input', () => {
+		if (descriptionCount) {
+			descriptionCount.textContent = `${persianDigits(description.value.length)} از ۳۰۰ نویسه`;
+		}
+	});
+
+	published?.addEventListener('change', () => {
+		if (publishedLabel) {
+			publishedLabel.textContent = published.checked ? 'منتشرشده' : 'پیش‌نویس';
+		}
+	});
+
+	/* ---- hero image ------------------------------------------------------- */
+	heroSelect?.addEventListener('change', () => {
+		if (heroInput) heroInput.value = heroSelect.value;
+		const preview = document.querySelector<HTMLElement>('.hero-preview');
+		if (!preview) return;
+		const option = heroSelect.selectedOptions[0];
+		const url = option?.dataset.preview ?? '';
+		if (!option?.value || !url) {
+			preview.innerHTML =
+				'<span class="hero-preview__empty">تصویری انتخاب نشده است — نسبت پیشنهادی ۱۶:۹</span>';
+			return;
+		}
+		preview.innerHTML = `<img src="${url}" alt="پیش‌نمایش تصویر" loading="lazy" />`;
+	});
+
+	/* ---- markdown toolbar ------------------------------------------------- */
+	const wrapSelection = (before: string, after = before, placeholder = 'متن') => {
+		if (!body) return;
+		const { selectionStart: start, selectionEnd: end, value } = body;
+		const selected = value.slice(start, end) || placeholder;
+		const next = `${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`;
+		body.value = next;
+		body.focus();
+		body.setSelectionRange(start + before.length, start + before.length + selected.length);
+		refreshCounters();
+	};
+
+	const prefixLine = (prefix: string) => {
+		if (!body) return;
+		const start = body.value.lastIndexOf('\n', body.selectionStart - 1) + 1;
+		const value = body.value;
+		const rest = value.slice(start);
+		body.value = `${value.slice(0, start)}${prefix}${rest}`;
+		body.focus();
+		body.setSelectionRange(start + prefix.length, start + prefix.length);
+		refreshCounters();
+	};
+
+	const actions: Record<string, () => void> = {
+		bold: () => wrapSelection('**'),
+		italic: () => wrapSelection('*'),
+		heading: () => prefixLine('## '),
+		list: () => prefixLine('- '),
+		quote: () => prefixLine('> '),
+		code: () => wrapSelection('`', '`', 'کد'),
+		link: () => wrapSelection('[', '](https://)', 'متن پیوند'),
+	};
+
+	document.querySelectorAll<HTMLButtonElement>('[data-md]').forEach((button) => {
+		button.addEventListener('click', () => actions[button.dataset.md ?? '']?.());
+	});
+
+	/* ---- preview ---------------------------------------------------------- */
+	const renderPreview = async () => {
+		if (!previewBox || !body) return;
+		try {
+			const response = await fetch('/cms/api/preview', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', accept: 'application/json' },
+				body: JSON.stringify({ markdown: body.value }),
+			});
+			const payload = (await response.json()) as { html?: string };
+			previewBox.innerHTML =
+				payload.html?.trim() || '<p class="muted">برای دیدن پیش‌نمایش، کمی بنویسید.</p>';
+		} catch {
+			previewBox.textContent = 'پیش‌نمایش در دسترس نیست. اتصال را بررسی کنید.';
+		}
+	};
+
+	const setTab = (tab: 'write' | 'preview') => {
+		if (writePane) writePane.hidden = tab !== 'write';
+		if (previewPane) previewPane.hidden = tab !== 'preview';
+
+		for (const button of tabs) {
+			const active = button.dataset.tab === tab;
+			button.setAttribute('aria-selected', String(active));
+			button.classList.toggle('btn--outline', active);
+			button.classList.toggle('btn--ghost', !active);
+		}
+
+		if (tab === 'preview') void renderPreview();
+	};
+
+	tabs.forEach((button) => {
+		button.addEventListener('click', () => setTab(button.dataset.tab as 'write' | 'preview'));
+	});
+
+	/* ---- save ------------------------------------------------------------- */
+	let dirty = false;
+	form?.addEventListener('input', () => {
+		dirty = true;
+	});
+
+	window.addEventListener('beforeunload', (event) => {
+		if (!dirty) return;
+		event.preventDefault();
+	});
+
+	const showError = (message: string) => {
+		const box = document.createElement('div');
+		box.className = 'alert alert--error';
+		box.setAttribute('role', 'alert');
+		box.textContent = message;
+		form?.parentElement?.prepend(box);
+		box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		setTimeout(() => box.remove(), 8000);
+	};
+
+	const save = async () => {
+		if (!form || !body || !saveButton) return;
+		const title = form.querySelector<HTMLInputElement>('input[name="title"]');
+		const summary = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]');
+		const slug = form.querySelector<HTMLInputElement>('input[name="slug"]');
+		const pubDate = form.querySelector<HTMLInputElement>('input[name="pubDate"]');
+		const tags = form.querySelector<HTMLInputElement>('input[name="tags"]');
+
+		if (!title?.value.trim()) {
+			title?.focus();
+			showError('عنوان نوشته را وارد کنید.');
+			return;
+		}
+		if (!summary?.value.trim()) {
+			summary?.focus();
+			showError('خلاصهٔ نوشته را وارد کنید.');
+			return;
+		}
+
+		const mode = form.dataset.mode === 'edit' ? 'edit' : 'new';
+		const id = form.dataset.id ?? '';
+		const endpoint = mode === 'edit' ? `/cms/api/posts/${encodeURIComponent(id)}` : '/cms/api/posts';
+
+		const label = saveButton.querySelector('span');
+		const original = label?.textContent ?? 'ذخیره';
+		saveButton.disabled = true;
+		if (label) label.textContent = 'در حال ذخیره…';
+
+		try {
+			const response = await fetch(endpoint, {
+				method: mode === 'edit' ? 'PUT' : 'POST',
+				headers: { 'content-type': 'application/json', accept: 'application/json' },
+				body: JSON.stringify({
+					title: title?.value ?? '',
+					description: summary?.value ?? '',
+					slug: slug?.value.trim() ?? '',
+					pubDate: pubDate?.value ?? '',
+					tags: tags?.value ?? '',
+					heroImage: heroInput?.value ?? '',
+					draft: !(published?.checked ?? false),
+					body: body.value,
+				}),
+			});
+
+			const payload = (await response.json()) as {
+				ok?: boolean;
+				message?: string;
+				redirect?: string;
+			};
+
+			if (response.ok && payload.ok) {
+				dirty = false;
+				window.location.assign(payload.redirect ?? '/cms/posts?flash=saved');
+				return;
+			}
+
+			showError(payload.message ?? 'ذخیرهٔ نوشته ناموفق بود.');
+		} catch {
+			showError('ارتباط با سرور برقرار نشد. تغییرات ذخیره نشد.');
+		} finally {
+			saveButton.disabled = false;
+			if (label) label.textContent = original;
+		}
+	};
+
+	form?.addEventListener('submit', (event) => {
+		event.preventDefault();
+		void save();
+	});
+
+	document.addEventListener('keydown', (event) => {
+		const meta = event.ctrlKey || event.metaKey;
+		if (meta && event.key.toLowerCase() === 's') {
+			event.preventDefault();
+			void save();
+			return;
+		}
+		if (!meta) return;
+		if (event.key.toLowerCase() === 'b') {
+			event.preventDefault();
+			actions.bold();
+		}
+		if (event.key.toLowerCase() === 'i') {
+			event.preventDefault();
+			actions.italic();
+		}
+		if (event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			actions.link();
+		}
+	});
+</script>

@@ -1,0 +1,197 @@
+---
+import CmsLayout from '../../components/cms/CmsLayout.astro';
+import Icon from '../../components/cms/Icon.astro';
+import { faDate, faMoney, faNumber } from '../../lib/cms/fa';
+import { listPosts } from '../../lib/cms/posts';
+import { readSettings } from '../../lib/cms/settings';
+import { readDatabase } from '../../lib/commerce/db';
+import { orderStatusLabel, orderStatusTone, productStatusLabel } from '../../lib/commerce/types';
+
+export const prerender = false;
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const [posts, settings, db] = await Promise.all([listPosts(), readSettings(), readDatabase()]);
+
+const normalize = (value: string) =>
+	value
+		.toLowerCase()
+		.replace(/[يى]/g, 'ی')
+		.replace(/ك/g, 'ک')
+		.replace(/[\u064B-\u065F\u0670]/g, '')
+		.trim();
+
+const needle = normalize(query);
+
+const matchedPosts = needle
+	? posts.filter((post) =>
+			normalize(`${post.title} ${post.description} ${post.tags.join(' ')} ${post.slug}`).includes(needle),
+		)
+	: [];
+
+const matchedProducts = needle
+	? db.products.filter((product) =>
+			normalize(`${product.name} ${product.sku} ${product.category} ${product.slug}`).includes(needle),
+		)
+	: [];
+
+const matchedOrders = needle
+	? db.orders.filter((order) =>
+			normalize(`${order.number} ${order.customerName} ${order.phone} ${order.email}`).includes(needle),
+		)
+	: [];
+
+const total = matchedPosts.length + matchedProducts.length + matchedOrders.length;
+---
+
+<CmsLayout
+	title={query ? `نتایج جست‌وجو برای «${query}»` : 'جست‌وجو'}
+	subtitle={query ? `${faNumber(total)} نتیجه در نوشته‌ها، محصولات و سفارش‌ها` : 'در همهٔ بخش‌های پنل جست‌وجو کنید.'}
+>
+	<section class="card">
+		<div class="card__body">
+			<form method="get" action="/cms/search" class="toolbar" role="search">
+				<label class="search grow" style="max-width:none">
+					<span class="sr-only">عبارت جست‌وجو</span>
+					<Icon name="search" size={16} />
+					<input
+						class="input"
+						type="search"
+						name="q"
+						value={query}
+						placeholder="عنوان نوشته، نام محصول، شمارهٔ سفارش…"
+						autofocus
+					/>
+				</label>
+				<button class="btn btn--primary btn--sm" type="submit">
+					<span>جست‌وجو</span>
+				</button>
+			</form>
+		</div>
+	</section>
+
+	{
+		!query ? (
+			<div class="empty">
+				<span class="empty__icon">
+					<Icon name="search" size={22} />
+				</span>
+				<span class="empty__title">عبارتی برای جست‌وجو بنویسید</span>
+				<span>
+					می‌توانید با <kbd>Ctrl</kbd> + <kbd>K</kbd> از هر جای پنل این کادر را باز کنید.
+				</span>
+			</div>
+		) : total === 0 ? (
+			<div class="empty">
+				<span class="empty__icon">
+					<Icon name="alert" size={22} />
+				</span>
+				<span class="empty__title">نتیجه‌ای پیدا نشد</span>
+				<span>املای عبارت را بررسی کنید یا بخش دیگری را جست‌وجو کنید.</span>
+			</div>
+		) : (
+			<div class="stack">
+				{matchedPosts.length > 0 && (
+					<section class="card">
+						<div class="card__head">
+							<div>
+								<h2 class="card__title">نوشته‌ها</h2>
+								<p class="card__hint">{faNumber(matchedPosts.length)} نتیجه</p>
+							</div>
+							<Icon name="posts" size={18} />
+						</div>
+						<div class="table-wrap">
+							<table class="table">
+								<tbody>
+									{matchedPosts.map((post) => (
+										<tr>
+											<td>
+												<a class="table__title" href={`/cms/posts/${post.id}`}>
+													{post.title}
+												</a>
+												<span class="table__slug ltr">/blog/{post.slug}</span>
+											</td>
+											<td class="num nowrap">{faDate(post.pubDate)}</td>
+											<td>
+												<span class={`badge badge--${post.draft ? 'warning' : 'success'}`}>
+													{post.draft ? 'پیش‌نویس' : 'منتشرشده'}
+												</span>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</section>
+				)}
+
+				{settings.commerceEnabled && matchedProducts.length > 0 && (
+					<section class="card">
+						<div class="card__head">
+							<div>
+								<h2 class="card__title">محصولات</h2>
+								<p class="card__hint">{faNumber(matchedProducts.length)} نتیجه</p>
+							</div>
+							<Icon name="box" size={18} />
+						</div>
+						<div class="table-wrap">
+							<table class="table">
+								<tbody>
+									{matchedProducts.map((product) => (
+										<tr>
+											<td>
+												<a class="table__title" href={`/cms/products/${product.id}`}>
+													{product.name}
+												</a>
+												<span class="table__slug ltr">{product.sku}</span>
+											</td>
+											<td class="num nowrap">{faMoney(product.price, settings.currency)}</td>
+											<td>
+												<span class="badge badge--neutral">
+													{productStatusLabel(product.status)}
+												</span>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</section>
+				)}
+
+				{settings.commerceEnabled && matchedOrders.length > 0 && (
+					<section class="card">
+						<div class="card__head">
+							<div>
+								<h2 class="card__title">سفارش‌ها</h2>
+								<p class="card__hint">{faNumber(matchedOrders.length)} نتیجه</p>
+							</div>
+							<Icon name="receipt" size={18} />
+						</div>
+						<div class="table-wrap">
+							<table class="table">
+								<tbody>
+									{matchedOrders.map((order) => (
+										<tr>
+											<td>
+												<a class="table__title ltr" href={`/cms/orders/${order.id}`} dir="ltr">
+													{order.number}
+												</a>
+												<span class="table__slug">{order.customerName}</span>
+											</td>
+											<td class="num nowrap">{faMoney(order.total, settings.currency)}</td>
+											<td>
+												<span class={`badge badge--${orderStatusTone(order.status)}`}>
+													{orderStatusLabel(order.status)}
+												</span>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</section>
+				)}
+			</div>
+		)
+	}
+</CmsLayout>

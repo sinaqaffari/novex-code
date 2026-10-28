@@ -1,0 +1,38 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { can } from '../../../lib/cms/rbac';
+
+export const prerender = false;
+
+if (!can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages:write')) return Astro.redirect('/cms/pages');
+---
+
+<CmsLayout title="ساخت صفحه" subtitle="یک پیش‌نویس تازه برای Builder بسازید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
+	<section class="card">
+		<div class="card__head">
+			<div>
+				<h2 class="card__title">مشخصات اولیه</h2>
+				<p class="hint">نامک بخشی از نشانی عمومی صفحه است و پس از ساخت قابل تغییر نیست.</p>
+			</div>
+		</div>
+		<form class="card__body stack" method="post" action="/cms/api/builder/pages">
+			<label class="field">
+				<span class="field__label">عنوان صفحه</span>
+				<input class="input" name="title" type="text" required maxlength="100" value="صفحهٔ تازه" autocomplete="off" />
+			</label>
+			<label class="field">
+				<span class="field__label">نامک لاتین</span>
+				<div class="input-group" dir="ltr">
+					<span class="input-group__prefix">/pages/</span>
+					<input class="input" name="slug" type="text" required minlength="1" maxlength="60" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="landing-page" autocomplete="off" />
+				</div>
+				<span class="field__hint">فقط حروف کوچک انگلیسی، عدد و خط تیره؛ بدون فاصله یا خط تیره در ابتدا و انتها.</span>
+			</label>
+			<div class="row" style="justify-content:flex-end">
+				<a class="btn btn--outline" href="/cms/pages">انصراف</a>
+				<button class="btn btn--primary" type="submit"><Icon name="plus" size={15} /><span>ساخت و ویرایش</span></button>
+			</div>
+		</form>
+	</section>
+</CmsLayout>

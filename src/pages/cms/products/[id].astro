@@ -1,0 +1,63 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import ProductForm from '../../../components/cms/ProductForm.astro';
+import { listMedia } from '../../../lib/cms/media';
+import { readSettings } from '../../../lib/cms/settings';
+import { getProduct, listProducts } from '../../../lib/commerce/products';
+
+export const prerender = false;
+
+const id = decodeURIComponent(Astro.params.id ?? '');
+const product = await getProduct(id);
+
+if (!product) {
+	Astro.response.status = 404;
+}
+
+const [media, settings, catalog] = product
+	? await Promise.all([listMedia(), readSettings(), listProducts({ perPage: 1 })])
+	: [[], await readSettings(), { categories: [] as string[] }];
+---
+
+{
+	product ? (
+		<CmsLayout
+			title={product.name}
+			subtitle={`${product.sku} — ${product.category} — موجودی: ${product.stock} عدد`}
+			breadcrumbs={[
+				{ label: 'فروشگاه' },
+				{ label: 'محصولات', href: '/cms/products' },
+				{ label: product.name },
+			]}
+		>
+			<Fragment slot="actions">
+				<a class="btn btn--outline btn--sm" href="/cms/products">
+					<Icon name="arrow" size={15} />
+					<span>بازگشت</span>
+				</a>
+			</Fragment>
+
+			<ProductForm
+				mode="edit"
+				product={product}
+				media={media}
+				categories={catalog.categories}
+				currency={settings.currency}
+			/>
+		</CmsLayout>
+	) : (
+		<CmsLayout title="محصول پیدا نشد" subtitle="ممکن است حذف شده باشد یا نشانی اشتباه باشد.">
+			<section class="card">
+				<div class="empty">
+					<span class="empty__icon"><Icon name="alert" size={22} /></span>
+					<span class="empty__title">محصولی با این شناسه وجود ندارد</span>
+					<a class="btn btn--primary" href="/cms/products" style="margin-top:.6rem">
+						<Icon name="arrow" size={15} />
+						<span>بازگشت به محصولات</span>
+					</a>
+				</div>
+			</section>
+		</CmsLayout>
+	)
+}

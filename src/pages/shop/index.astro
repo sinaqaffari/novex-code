@@ -1,0 +1,285 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import '../../styles/commerce.css';
+import ProductCard from '../../components/store/ProductCard.astro';
+import { readSettings } from '../../lib/cms/settings';
+import { hydrateCart, readCart } from '../../lib/commerce/cart';
+import { listProducts, parseProductSort } from '../../lib/commerce/products';
+import { faNumber } from '../../lib/cms/fa';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const cart = await hydrateCart(readCart(Astro.cookies));
+const query = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 200);
+const category = (Astro.url.searchParams.get('category') ?? '').trim().slice(0, 60);
+const sort = parseProductSort(Astro.url.searchParams.get('sort')?.trim());
+const pageInput = Number(Astro.url.searchParams.get('page'));
+const requestedPage = Number.isSafeInteger(pageInput) ? Math.max(1, pageInput) : 1;
+
+const result = await listProducts({
+	query,
+	status: 'active',
+	category,
+	sort,
+	page: requestedPage,
+	perPage: 12,
+});
+const shopClosed = !settings.commerceEnabled;
+const hasActiveProducts = result.counts.active > 0;
+const products = result.items;
+const allCategories = result.categories;
+const sortOptions: Array<{ value: string; label: string }> = [
+	{ value: 'newest', label: 'تازه‌ترین' },
+	{ value: 'price-asc', label: 'قیمت: کم به زیاد' },
+	{ value: 'price-desc', label: 'قیمت: زیاد به کم' },
+	{ value: 'stock-asc', label: 'موجودی: کم به زیاد' },
+	{ value: 'name', label: 'نام: الفبا' },
+];
+
+function catalogUrl(changes: Record<string, string | null> = {}): string {
+	const params = new URLSearchParams(Astro.url.searchParams);
+	for (const [key, value] of Object.entries(changes)) {
+		if (value === null) params.delete(key);
+		else params.set(key, value);
+	}
+	params.set('page', '1');
+	const search = params.toString();
+	return search ? `/shop?${search}` : '/shop';
+}
+
+function paginationUrl(page: number): string {
+	const params = new URLSearchParams(Astro.url.searchParams);
+	params.set('page', String(page));
+	return `/shop?${params.toString()}`;
+}
+---
+
+<ShopLayout title={settings.shopTitle || 'فروشگاه'} description={settings.shopDescription} cartCount={cart.count} settings={settings}>
+	<nav class="breadcrumbs catalog-breadcrumbs" aria-label="مسیر">
+		<a href="/">خانه</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">فروشگاه</span>
+	</nav>
+
+	{shopClosed ? (
+		<div class="empty catalog-empty" role="status">
+			<h1 class="empty__title">فروشگاه غیرفعال است</h1>
+			<p class="empty__desc">در حال حاضر امکان مشاهده و خرید محصولات وجود ندارد.</p>
+			<a class="btn btn--outline" href="/blog">رفتن به مجله</a>
+		</div>
+	) : !hasActiveProducts ? (
+		<div class="empty catalog-empty" role="status">
+			<h1 class="empty__title">هنوز محصول فعالی ثبت نشده است</h1>
+			<p class="empty__desc">محصولات منتشرشده در این صفحه نمایش داده می‌شوند.</p>
+			<a class="btn btn--outline" href="/blog">خواندن نوشته‌های مجله</a>
+		</div>
+	) : (
+		<>
+			<header class="catalog-intro">
+				<h1>فروشگاه</h1>
+				{query && <p class="catalog-query">جست‌وجو برای «{query}»</p>}
+			</header>
+
+			<div class="catalog-toolbar">
+				<div class="catalog-search">
+					<form action="/shop" method="GET" role="search">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<circle cx="11" cy="11" r="8" />
+							<path d="m21 21-4.3-4.3" />
+						</svg>
+						<label class="sr-only" for="catalog-q">جست‌وجو در محصولات</label>
+						<input
+							id="catalog-q"
+							type="search"
+							name="q"
+							value={query}
+							placeholder="جست‌وجو در محصولات…"
+							dir="auto"
+						/>
+						{category && <input type="hidden" name="category" value={category} />}
+						{sort !== 'newest' && <input type="hidden" name="sort" value={sort} />}
+						<button class="catalog-search__submit" type="submit">جست‌وجو</button>
+					</form>
+				</div>
+
+				{(allCategories.length > 0 || query || category) && (
+					<div class="catalog-filters" aria-label="فیلتر محصولات">
+						{allCategories.map((cat) => {
+							const isActive = category === cat;
+						return (
+							<a
+								href={catalogUrl({ category: isActive ? null : cat })}
+								class={`filter-chip ${isActive ? 'filter-chip--active' : ''}`}
+								aria-current={isActive ? 'true' : undefined}
+							>
+								{cat}{isActive && <span aria-hidden="true"> ×</span>}
+							</a>
+						);
+						})}
+						{query && <a href={catalogUrl({ q: null })} class="filter-chip filter-chip--active">«{query}» <span aria-hidden="true">×</span></a>}
+						{(category || query) && <a href="/shop" class="reset-filters">پاک‌کردن همهٔ فیلترها</a>}
+					</div>
+				)}
+
+				<div class="catalog-sort">
+					<form class="catalog-sort-form" action="/shop" method="GET">
+						<label for="sortSelect">مرتب‌سازی</label>
+						<select id="sortSelect" name="sort">
+							{sortOptions.map((option) => (
+								<option value={option.value} selected={option.value === sort}>{option.label}</option>
+							))}
+						</select>
+						{query && <input type="hidden" name="q" value={query} />}
+						{category && <input type="hidden" name="category" value={category} />}
+						<button type="submit" class="btn btn--sm btn--primary">اعمال</button>
+					</form>
+				</div>
+			</div>
+
+			<p class="catalog__count num">{faNumber(result.total)} محصول</p>
+
+			{products.length > 0 ? (
+				<div class="product-grid">
+					{products.map((product) => <ProductCard product={product} currency={settings.currency} />)}
+				</div>
+			) : (
+				<div class="empty catalog-empty" role="status">
+					<h2 class="empty__title">محصولی با این فیلترها پیدا نشد</h2>
+					<p class="empty__desc">عبارت جست‌وجو یا دسته‌بندی را تغییر دهید.</p>
+					<a class="btn btn--outline" href="/shop">پاک‌کردن فیلترها</a>
+				</div>
+			)}
+
+			{result.pages > 1 && (
+				<nav class="pagination" aria-label="صفحه‌بندی">
+					{result.page > 1 && <a class="btn btn--outline btn--sm" href={paginationUrl(result.page - 1)}>صفحهٔ قبل</a>}
+					{Array.from({ length: result.pages }, (_, index) => index + 1).map((pageNumber) => (
+						<a
+							class={`btn btn--sm ${pageNumber === result.page ? 'btn--primary' : 'btn--outline'}`}
+							href={paginationUrl(pageNumber)}
+							aria-current={pageNumber === result.page ? 'page' : undefined}
+						>
+							{faNumber(pageNumber)}
+						</a>
+					))}
+					{result.page < result.pages && <a class="btn btn--outline btn--sm" href={paginationUrl(result.page + 1)}>صفحهٔ بعد</a>}
+				</nav>
+			)}
+		</>
+	)}
+</ShopLayout>
+
+<style>
+	.catalog-breadcrumbs {
+		margin-block: var(--space-4) var(--space-2);
+	}
+
+	.catalog-intro {
+		margin-block-end: var(--space-4);
+	}
+
+	.catalog-intro h1 {
+		font-size: clamp(var(--text-2xl), 4vw, var(--text-3xl));
+	}
+
+	.catalog-query {
+		margin-block-start: var(--space-1);
+		color: var(--muted);
+	}
+
+	.catalog-toolbar {
+		display: grid;
+		gap: var(--space-3);
+		margin-block-end: var(--space-4);
+		padding: var(--space-4);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		background: var(--surface);
+	}
+
+	.catalog-search form {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.catalog-search svg {
+		width: 1.1rem;
+		height: 1.1rem;
+		flex: 0 0 auto;
+		color: var(--muted);
+	}
+
+	.catalog-search input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.55rem 0.75rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font: inherit;
+	}
+
+	.catalog-search__submit,
+	.reset-filters {
+		border: 0;
+		background: none;
+		color: var(--brand);
+		font: inherit;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.catalog-filters {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.catalog-sort-form {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.catalog-sort-form label {
+		color: var(--muted);
+		font-size: var(--text-sm);
+	}
+
+	.catalog-sort-form select {
+		min-width: 10rem;
+		padding: 0.45rem 0.65rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		font: inherit;
+	}
+
+	.catalog__count {
+		margin-block-end: var(--space-3);
+		color: var(--muted);
+		font-size: var(--text-sm);
+	}
+
+	.catalog-empty {
+		margin-block: var(--space-4) var(--space-8);
+	}
+
+	.pagination {
+		margin-block: var(--space-6) var(--space-8);
+		display: flex;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	@media (min-width: 960px) {
+		.catalog-toolbar {
+			grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr) auto;
+			align-items: center;
+		}
+	}
+</style>

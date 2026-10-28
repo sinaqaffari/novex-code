@@ -1,0 +1,367 @@
+---
+import Icon from './Icon.astro';
+import type { MediaItem } from '../../lib/cms/media';
+import { faMoney } from '../../lib/cms/fa';
+import {
+	PRODUCT_STATUSES,
+	type Product,
+} from '../../lib/commerce/types';
+
+interface Props {
+	mode: 'new' | 'edit';
+	product?: Product;
+	media: MediaItem[];
+	categories: string[];
+	currency: string;
+}
+
+const { mode, product, media, categories, currency } = Astro.props;
+const isEdit = mode === 'edit' && product;
+
+const values = {
+	name: product?.name ?? '',
+	slug: product?.slug ?? '',
+	sku: product?.sku ?? '',
+	price: product?.price ?? 0,
+	compareAtPrice: product?.compareAtPrice ?? 0,
+	stock: product?.stock ?? 0,
+	category: product?.category ?? '',
+	description: product?.description ?? '',
+	image: product?.image ?? '',
+	status: product?.status ?? 'draft',
+	featured: product?.featured ?? false,
+};
+
+const initial = values.name.trim().charAt(0) || 'م';
+---
+
+<div class="detail-grid">
+	<form class="stack" id="product-form" data-product-form data-mode={mode} data-id={product?.id ?? ''}>
+		<section class="card">
+			<div class="card__head">
+				<div>
+					<h2 class="card__title">اطلاعات محصول</h2>
+					<p class="card__hint">نام، کد کالا و قیمت برای فهرست فروشگاه استفاده می‌شود.</p>
+				</div>
+				<span class="badge badge--neutral">الزامی</span>
+			</div>
+			<div class="card__body stack">
+				<label class="field">
+					<span class="label">نام محصول</span>
+					<input
+						class="input"
+						type="text"
+						name="name"
+						value={values.name}
+						required
+						maxlength="160"
+					/>
+				</label>
+
+				<div class="field-row">
+					<label class="field">
+						<span class="label">
+							نامک (slug)
+							<span class="label__meta">آدرس فروشگاه</span>
+						</span>
+						<div class="input ltr slug-field" dir="ltr">
+							<span class="muted" style="font-size:.78rem">/shop/</span>
+							<input
+								class="input-plain"
+								type="text"
+								name="slug"
+								value={values.slug}
+								dir="ltr"
+							/>
+						</div>
+					</label>
+
+					<label class="field">
+						<span class="label">کد کالا (SKU)</span>
+						<input
+							class="input ltr"
+							type="text"
+							name="sku"
+							value={values.sku}
+							required
+							dir="ltr"
+						/>
+					</label>
+				</div>
+
+				<div class="field-row">
+					<label class="field">
+						<span class="label">قیمت فروش ({currency})</span>
+						<input
+							class="input num"
+							type="text"
+							inputmode="numeric"
+							name="price"
+							value={values.price || ''}
+							required
+						/>
+					</label>
+
+					<label class="field">
+						<span class="label">
+							قیمت پیش از تخفیف
+							<span class="label__meta">اختیاری</span>
+						</span>
+						<input
+							class="input num"
+							type="text"
+							inputmode="numeric"
+							name="compareAtPrice"
+							value={values.compareAtPrice || ''}
+						/>
+						{values.compareAtPrice > 0 && (
+							<span class="hint num">
+								{faMoney(Math.max(0, values.compareAtPrice - values.price), currency)} تخفیف
+							</span>
+						)}
+					</label>
+
+					<label class="field">
+						<span class="label">موجودی</span>
+						<input
+							class="input num"
+							type="number"
+							name="stock"
+							min="0"
+							step="1"
+							value={values.stock}
+							required
+						/>
+					</label>
+				</div>
+
+				<label class="field">
+					<span class="label">
+						دسته‌بندی
+						<span class="label__meta">قابل جست‌وجو</span>
+					</span>
+					<input
+						class="input"
+						type="text"
+						name="category"
+						value={values.category}
+						required
+						list="product-categories"
+					/>
+					<datalist id="product-categories">
+						{categories.map((category) => <option value={category} />)}
+					</datalist>
+				</label>
+
+				<label class="field">
+					<span class="label">
+						توضیحات
+						<span class="label__meta">در صفحهٔ محصول نمایش داده می‌شود</span>
+					</span>
+					<textarea class="textarea" name="description" rows="5" maxlength="4000" dir="auto"
+						>{values.description}</textarea
+					>
+				</label>
+			</div>
+		</section>
+
+		<div class="editor-actions">
+			<button class="btn btn--primary" type="submit" data-product-save>
+				<Icon name="save" size={16} />
+				<span>{isEdit ? 'ذخیرهٔ محصول' : 'ساخت محصول'}</span>
+			</button>
+			<div class="row">
+				<a class="btn btn--ghost btn--sm" href="/cms/products">
+					<Icon name="arrow" size={15} />
+					<span>بازگشت</span>
+				</a>
+				{isEdit && (
+					<a class="btn btn--outline btn--sm" href={`/shop/${product?.slug}`} target="_blank" rel="noreferrer">
+						<Icon name="external" size={14} />
+						<span>مشاهده در فروشگاه</span>
+					</a>
+				)}
+			</div>
+		</div>
+	</form>
+
+	<aside class="stack">
+		<section class="card">
+			<div class="card__head">
+				<h2 class="card__title">انتشار</h2>
+			</div>
+			<div class="card__body stack" style="gap:.9rem">
+				<label class="field">
+					<span class="label">وضعیت</span>
+					<select class="select" name="status" form="product-form">
+						{PRODUCT_STATUSES.map((status) => (
+							<option value={status.value} selected={values.status === status.value}>
+								{status.label}
+							</option>
+						))}
+					</select>
+					<span class="hint">فقط محصولات «فعال» در فروشگاه دیده می‌شوند.</span>
+				</label>
+
+				<label class="switch">
+					<input
+						type="checkbox"
+						name="featured"
+						form="product-form"
+						checked={values.featured}
+						value="true"
+					/>
+					<span class="switch__track" aria-hidden="true"></span>
+					<span>نمایش در بخش ویژه</span>
+				</label>
+
+				{isEdit && (
+					<div class="alert alert--info" role="note">
+						<Icon name="info" size={16} />
+						<span class="num">
+							شناسه: <code class="ltr">{product?.id}</code>
+						</span>
+					</div>
+				)}
+			</div>
+		</section>
+
+		<section class="card">
+			<div class="card__head">
+				<h2 class="card__title">تصویر محصول</h2>
+				<a class="btn btn--ghost btn--sm" href="/cms/media" target="_blank" rel="noreferrer">
+					<Icon name="upload" size={14} />
+					<span>رسانه</span>
+				</a>
+			</div>
+			<div class="card__body stack" style="gap:.7rem">
+				<div class="hero-preview">
+					{values.image ? (
+						<img src={values.image} alt="پیش‌نمایش محصول" loading="lazy" />
+					) : (
+						<span class="hero-preview__empty">
+							<span class="thumb" style="width:3rem;height:3rem;font-size:1.1rem">{initial}</span>
+							<span style="margin-top:.5rem">تصویری انتخاب نشده — نسبت پیشنهادی ۱۶:۱۰</span>
+						</span>
+					)}
+				</div>
+
+				<label class="field">
+					<span class="label">انتخاب از کتابخانه</span>
+					<select class="select" data-product-image aria-label="انتخاب تصویر محصول">
+						<option value="">بدون تصویر</option>
+						{media.map((item) => (
+							<option
+								value={item.publicUrl}
+								data-preview={item.previewUrl}
+								selected={item.publicUrl === values.image || item.reference === values.image}
+							>
+								{item.name}
+							</option>
+						))}
+					</select>
+				</label>
+				<input type="hidden" name="image" value={values.image} form="product-form" data-image-input />
+				<p class="hint">
+					تصاویر از کتابخانهٔ رسانه انتخاب می‌شوند و با نشانی عمومی <code class="ltr">/media/…</code>{' '}
+					سرو می‌شوند.
+				</p>
+			</div>
+		</section>
+
+		{
+			isEdit && (
+				<section class="card" style="border-color:#f3d2d6">
+					<div class="card__head">
+						<h2 class="card__title" style="color:var(--danger)">
+							حذف محصول
+						</h2>
+					</div>
+					<div class="card__body stack" style="gap:.6rem">
+						<p class="hint">سفارش‌های قبلی حفظ می‌شوند؛ فقط محصول از فروشگاه حذف می‌شود.</p>
+						<form
+							method="post"
+							action={`/cms/api/products/${product?.id}?action=delete`}
+							data-confirm={`محصول «${product?.name}» حذف شود؟`}
+						>
+							<button class="btn btn--danger btn--sm" type="submit">
+								<Icon name="trash" size={14} />
+								<span>حذف محصول</span>
+							</button>
+						</form>
+					</div>
+				</section>
+			)
+		}
+	</aside>
+</div>
+
+<script>
+	const form = document.querySelector<HTMLFormElement>('[data-product-form]');
+	const saveButton = document.querySelector<HTMLButtonElement>('[data-product-save]');
+	const imageSelect = document.querySelector<HTMLSelectElement>('[data-product-image]');
+	const imageInput = document.querySelector<HTMLInputElement>('[data-image-input]');
+
+	imageSelect?.addEventListener('change', () => {
+		if (imageInput) imageInput.value = imageSelect.value;
+		const preview = document.querySelector<HTMLElement>('.hero-preview');
+		if (!preview) return;
+		const option = imageSelect.selectedOptions[0];
+		const url = option?.dataset.preview ?? '';
+		if (!option?.value || !url) {
+			preview.innerHTML =
+				'<span class="hero-preview__empty">تصویری انتخاب نشده — نسبت پیشنهادی ۱۶:۱۰</span>';
+			return;
+		}
+		preview.innerHTML = `<img src="${url}" alt="پیش‌نمایش محصول" loading="lazy" />`;
+	});
+
+	form?.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		if (!form || !saveButton) return;
+
+		const mode = form.dataset.mode === 'edit' ? 'edit' : 'new';
+		const id = form.dataset.id ?? '';
+		const endpoint = mode === 'edit' ? `/cms/api/products/${encodeURIComponent(id)}` : '/cms/api/products';
+		const data = new FormData(form);
+
+		// The aside fields live outside the <form>; associate them explicitly.
+		for (const element of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+			'[form="product-form"]',
+		)) {
+			if (element.name) data.set(element.name, element.value);
+		}
+		const featured = document.querySelector<HTMLInputElement>('input[name="featured"]');
+		data.set('featured', featured?.checked ? 'true' : 'false');
+
+		const label = saveButton.querySelector('span');
+		const original = label?.textContent ?? 'ذخیره';
+		saveButton.disabled = true;
+		if (label) label.textContent = 'در حال ذخیره…';
+
+		try {
+			const response = await fetch(endpoint, {
+				method: mode === 'edit' ? 'PUT' : 'POST',
+				headers: { accept: 'application/json' },
+				body: data,
+			});
+			const payload = (await response.json()) as {
+				ok?: boolean;
+				message?: string;
+				redirect?: string;
+			};
+			if (response.ok && payload.ok) {
+				window.location.assign(payload.redirect ?? '/cms/products?flash=saved');
+				return;
+			}
+			window.dispatchEvent(new CustomEvent('cms:error', { detail: payload }));
+		} catch {
+			window.dispatchEvent(
+				new CustomEvent('cms:error', { detail: { message: 'ارتباط با سرور برقرار نشد.' } }),
+			);
+		} finally {
+			saveButton.disabled = false;
+			if (label) label.textContent = original;
+		}
+	});
+</script>

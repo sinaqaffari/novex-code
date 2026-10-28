@@ -1,0 +1,153 @@
+---
+import { publicImageSrc } from '../../lib/cms/public-image';
+import { faDate, faReadingTime } from '../../lib/cms/fa';
+
+interface Props {
+	post: {
+		title: string;
+		description: string;
+		pubDate: string;
+		words: number;
+		tags: string[];
+		slug: string;
+		heroImage?: string;
+	};
+}
+
+const { post } = Astro.props;
+const image = publicImageSrc(post.heroImage ?? '');
+---
+
+<article class="blog-card">
+	{image && (
+		<div class="blog-card__media">
+			<img src={image} alt="" loading="lazy" decoding="async" />
+		</div>
+	)}
+
+	<div class="blog-card__body">
+		{post.tags.length > 0 && (
+			<ul class="blog-card__tags" aria-label="برچسب‌ها">
+				{post.tags.map((tag) => (
+					<li><a href={`/blog?tag=${encodeURIComponent(tag)}`} class="blog-card__tag">{tag}</a></li>
+				))}
+			</ul>
+		)}
+		<div class="blog-card__meta">
+			<time datetime={post.pubDate}>{faDate(post.pubDate)}</time>
+			<span aria-hidden="true">·</span>
+			<span>{faReadingTime(post.words)}</span>
+		</div>
+		<h2 class="blog-card__title"><a href={`/blog/${post.slug}`}>{post.title}</a></h2>
+		{post.description && <p class="blog-card__desc">{post.description}</p>}
+		<a href={`/blog/${post.slug}`} class="blog-card__link">
+			ادامهٔ مطلب <span aria-hidden="true">←</span>
+		</a>
+	</div>
+</article>
+
+<style>
+	.blog-card {
+		min-width: 0;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		color: var(--ink);
+		transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+		animation: store-enter 420ms cubic-bezier(0.2, 0.7, 0.25, 1) both;
+	}
+
+	.blog-card:hover {
+		transform: translateY(-3px);
+		border-color: var(--brand-line);
+		box-shadow: var(--shadow-md);
+	}
+
+	.blog-card:focus-within {
+		outline: 2px solid var(--brand-line);
+		outline-offset: 2px;
+	}
+
+	.blog-card__media {
+		display: block;
+		aspect-ratio: 16 / 9;
+		border-block-end: 1px solid var(--line);
+		background: var(--surface-2);
+		overflow: hidden;
+	}
+
+	.blog-card__media img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.blog-card__body {
+		padding: var(--space-4);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-3);
+		flex: 1;
+	}
+
+	.blog-card__tags {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.blog-card__tag {
+		font-size: var(--text-xs);
+		padding: 0.15rem 0.55rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		color: var(--ink-soft);
+		background: var(--surface-2);
+	}
+
+	.blog-card__tag:hover {
+		border-color: var(--brand-line);
+		background: var(--brand-soft);
+		text-decoration: none;
+	}
+
+	.blog-card__meta {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		color: var(--muted);
+		font-size: var(--text-xs);
+	}
+
+	.blog-card__title {
+		font-size: var(--text-xl);
+		line-height: 1.45;
+	}
+
+	.blog-card__title a {
+		color: var(--ink);
+	}
+
+	.blog-card__title a:hover {
+		color: var(--brand);
+	}
+
+	.blog-card__desc {
+		color: var(--ink-soft);
+		font-size: var(--text-sm);
+		line-height: var(--line-height-relaxed);
+	}
+
+	.blog-card__link {
+		margin-block-start: auto;
+		font-weight: var(--font-weight-semibold);
+	}
+</style>

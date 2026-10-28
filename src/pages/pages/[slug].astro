@@ -1,0 +1,40 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import BuilderNode from '../../components/builder/BuilderNode.astro';
+import '../../styles/builder.css';
+import { getPublishedPage } from '../../lib/builder/store';
+import { buildResponsiveCss } from '../../lib/builder/render';
+import { isValidPageSlug } from '../../lib/builder/document';
+import { themeStyleText } from '../../lib/builder/themes';
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? '';
+const published = isValidPageSlug(slug) ? await getPublishedPage(slug) : null;
+if (!published) Astro.response.status = 404;
+const document = published?.document;
+const responsiveCss = document ? buildResponsiveCss(document) : '';
+---
+
+<SiteLayout title={document?.title ?? 'صفحه پیدا نشد'} description={document?.description ?? ''}>
+	{document ? (
+		<article class="nvx-page" data-page-slug={document.slug} data-builder-theme={document.themeId} style={themeStyleText(document.themeId)}>
+			{document.title || document.description ? (
+				<header class="nvx-page__intro">
+					<h1 class="nvx-page__title">{document.title}</h1>
+					{document.description ? <p class="nvx-page__description">{document.description}</p> : null}
+				</header>
+			) : null}
+			<div class="nvx-page__content">
+				{document.nodes.map((node) => <BuilderNode node={node} />)}
+			</div>
+		</article>
+	) : (
+		<section class="nvx-page" role="status">
+			<h1 class="nvx-page__title">صفحه پیدا نشد</h1>
+			<p class="nvx-page__description">این صفحه وجود ندارد یا هنوز منتشر نشده است.</p>
+		</section>
+	)}
+</SiteLayout>
+
+{responsiveCss ? <style set:html={responsiveCss} /> : null}

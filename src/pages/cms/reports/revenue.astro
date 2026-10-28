@@ -1,0 +1,207 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import { faDate, faMoney, faNumber, faPercent } from '../../../lib/cms/fa';
+import { readSettings } from '../../../lib/cms/settings';
+import { buildDashboardMetrics } from '../../../lib/commerce/stats';
+import { orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
+
+export const prerender = false;
+
+const settings = await readSettings();
+const metrics = await buildDashboardMetrics(30);
+const currency = settings.currency;
+
+const maxBar = Math.max(...metrics.series.map((point) => point.total), 1);
+const chartTotal = metrics.series.reduce((sum, point) => sum + point.total, 0);
+const chartDescription = `نمودار درآمد ۳۰ روز گذشته، از ${faDate(metrics.series[0]?.date ?? '')} تا ${faDate(metrics.series.at(-1)?.date ?? '')}؛ مجموع ${faMoney(chartTotal, currency)}`;
+
+const started30DaysAgo = metrics.series[0]?.date ?? '';
+const endedToday = metrics.series.at(-1)?.date ?? '';
+---
+
+<CmsLayout title="گزارش درآمد" subtitle="آمار فروش و درآمد در ۳۰ روز گذشته">
+	<section class="stack">
+		<!-- KPI Cards -->
+		<section class="grid grid--stats">
+			<article class="kpi">
+				<div class="kpi__head">
+					<span class="kpi__label">درآمد سفارش‌های درآمدی</span>
+				</div>
+				<strong class="kpi__value num">{faMoney(metrics.revenue.current, currency)}</strong>
+				<span class="kpi__foot">
+					{metrics.revenue.change === null
+						? 'در دورهٔ قبل درآمدی برای مقایسه ثبت نشده است.'
+						: <>{metrics.revenue.change > 0 ? 'افزایش' : metrics.revenue.change < 0 ? 'کاهش' : 'بدون تغییر'} {faPercent(Math.abs(metrics.revenue.change))} نسبت به دورهٔ قبل</>}
+				</span>
+			</article>
+			<article class="kpi">
+				<div class="kpi__head">
+					<span class="kpi__label">تعداد سفارش‌ها</span>
+				</div>
+				<strong class="kpi__value num">{faNumber(metrics.orders.current)}</strong>
+				<span class="kpi__foot">
+					{metrics.orders.change === null
+						? 'در دورهٔ قبل سفارشی برای مقایسه ثبت نشده است.'
+						: <>{metrics.orders.change > 0 ? 'افزایش' : metrics.orders.change < 0 ? 'کاهش' : 'بدون تغییر'} {faPercent(Math.abs(metrics.orders.change))} نسبت به دورهٔ قبل</>}
+				</span>
+			</article>
+			<article class="kpi">
+				<div class="kpi__head">
+					<span class="kpi__label">میانگین هر سفارش</span>
+				</div>
+				<strong class="kpi__value num">{metrics.paidOrderCount > 0 ? faMoney(metrics.averageOrder, currency) : '—'}</strong>
+				<span class="kpi__foot">
+					{metrics.paidOrderCount > 0
+						? 'میانگین پرداخت‌های تأییدشده در ۳۰ روز گذشته'
+						: 'پس از نخستین پرداخت تأییدشده محاسبه می‌شود'}
+				</span>
+			</article>
+			<article class="kpi">
+				<div class="kpi__head">
+					<span class="kpi__label">سفارش در انتظار</span>
+				</div>
+				<strong class="kpi__value num">{faNumber(metrics.pending)}</strong>
+				<span class="kpi__foot">نیازمند بررسی</span>
+			</article>
+		</section>
+
+		<!-- Revenue chart -->
+		<div class="card">
+			<div class="card__head">
+				<h2 class="card__title">روند درآمد (۳۰ روز اخیر)</h2>
+				<p class="card__hint">از {faDate(started30DaysAgo)} تا {faDate(endedToday)}</p>
+			</div>
+			<div class="revenue-chart" role="img" aria-label={chartDescription}>
+				<div class="revenue-chart__inner">
+					<div class="revenue-chart__plot">
+						{metrics.series.map((point) => {
+							const height = point.total === 0 ? 0 : Math.max(3, Math.round((point.total / maxBar) * 128));
+							const dateLabel = faDate(new Date(point.date), 'short');
+							return (
+								<div class="revenue-chart__column" title={`${dateLabel} — ${faMoney(point.total, currency)}`}>
+									<span
+										class:list={['revenue-chart__bar', point.total === 0 && 'revenue-chart__bar--zero']}
+										style={`height:${height}px`}
+									/>
+								</div>
+							);
+						})}
+					</div>
+					<div class="revenue-chart__axis" aria-hidden="true">
+						{metrics.series.map((point, index) => (
+							<span>{index % 5 === 0 ? faDate(new Date(point.date), 'short') : ''}</span>
+						))}
+					</div>
+				</div>
+			</div>
+			<details class="chart-data">
+				<summary>نمایش درآمد هر روز</summary>
+				<div class="table-wrap">
+					<table class="table">
+						<thead><tr><th scope="col">تاریخ</th><th scope="col">درآمد</th></tr></thead>
+						<tbody>
+							{metrics.series.map((point) => (
+								<tr><td>{faDate(new Date(point.date), 'long')}</td><td class="num">{faMoney(point.total, currency)}</td></tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</details>
+		</div>
+
+		<!-- Top products -->
+		<div class="card" style="margin-block-start:1.5rem">
+			<div class="card__head">
+				<h2 class="card__title">پرفروش‌ترین محصولات در ۳۰ روز گذشته</h2>
+			</div>
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">محصول</th>
+<th scope="col" style="width:20%" class="num">تعداد فروخته‌شده</th>
+								<th scope="col" style="width:25%" class="num">مبلغ کالاها</th>
+						</tr>
+					</thead>
+					<tbody>
+						{metrics.topProducts.map((product) => (
+							<tr>
+								<td><strong>{product.name}</strong></td>
+								<td class="num">{faNumber(product.quantity)}</td>
+								<td class="num">{faMoney(product.revenue, currency)}</td>
+							</tr>
+						))}
+						{metrics.topProducts.length === 0 && (
+							<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted)">فروشی ثبت نشده است.</td></tr>
+						)}
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Recent orders -->
+		<div class="card" style="margin-block-start:1.5rem">
+			<div class="card__head">
+				<h2 class="card__title">آخرین سفارش‌ها</h2>
+				<a class="btn btn--ghost btn--sm" href="/cms/orders">مشاهدهٔ همه</a>
+			</div>
+			<div class="table-wrap">
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">سفارش</th>
+							<th scope="col">مشتری</th>
+							<th scope="col" style="width:20%" class="num">مبلغ</th>
+							<th scope="col" style="width:20%">وضعیت</th>
+							<th scope="col" style="width:20%">تاریخ</th>
+						</tr>
+					</thead>
+					<tbody>
+						{metrics.recentOrders.map((order) => (
+							<tr>
+								<td><strong>{order.number}</strong></td>
+								<td>{order.customerName}</td>
+								<td class="num">{faMoney(order.total, currency)}</td>
+								<td><span class={`badge badge--${orderStatusTone(order.status)}`}>{orderStatusLabel(order.status)}</span></td>
+								<td class="num">{faDate(order.createdAt)}</td>
+							</tr>
+						))}
+						{metrics.recentOrders.length === 0 && (
+							<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)">سفارشی ثبت نشده است.</td></tr>
+						)}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</section>
+</CmsLayout>
+
+<style>
+	.grid--stats { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1rem; margin-block-end: 1.5rem; }
+	@media (min-width: 640px) { .grid--stats { grid-template-columns: repeat(2, 1fr); } }
+	@media (min-width: 1024px) { .grid--stats { grid-template-columns: repeat(4, 1fr); } }
+
+	.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.kpi__head { display: flex; justify-content: space-between; align-items: flex-start; }
+	.kpi__label { font-size: 0.85rem; color: var(--muted); }
+	.kpi__value { font-size: 1.5rem; font-weight: 800; color: var(--ink); }
+	.kpi__foot { font-size: 0.8rem; color: var(--muted); }
+
+	.revenue-chart { max-width: 100%; overflow-x: auto; }
+	.revenue-chart__inner { min-width: 36rem; }
+	.revenue-chart__plot { height: 9rem; display: flex; align-items: flex-end; gap: 0.35rem; padding-inline: 0.25rem; border-block-end: 1px solid var(--line); }
+	.revenue-chart__column { height: 100%; min-width: 0; flex: 1 0 0; display: flex; align-items: flex-end; justify-content: center; }
+	.revenue-chart__bar { width: min(100%, 1rem); background: var(--brand); border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: height 0.25s ease; }
+	.revenue-chart__bar--zero { background: transparent; }
+	.revenue-chart__axis { display: flex; margin-block-start: 0.4rem; color: var(--muted); font-size: 0.65rem; }
+	.revenue-chart__axis span { min-width: 0; flex: 1 0 0; text-align: center; white-space: nowrap; }
+	.chart-data { margin-block-start: 0.75rem; }
+	.chart-data summary { width: fit-content; color: var(--brand-ink); cursor: pointer; font-size: 0.85rem; }
+	.chart-data .table-wrap { margin-block-start: 0.75rem; max-height: 24rem; overflow: auto; }
+
+	.badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+	.badge--brand { background: var(--brand-soft); color: var(--brand-ink); border: 1px solid var(--brand-line); }
+	.badge--neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+
+	.num { font-variant-numeric: tabular-nums; }
+</style>
