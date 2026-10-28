@@ -1,0 +1,91 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import PostEditor from '../../../components/cms/PostEditor.astro';
+import { faNumber, faReadingTime } from '../../../lib/cms/fa';
+import { listMedia } from '../../../lib/cms/media';
+import { CmsError, getPostDraft } from '../../../lib/cms/posts';
+import { can } from '../../../lib/cms/rbac';
+
+export const prerender = false;
+
+const id = decodeURIComponent(Astro.params.id ?? '');
+const role = Astro.locals.cmsUser?.role ?? 'subscriber';
+const canPublish = can(role, 'cms.posts:publish');
+const canManageMedia = can(role, 'cms.media:write');
+
+let post: Awaited<ReturnType<typeof getPostDraft>> | null = null;
+let errorMessage = '';
+
+try {
+	post = await getPostDraft(id);
+} catch (error) {
+	errorMessage =
+		error instanceof CmsError ? error.message : 'خواندن نوشته با خطا روبه‌رو شد.';
+	Astro.response.status = error instanceof CmsError ? error.status : 500;
+}
+
+if (post && !post.draft && !canPublish) {
+	post = null;
+	errorMessage = 'ویرایش نوشتهٔ منتشرشده نیازمند مجوز انتشار است.';
+	Astro.response.status = 403;
+}
+
+const media = post ? await listMedia() : [];
+---
+
+{
+	post ? (
+		<CmsLayout
+			title={post.title || 'بدون عنوان'}
+			subtitle={`ویرایش نوشته — ${faNumber(post.body.split(/\s+/).filter(Boolean).length)} واژه — ${faReadingTime(
+				post.body.split(/\s+/).filter(Boolean).length,
+			)}`}
+		>
+			<Fragment slot="actions">
+				<a class="btn btn--outline btn--sm" href="/cms/posts">
+					<Icon name="arrow" size={15} />
+					<span>بازگشت به فهرست</span>
+				</a>
+			</Fragment>
+
+			<PostEditor
+				mode="edit"
+			media={media}
+			canPublish={canPublish}
+			canManageMedia={canManageMedia}
+			post={{
+					id: post.id,
+					title: post.title,
+					description: post.description,
+					slug: post.slug,
+					pubDate: post.pubDate,
+					updatedDate: post.updatedDate,
+					heroImage: post.heroImage,
+					tags: post.tags,
+					draft: post.draft,
+					body: post.body,
+				}}
+			/>
+
+			<p class="hint">
+				برای ذخیره، دکمهٔ «ذخیرهٔ تغییرات» را بزنید یا <kbd>Ctrl</kbd> + <kbd>S</kbd> را فشار دهید.
+				تا زمانی که ذخیره نکنید، تغییرات در فایل نوشته اعمال نمی‌شود.
+			</p>
+		</CmsLayout>
+	) : (
+		<CmsLayout title="نوشته پیدا نشد" subtitle="ممکن است نوشته حذف شده یا نشانی آن اشتباه باشد.">
+			<section class="card">
+				<div class="empty">
+					<span class="empty__icon"><Icon name="alert" size={22} /></span>
+					<span class="empty__title">{errorMessage || 'نوشته‌ای با این شناسه وجود ندارد.'}</span>
+					<span>شناسهٔ درخواستی: <code class="ltr">{id || '—'}</code></span>
+					<a class="btn btn--primary" href="/cms/posts" style="margin-top:.6rem">
+						<Icon name="arrow" size={15} />
+						<span>بازگشت به فهرست نوشته‌ها</span>
+					</a>
+				</div>
+			</section>
+		</CmsLayout>
+	)
+}

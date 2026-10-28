@@ -1,0 +1,49 @@
+---
+import { publicImageSrc } from '../../lib/cms/public-image';
+import type { Product } from '../../lib/commerce/types';
+
+interface Props {
+	product: Pick<Product, 'name' | 'slug' | 'image'>;
+	variant?: 'card' | 'detail';
+}
+
+const { product, variant = 'card' } = Astro.props;
+const image = publicImageSrc(product.image);
+const slug = product.slug.toLowerCase();
+const artKind = slug.includes('astro')
+	? 'template'
+	: slug.includes('ui-kit')
+		? 'ui'
+		: slug.includes('typography')
+		? 'typography'
+		: slug.includes('handbook')
+		? 'book'
+		: 'template';
+const artClass = `product-art product-art--${artKind}${variant === 'detail' ? ' product-art--detail' : ''}`;
+---
+
+{image ? (
+	<img
+		class="product-art__image"
+		src={image}
+		alt={product.name}
+		loading={variant === 'detail' ? 'eager' : 'lazy'}
+		decoding="async"
+	/>
+) : (
+	<div
+		class={artClass}
+		role="img"
+		aria-label={`پیش‌نمایش گرافیکی برای ${product.name}؛ تصویر محصول ثبت نشده است`}
+	>
+		<div class="product-art__shapes" aria-hidden="true">
+			<span class="product-art__shape product-art__shape--orb"></span>
+			<span class="product-art__shape product-art__shape--ring"></span>
+			<span class="product-art__shape product-art__shape--panel"></span>
+			<span class="product-art__glyph">ن</span>
+		</div>
+		<span class="product-art__notice" aria-hidden="true">
+			پیش‌نمایش گرافیکی <span>—</span> تصویر محصول ثبت نشده
+		</span>
+	</div>
+)}

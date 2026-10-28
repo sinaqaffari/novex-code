@@ -1,0 +1,70 @@
+---
+interface Props {
+	page: number;
+	pages: number;
+	total: number;
+	perPage: number;
+	baseUrl: string;
+	params?: Record<string, string | number | undefined>;
+	label?: string;
+}
+
+const { page, pages, total, perPage, baseUrl, params = {}, label = 'مورد' } = Astro.props;
+
+const hrefFor = (target: number) => {
+	const search = new URLSearchParams();
+	for (const [key, value] of Object.entries({ ...params, page: String(target) })) {
+		if (value !== undefined && value !== '' && value !== null) search.set(key, String(value));
+	}
+	const query = search.toString();
+	return query ? `${baseUrl}?${query}` : baseUrl;
+};
+
+const from = total === 0 ? 0 : (page - 1) * perPage + 1;
+const to = Math.min(page * perPage, total);
+
+const windowSize = 5;
+const start = Math.max(1, Math.min(page - Math.floor(windowSize / 2), pages - windowSize + 1));
+const numbers = Array.from({ length: Math.min(windowSize, pages) }, (_, index) => start + index).filter(
+	(number) => number >= 1 && number <= pages,
+);
+---
+
+<nav class="pagination" aria-label="صفحه‌بندی">
+	<span class="num">
+		نمایش {from.toLocaleString('fa-IR')} تا {to.toLocaleString('fa-IR')} از {total.toLocaleString('fa-IR')}
+		{label}
+	</span>
+
+	{
+		pages > 1 && (
+			<div class="pagination__pages">
+				<a
+					class="pagination__page"
+					href={hrefFor(page - 1)}
+					aria-disabled={page <= 1 ? 'true' : undefined}
+					aria-label="صفحهٔ قبل"
+				>
+					‹
+				</a>
+				{numbers.map((number) => (
+					<a
+						class="pagination__page num"
+						href={hrefFor(number)}
+						aria-current={number === page ? 'page' : undefined}
+					>
+						{number.toLocaleString('fa-IR')}
+					</a>
+				))}
+				<a
+					class="pagination__page"
+					href={hrefFor(page + 1)}
+					aria-disabled={page >= pages ? 'true' : undefined}
+					aria-label="صفحهٔ بعد"
+				>
+					›
+				</a>
+			</div>
+		)
+	}
+</nav>

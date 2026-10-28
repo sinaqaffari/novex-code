@@ -1,0 +1,79 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import Icon from '../../../components/cms/Icon.astro';
+import { faNumber, faRelative } from '../../../lib/cms/fa';
+import { can } from '../../../lib/cms/rbac';
+import { listBuilderPages } from '../../../lib/builder/store';
+
+export const prerender = false;
+
+const role = Astro.locals.cmsUser?.role ?? 'subscriber';
+const canWrite = can(role, 'cms.pages:write');
+const pages = await listBuilderPages();
+---
+
+<CmsLayout title="صفحه‌ها" subtitle={`${faNumber(pages.length)} صفحه در صفحه‌ساز`}>
+	<Fragment slot="actions">
+		{canWrite ? <a class="btn btn--primary btn--sm" href="/cms/pages/new"><Icon name="plus" size={15} /><span>صفحهٔ تازه</span></a> : null}
+	</Fragment>
+
+	<section class="card">
+		<div class="card__head">
+			<div>
+				<h2 class="card__title">صفحه‌های سایت</h2>
+				<p class="hint">محتوای ذخیره‌شده در Builder؛ نسخهٔ پیش‌نویس و نسخهٔ منتشرشده جداگانه نگهداری می‌شوند.</p>
+			</div>
+		</div>
+		{pages.length ? (
+			<div class="card__body card__body--flush">
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th scope="col">عنوان</th>
+								<th scope="col">وضعیت</th>
+								<th scope="col">مؤلفه‌ها</th>
+								<th scope="col">آخرین تغییر</th>
+								<th scope="col"><span class="sr-only">عملیات</span></th>
+							</tr>
+						</thead>
+						<tbody>
+							{pages.map((page) => (
+								<tr>
+									<td>
+										<strong class="table__title">{page.title}</strong>
+										<code class="table__slug ltr">/pages/{page.slug}</code>
+									</td>
+									<td>
+										{page.publishedAt ? (
+											<span class="badge badge--success"><span class="badge__dot" />منتشرشده</span>
+										) : (
+											<span class="badge badge--warning"><span class="badge__dot" />پیش‌نویس</span>
+										)}
+									</td>
+									<td class="num">{faNumber(page.nodeCount)}</td>
+									<td class="num">{faRelative(page.updatedAt)}</td>
+									<td>
+										<div class="table__actions">
+											{canWrite ? <a class="btn btn--outline btn--sm" href={`/cms/builder/${encodeURIComponent(page.slug)}`}><Icon name="edit" size={14} /><span>ویرایش</span></a> : null}
+											{page.publishedAt ? <a class="btn btn--ghost btn--sm" href={`/pages/${encodeURIComponent(page.slug)}`} target="_blank" rel="noreferrer" aria-label={`مشاهدهٔ ${page.title}`}><Icon name="eye" size={15} /></a> : null}
+										</div>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		) : (
+			<div class="empty">
+				<span class="empty__icon"><Icon name="grid" size={22} /></span>
+				<span class="empty__title">هنوز صفحه‌ای ساخته نشده است</span>
+				<span>یک صفحهٔ تازه بسازید و با بخش، تیتر و دکمه شروع کنید.</span>
+				{canWrite ? <a class="btn btn--primary" href="/cms/pages/new" style="margin-top:.6rem"><Icon name="plus" size={15} /><span>ساخت صفحه</span></a> : null}
+			</div>
+		)}
+	</section>
+
+	<p class="hint">صفحه‌های Builder در مسیر <code class="ltr">/pages/نامک</code> منتشر می‌شوند؛ نوشته‌های وبلاگ و فروشگاه بدون تغییر باقی می‌مانند.</p>
+</CmsLayout>

@@ -1,0 +1,60 @@
+{
+	"name": "ابزارهای فارسی",
+	"version": "1.0.0",
+	"description": "ویجت تاریخ جلالی تهران در داشبورد پنل با تنظیم فرمت و شیوهٔ نمایش اعداد همان ویجت.",
+	"license": "MIT",
+	"licenseUri": "https://opensource.org/licenses/MIT",
+	"textDomain": "novex-persian-tools",
+	"requires": "2.0.0",
+	"testedUpTo": "2.0.0",
+	"tags": [
+		"farsi",
+		"jalali",
+		"calendar",
+		"numbers",
+		"admin"
+	],
+	"hooks": [
+		"cms.dashboard.widgets"
+	],
+	"capabilities": [
+		"cms:widgets",
+		"options:read",
+		"options:write",
+		"admin:page"
+	],
+	"admin": {
+		"pages": [
+			{
+				"path": "settings",
+				"title": "تنظیمات فارسی",
+				"description": "فرمت نمایش تاریخ، استفاده از اعداد فارسی و نمایش روز هفته"
+			}
+		]
+	},
+	"settings": [
+		{
+			"key": "dateFormat",
+			"label": "فرمت تاریخ ویجت",
+			"type": "text",
+			"default": "medium",
+			"help": "فقط روی ویجت تاریخ داشبورد اثر دارد: short، medium یا long."
+		},
+		{
+			"key": "usePersianDigits",
+			"label": "اعداد فارسی در ویجت تاریخ",
+			"type": "switch",
+			"default": true,
+			"help": "این گزینه فقط شکل اعداد ویجت تاریخ را تغییر می‌دهد، نه همهٔ صفحات سایت."
+		},
+		{
+			"key": "showWeekday",
+			"label": "نمایش روز هفته در ویجت",
+			"type": "switch",
+			"default": false,
+			"help": "روز هفته به تاریخ جلالی ویجت داشبورد اضافه می‌شود."
+		}
+	],
+	"id": "persian-tools",
+	"apiVersion": 1
+}

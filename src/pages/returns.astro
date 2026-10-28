@@ -1,0 +1,34 @@
+---
+import ShopLayout from '../layouts/ShopLayout.astro';
+import '../styles/policies.css';
+import { readSettings } from '../lib/cms/settings';
+import { hydrateCart, readCart } from '../lib/commerce/cart';
+
+export const prerender = false;
+
+const [settings, cart] = await Promise.all([readSettings(), hydrateCart(readCart(Astro.cookies))]);
+---
+
+<ShopLayout title="مرجوعی و بازپرداخت" description={`اطلاعات مرجوعی و بازپرداخت ${settings.siteTitle}.`} cartCount={cart.count} settings={settings}>
+	<div class="policy-page">
+		<nav class="breadcrumbs" aria-label="مسیر"><a href="/">خانه</a><span aria-hidden="true">/</span><a href="/policies">سیاست‌ها</a><span aria-hidden="true">/</span><span aria-current="page">مرجوعی و بازپرداخت</span></nav>
+		<header class="policy-page__intro"><span class="policy-page__eyebrow">پس از ثبت سفارش</span><h1>مرجوعی و بازپرداخت</h1><p>رویهٔ نهایی باید توسط صاحب فروشگاه تعیین و با قوانین محل فعالیت تطبیق داده شود.</p></header>
+
+		<section class="policy-page__section">
+			<h2>وضعیت فعلی</h2>
+			<p class="policy-page__notice" role="note">در این نسخه مهلت، شرایط پذیرش مرجوعی، هزینهٔ بازگشت کالا و زمان‌بندی بازپرداخت پیکربندی نشده‌اند. این صفحه وعده یا بازهٔ زمانی برای آن‌ها تعیین نمی‌کند.</p>
+			<p>در پنل سفارش، وضعیت‌هایی برای لغو و بازپرداخت ثبت می‌شوند؛ این وضعیت‌ها به‌تنهایی به معنی اتصال خودکار به بانک، برگشت وجه یا صدور برچسب حمل نیستند.</p>
+		</section>
+
+		<section class="policy-page__section">
+			<h2>پیش از استفادهٔ عملیاتی</h2>
+			<ul>
+				<li>شرایط و مهلت درخواست، استثناها و وضعیت کالای قابل‌قبول را روشن کنید؛</li>
+				<li>مسئول رسیدگی، اطلاعات تماس و هزینه‌های احتمالی را اعلام کنید؛</li>
+				<li>روش بازپرداخت و زمان واقعی آن را مشخص کنید و با ارائه‌دهندهٔ پرداخت هماهنگ سازید.</li>
+			</ul>
+			<p>برای مشاهدهٔ وضعیت ثبت‌شدهٔ سفارش به <a href="/shop/track">پیگیری سفارش</a> بروید یا راه تماس تنظیم‌شده را در <a href="/contact">صفحهٔ تماس</a> ببینید.</p>
+			{!settings.commerceEnabled ? <p>در حال حاضر ماژول فروشگاه غیرفعال است و سفارش تازه پذیرفته نمی‌شود.</p> : null}
+		</section>
+	</div>
+</ShopLayout>
