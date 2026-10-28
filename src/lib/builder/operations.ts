@@ -51,6 +51,27 @@ export function findNodeLocation(nodes: readonly BuilderNode[], id: string, pare
 	return null;
 }
 
+/**
+ * Returns the path of nodes from the root level down to the node with `id`,
+ * including the target node itself. Returns null if the node is not found.
+ * Useful for rendering a selection breadcrumb in the editor.
+ */
+export function findNodePath(
+	nodes: readonly BuilderNode[],
+	id: string,
+	path: BuilderNode[] = []
+): BuilderNode[] | null {
+	for (const node of nodes) {
+		const nextPath = [...path, node];
+		if (node.id === id) return nextPath;
+		if (node.type === 'Container') {
+			const nested = findNodePath(node.children, id, nextPath);
+			if (nested) return nested;
+		}
+	}
+	return null;
+}
+
 export function addNode(
 	document: PageDocument,
 	type: BuilderComponentType,

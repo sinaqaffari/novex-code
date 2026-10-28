@@ -15,6 +15,7 @@ import {
 	duplicateNode,
 	findNode,
 	findNodeLocation,
+	findNodePath,
 	moveNode,
 	moveNodeBy,
 	setNodeHiddenAtBreakpoint,
@@ -96,6 +97,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const revisionRef = useRef(initialRevision);
 	const [isPublished, setIsPublished] = useState(Boolean(publishedAt));
 	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [dragOverId, setDragOverId] = useState<string | null>(null);
 	const [viewport, setViewport] = useState<Breakpoint>('desktop');
 	const [status, setStatus] = useState<AutosaveStatus>('saved');
 	const [saveError, setSaveError] = useState('');
@@ -722,10 +724,13 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 							<span className="builder-component-card__add">+</span>
 						</button>
 					</div>
-					<div className="builder-tree-heading"><span>لایه‌ها</span><span>{countNodes(document.nodes).toLocaleString('fa-IR')}</span></div>
+					{selectedId ? (
+						<Breadcrumb path={findNodePath(document.nodes, selectedId) ?? []} onSelect={setSelectedId} />
+					) : null}
+<div className="builder-tree-heading"><span>لایه‌ها</span><span>{countNodes(document.nodes).toLocaleString('fa-IR')}</span></div>
 					{document.nodes.length ? (
 						<div className="builder-tree" role="list" aria-label="ساختار صفحه">
-							{document.nodes.map((node) => <TreeNode key={node.id} node={node} selectedId={selectedId} onSelect={setSelectedId} onDragStart={startDrag} onDrop={handleDrop} />)}
+							{document.nodes.map((node) => <TreeNode key={node.id} node={node} selectedId={selectedId} dragOverId={dragOverId} onSelect={setSelectedId} onDragStart={startDrag} onDragOver={() => setDragOverId(node.id)} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />)}
 						</div>
 					) : (
 						<p className="builder-tree-empty">هنوز مؤلفه‌ای در صفحه نیست.</p>
@@ -776,7 +781,7 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 								</header>
 								<div className="builder-preview-content" data-testid="builder-canvas" onClick={() => setSelectedId(null)} onDragOver={(event) => event.preventDefault()}>
 									{document.nodes.length ? document.nodes.map((node) => (
-										<PreviewNode key={node.id} node={node} selectedId={selectedId} viewport={viewport} onSelect={setSelectedId} onInlineEdit={updateInlineText} onDragStart={startDrag} onDrop={handleDrop} />
+										<PreviewNode key={node.id} node={node} selectedId={selectedId} dragOverId={dragOverId} viewport={viewport} onSelect={setSelectedId} onInlineEdit={updateInlineText} onDragStart={startDrag} onDragOver={() => setDragOverId(node.id)} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />
 									)) : (
 										<div className="builder-canvas-empty">
 											<div className="builder-canvas-empty__mark">＋</div>
@@ -882,8 +887,11 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 interface TreeNodeProps {
 	node: BuilderNode;
 	selectedId: string | null;
+	dragOverId: string | null;
 	onSelect: (id: string) => void;
 	onDragStart: (event: DragEvent<HTMLElement>, id: string) => void;
+	onDragOver: (id: string) => void;
+	onDragOut: () => void;
 	onDrop: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 }
 
@@ -891,18 +899,19 @@ function componentIcon(type: BuilderComponentType): string {
 	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : type === 'ProductGrid' ? '▣' : '↗';
 }
 
-function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeProps) {
+function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragOver, onDragOut, onDrop }: TreeNodeProps) {
 	const label = getComponentDefinition(node.type).label;
 	const details = node.type === 'Heading' ? node.props.text
 		: node.type === 'Text' ? node.props.text
 			: node.type === 'Button' ? node.props.label
 				: node.type === 'Image' ? node.props.alt || node.props.src || 'بدون تصویر'
-					: node.type === 'ProductGrid' ? `محصولات ${node.props.binding.selection}`
-						: `${node.children.length} فرزند`;
+				: node.type === 'ProductGrid' ? `محصولات ${node.props.binding.selection}`
+					: `${node.children.length} فرزند`;
+	const isDropTarget = dragOverId === node.id;
 	return (
 		<div className="builder-tree-node" role="listitem">
 			<button
-				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}`}
+				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}${isDropTarget ? ' is-drag-over' : ''}`}
 				data-testid="tree-node"
 				data-node-id={node.id}
 				aria-pressed={selectedId === node.id}
@@ -910,17 +919,54 @@ function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeP
 				draggable
 				onClick={() => onSelect(node.id)}
 				onDragStart={(event) => onDragStart(event, node.id)}
-				onDragOver={(event) => event.preventDefault()}
-				onDrop={(event) => onDrop(event, node)}
+				onDragOver={(event) => { event.preventDefault(); onDragOver(node.id); }}
+				onDragLeave={onDragOut}
+				onDrop={(event) => { onDragOut(); onDrop(event, node); }}
 			>
 				<span className="builder-tree-node__type">{componentIcon(node.type)}</span>
 				<span className="builder-tree-node__label"><strong>{label}</strong><small>{details || 'بدون متن'}</small></span>
 			</button>
 			{node.type === 'Container' && node.children.length ? (
 				<div className="builder-tree-node__children" role="list">
-					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} onDragStart={onDragStart} onDrop={onDrop} />)}
+					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} dragOverId={dragOverId} onSelect={onSelect} onDragStart={onDragStart} onDragOver={onDragOver} onDragOut={onDragOut} onDrop={onDrop} />)}
 				</div>
 			) : null}
+		</div>
+	);
+}
+
+interface BreadcrumbProps {
+	path: BuilderNode[];
+	onSelect: (id: string) => void;
+}
+
+function Breadcrumb({ path, onSelect }: BreadcrumbProps) {
+	return (
+		<div className="builder-breadcrumb" aria-label="مسیر انتخاب">
+			{path.map((node, index) => {
+				const isLast = index === path.length - 1;
+				const definition = getComponentDefinition(node.type);
+				let label = definition.label;
+				if (isLast) {
+					if (node.type === 'Heading' || node.type === 'Text') {
+						label = node.props.text;
+					} else if (node.type === 'Button') {
+						label = node.props.label;
+					}
+				}
+				return (
+					<button
+						key={node.id}
+						type="button"
+						className={`builder-breadcrumb__item${isLast ? ' is-current' : ''}`}
+						onClick={() => onSelect(node.id)}
+						aria-current={isLast ? 'true' : undefined}
+					>
+						{index > 0 && <span className="builder-breadcrumb__separator">›</span>}
+						<span className="builder-breadcrumb__label">{label}</span>
+					</button>
+				);
+			})}
 		</div>
 	);
 }
@@ -928,42 +974,53 @@ function TreeNode({ node, selectedId, onSelect, onDragStart, onDrop }: TreeNodeP
 interface PreviewNodeProps {
 	node: BuilderNode;
 	selectedId: string | null;
+	dragOverId: string | null;
 	viewport: Breakpoint;
 	onSelect: (id: string) => void;
 	onInlineEdit: (id: string, value: string) => void;
 	onDragStart: (event: DragEvent<HTMLElement>, id: string) => void;
+	onDragOver: (id: string) => void;
+	onDragOut: () => void;
 	onDrop: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 }
 
-function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDragStart, onDrop }: PreviewNodeProps) {
+function PreviewNode({ node, selectedId, dragOverId, viewport, onSelect, onInlineEdit, onDragStart, onDragOver, onDragOut, onDrop }: PreviewNodeProps) {
 	const selected = node.id === selectedId;
 	const style = previewStyle(node, viewport);
 	const hidden = hiddenAtBreakpoint(node, viewport);
-	const className = `builder-preview-node${selected ? ' builder-preview-node--selected' : ''}${hidden ? ' builder-preview-node--hidden' : ''}`;
+	const isDropTarget = dragOverId === node.id;
+	const className = `builder-preview-node${selected ? ' builder-preview-node--selected' : ''}${hidden ? ' builder-preview-node--hidden' : ''}${isDropTarget ? ' builder-preview-node--drag-over' : ''}`;
 	const onClick = (event: ReactMouseEvent<HTMLElement>) => { event.stopPropagation(); onSelect(node.id); };
-	const dragProps = {
-		draggable: true,
-		onDragStart: (event: DragEvent<HTMLElement>) => { event.stopPropagation(); onDragStart(event, node.id); },
-		onDragOver: (event: DragEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); },
-		onDrop: (event: DragEvent<HTMLElement>) => onDrop(event, node),
-	};
-	if (hidden) {
-		return <div className={`${className} builder-preview-node--hidden-placeholder`} data-builder-id={node.id} onClick={onClick} {...dragProps}>در این اندازه پنهان است · {getComponentDefinition(node.type).label}</div>;
-	}
-	if (node.type === 'Container') {
-		return (
-			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
-				<div className={`nvx-builder-node nvx-builder-container nvx-builder-container--${node.props.background}`} data-layout={node.props.layout} data-max-width={node.props.maxWidth} style={{ gap: node.props.gap, padding: node.props.padding }}>
-					{node.children.length ? node.children.map((child) => <PreviewNode key={child.id} node={child} selectedId={selectedId} viewport={viewport} onSelect={onSelect} onInlineEdit={onInlineEdit} onDragStart={onDragStart} onDrop={onDrop} />) : <div className="builder-container-empty">برای افزودن فرزند، یک مؤلفه را از ستون ساختار انتخاب کنید.</div>}
+const responsiveBadge = hasResponsiveOverrides(node) ? (
+	<span className="builder-responsive-badge" title="استایل‌های واکنش‌گرا سفارشی در این اندازه" aria-label="تغییرات استایل واکنش‌گرا">R</span>
+) : null;
+
+const dragProps = {
+	draggable: true,
+	onDragStart: (event: DragEvent<HTMLElement>) => { event.stopPropagation(); onDragStart(event, node.id); },
+	onDragOver: (event: DragEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); onDragOver(node.id); },
+	onDragLeave: () => onDragOut(),
+	onDrop: (event: DragEvent<HTMLElement>) => { onDragOut(); onDrop(event, node) },
+};
+if (hidden) {
+	return <div className={`${className} builder-preview-node--hidden-placeholder`} data-builder-id={node.id} onClick={onClick} {...dragProps}>{responsiveBadge}در این اندازه پنهان است · {getComponentDefinition(node.type).label}</div>;
+}
+if (node.type === 'Container') {
+	return (
+		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+			{responsiveBadge}
+			<div className={`nvx-builder-node nvx-builder-container nvx-builder-container--${node.props.background}`} data-layout={node.props.layout} data-max-width={node.props.maxWidth} style={{ gap: node.props.gap, padding: node.props.padding }}>
+					{node.children.length ? node.children.map((child) => <PreviewNode key={child.id} node={child} selectedId={selectedId} dragOverId={dragOverId} viewport={viewport} onSelect={onSelect} onInlineEdit={onInlineEdit} onDragStart={onDragStart} onDragOver={() => onDragOver(child.id)} onDragOut={onDragOut} onDrop={onDrop} />) : <div className="builder-container-empty">برای افزودن فرزند، یک مؤلفه را از ستون ساختار انتخاب کنید.</div>}
 				</div>
 			</div>
 		);
 	}
-	if (node.type === 'Heading') {
-		const tag = `h${node.props.level}` as 'h1' | 'h2' | 'h3' | 'h4';
-		return (
-			<div className={className} data-builder-id={node.id} onClick={onClick} {...dragProps}>
-				<InlineEditableText
+if (node.type === 'Heading') {
+	const tag = `h${node.props.level}` as 'h1' | 'h2' | 'h3' | 'h4';
+	return (
+		<div className={className} data-builder-id={node.id} onClick={onClick} {...dragProps}>
+			{responsiveBadge}
+			<InlineEditableText
 					as={tag}
 					className={`nvx-builder-node nvx-builder-heading nvx-builder-heading--${node.props.size} nvx-builder-color--${node.props.color}`}
 					value={node.props.text}
@@ -976,11 +1033,12 @@ function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDra
 			</div>
 		);
 	}
-	if (node.type === 'Text') {
-		return (
-			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
-				<InlineEditableText
-					as="p"
+if (node.type === 'Text') {
+	return (
+		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+			{responsiveBadge}
+			<InlineEditableText
+				as="p"
 					className={`nvx-builder-node nvx-builder-text nvx-builder-text--${node.props.size} nvx-builder-color--${node.props.color}`}
 					value={node.props.text}
 					align={node.props.align}
@@ -991,10 +1049,11 @@ function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDra
 			</div>
 		);
 	}
-	if (node.type === 'Image') {
-		return (
-			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
-				<figure className="nvx-builder-node nvx-builder-image">
+if (node.type === 'Image') {
+	return (
+		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+			{responsiveBadge}
+			<figure className="nvx-builder-node nvx-builder-image">
 					<div className="nvx-builder-image__frame" data-aspect={node.props.aspectRatio} data-fit={node.props.fit}>
 						{node.props.src ? <PreviewImage src={resolveBuilderImageSource(node.props.src)} alt={node.props.alt} /> : <div className="nvx-builder-image__empty" role="img" aria-label={node.props.alt || 'تصویر در دسترس نیست'}>تصویر انتخاب نشده است</div>}
 					</div>
@@ -1003,15 +1062,17 @@ function PreviewNode({ node, selectedId, viewport, onSelect, onInlineEdit, onDra
 			</div>
 		);
 	}
-	if (node.type === 'ProductGrid') {
-		return (
-			<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
-				<ProductGridPreview node={node} />
+if (node.type === 'ProductGrid') {
+	return (
+		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+			{responsiveBadge}
+			<ProductGridPreview node={node} />
 			</div>
 		);
 	}
 	return (
 		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
+			{responsiveBadge}
 			<div className="nvx-builder-button-wrap" data-align={node.props.align}>
 				<a className={`nvx-builder-button nvx-builder-button--${node.props.variant}`} href={node.props.href} onClick={(event) => event.preventDefault()}>{node.props.label || 'دکمه'}</a>
 			</div>
@@ -1309,6 +1370,15 @@ function PageInspector({ document, onDescription, onTheme }: PageInspectorProps)
 			</div>
 		</div>
 	);
+}
+
+function hasResponsiveOverrides(node: BuilderNode): boolean {
+	if (!node.responsiveStyles) return false;
+	for (const breakpoint of ['desktop', 'tablet', 'mobile'] as const) {
+		const styles = node.responsiveStyles[breakpoint];
+		if (styles && Object.keys(styles).length > 0) return true;
+	}
+	return false;
 }
 
 function previewStyle(node: BuilderNode, viewport: Breakpoint): CSSProperties {
