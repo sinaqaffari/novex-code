@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readSettings, writeSettings } from '../src/lib/cms/settings.ts';
 import { readDatabase, updateDatabase } from '../src/lib/commerce/db.ts';
-import { createEmptyDatabase } from '../src/lib/commerce/db.ts';
 import type { Product } from '../src/lib/commerce/types.ts';
 
 const previousSettingsFile = process.env.CMS_SETTINGS_FILE;

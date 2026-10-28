@@ -3,7 +3,6 @@ import ShopLayout from '../layouts/ShopLayout.astro';
 import ProductCard from '../components/store/ProductCard.astro';
 import { readSettings } from '../lib/cms/settings';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
-<<<<<<< HEAD
 import { listProducts } from '../lib/commerce/products';
 import { faDate, faNumber, faReadingTime } from '../lib/cms/fa';
 import { listPosts } from '../lib/cms/posts';
@@ -14,8 +13,7 @@ const settings = await readSettings();
 const [currentCart, publishedPosts, products] = await Promise.all([
 	hydrateCart(readCart(Astro.cookies)),
 	listPosts(),
-<<<<<<< HEAD
-settings.commerceEnabled ? listProducts({ status: 'active', perPage: 8 }) : Promise.resolve({ items: [], counts: { active: 0 } }),
+	settings.commerceEnabled ? listProducts({ status: 'active', perPage: 8 }) : Promise.resolve({ items: [], counts: { active: 0 } }),
 ]);
 const posts = publishedPosts.filter((post) => !post.draft && post.id.endsWith('.md'));
 const featuredProducts = products.items.filter((product) => product.featured);
@@ -68,24 +66,14 @@ const hasCommerce = settings.commerceEnabled && products.counts.active > 0;
 		</div>
 	</section>
 
-<<<<<<< HEAD
 	{hasCommerce && (
-=======
-	{settings.commerceEnabled && visibleProducts.length > 0 && (
->>>>>>> 41f99f62cca0bf43b715330318b39a5514a2dd55
 		<section class="section" aria-labelledby="products-title">
 			<div class="section__head">
 				<div>
 					<h2 id="products-title">محصولات فروشگاه</h2>
-<<<<<<< HEAD
 					<p class="section__subtitle">{faNumber(products.counts.active)} محصول منتشرشده</p>
 				</div>
 				<a class="section__subtitle" href="/shop">همهٔ محصولات</a>
-=======
-					{products.length > 0 && <p class="section__subtitle">{faNumber(products.length)} محصول منتشرشده</p>}
-				</div>
-				{products.length > 0 && <a class="section__subtitle" href="/shop">همهٔ محصولات</a>}
->>>>>>> 41f99f62cca0bf43b715330318b39a5514a2dd55
 			</div>
 
 			{categories.length > 0 && (

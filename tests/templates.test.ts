@@ -11,14 +11,15 @@ import { validatePageDocument } from '../src/lib/builder/document.ts';
 import type { PageDocument } from '../src/lib/builder/types.ts';
 
 describe('Reusable sections and templates', () => {
-	it('returns four starter templates including a Persian storefront starter', () => {
+	it('returns five starter templates including a Persian storefront starter', () => {
 		const templates = listStarterTemplates();
-		assert.equal(templates.length, 4);
+		assert.equal(templates.length, 5);
 		const ids = templates.map((t) => t.id);
 		assert.ok(ids.includes('hero-intro'));
 		assert.ok(ids.includes('feature-grid'));
 		assert.ok(ids.includes('contact-cta'));
 		assert.ok(ids.includes('storefront-start'));
+		assert.ok(ids.includes('business-page'));
 	});
 
 	it('storefront template links to real shop, cart, checkout, and contact routes with no fake products', () => {
@@ -134,5 +135,73 @@ describe('Reusable sections and templates', () => {
 			assert.equal(template.document.schemaVersion, 1);
 			assert.doesNotThrow(() => validatePageDocument(template.document, template.document.slug));
 		}
+	});
+
+	it('business page template contains header, hero, grid, images, testimonials, pricing, FAQ, and footer sections', () => {
+		const template = listStarterTemplates().find((t) => t.id === 'business-page')!;
+		assert.ok(template);
+
+		function collectAllNodes(nodes: PageDocument['nodes']): PageDocument['nodes'] {
+			const result: PageDocument['nodes'] = [];
+			for (const node of nodes) {
+				result.push(node);
+				if (node.type === 'Container' && node.children) {
+					result.push(...collectAllNodes(node.children));
+				}
+			}
+			return result;
+		}
+
+		const allNodes = collectAllNodes(template.document.nodes);
+		const nodeTypes = new Set(allNodes.map((n) => n.type));
+		assert.ok(nodeTypes.has('Container'));
+		assert.ok(nodeTypes.has('Heading'));
+		assert.ok(nodeTypes.has('Text'));
+		assert.ok(nodeTypes.has('Button'));
+
+		// All headings and text nodes use non-empty content
+		for (const node of allNodes) {
+			if (node.type === 'Heading' || node.type === 'Text') {
+				assert.ok(node.props.text && node.props.text.length > 0, `Empty text in node ${node.id}`);
+			}
+			if (node.type === 'Button') {
+				assert.ok(node.props.label && node.props.label.length > 0, `Empty label in node ${node.id}`);
+				assert.ok(node.props.href && node.props.href.length > 0, `Empty href in node ${node.id}`);
+			}
+		}
+	});
+
+	it('business page template is a valid document and editable after application', () => {
+		const current = createEmptyPageDocument('business-test', 'صفحه تجاری تست');
+		const template = listStarterTemplates().find((t) => t.id === 'business-page')!;
+		let result = applyTemplate(template.document, current);
+
+		assert.equal(result.slug, 'business-test');
+		assert.equal(result.title, current.title);
+		assert.equal(result.themeId, template.document.themeId);
+		assert.doesNotThrow(() => validatePageDocument(result, 'business-test'));
+
+		// Edit a node after application
+		const firstContainer = result.nodes.find((n) => n.type === 'Container');
+		assert.ok(firstContainer);
+		result = updateNodeProps(result, firstContainer!.id, { gap: 24 });
+		const updated = result.nodes.find((n) => n.id === firstContainer!.id);
+		assert.ok(updated);
+		if (updated!.type === 'Container') {
+			assert.equal(updated!.props.gap, 24);
+		}
+	});
+
+	it('business page template produces independent documents when applied to multiple pages', () => {
+		const template = listStarterTemplates().find((t) => t.id === 'business-page')!;
+		const pageA = applyTemplate(template.document, createEmptyPageDocument('page-a', 'صفحه A'));
+		const pageB = applyTemplate(template.document, createEmptyPageDocument('page-b', 'صفحه B'));
+
+		assert.notEqual(pageA.slug, pageB.slug);
+		assert.notEqual(pageA.title, pageB.title);
+		assert.notEqual(pageA.nodes[0].id, pageB.nodes[0].id);
+		assert.equal(pageA.themeId, pageB.themeId);
+		assert.doesNotThrow(() => validatePageDocument(pageA, 'page-a'));
+		assert.doesNotThrow(() => validatePageDocument(pageB, 'page-b'));
 	});
 });

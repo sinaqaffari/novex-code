@@ -684,8 +684,8 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 					{status === 'conflict' ? <button className="builder-link-button" type="button" onClick={reloadServerVersion}>بارگیری نسخهٔ تازه</button> : null}
 				</div>
 				<div className="builder-toolbar__actions">
-					<button className="builder-icon-button" type="button" title="واگرد (Ctrl/⌘ Z)" aria-label="واگرد" data-testid="undo" disabled={!history.past.length} onClick={undo}>↶</button>
-					<button className="builder-icon-button" type="button" title="ازنو (Ctrl/⌘ Shift Z)" aria-label="ازنو" data-testid="redo" disabled={!history.future.length} onClick={redo}>↷</button>
+	<button className="builder-icon-button" type="button" title={`واگرد (Ctrl/⌘ Z) — ${history.past.length} مرحلهٔ قبلی`} aria-label={`واگرد، ${history.past.length} مرحلهٔ قبلی در دسترس است`} data-testid="undo" disabled={!history.past.length} onClick={undo}>↶{history.past.length ? <span className="builder-history-count">{history.past.length}</span> : null}</button>
+		<button className="builder-icon-button" type="button" title={`ازنو (Ctrl/⌘ Shift Z) — ${history.future.length} مرحلهٔ بعدی`} aria-label={`ازنو، ${history.future.length} مرحلهٔ بعدی در دسترس است`} data-testid="redo" disabled={!history.future.length} onClick={redo}>↷{history.future.length ? <span className="builder-history-count">{history.future.length}</span> : null}</button>
 					<button className="builder-toolbar-button" type="button" data-testid="save-page" onClick={() => void saveNow().catch(() => undefined)}>ذخیره</button>
 					{canPublish ? <button className="builder-toolbar-button builder-toolbar-button--publish" type="button" data-testid="publish-page" disabled={publishBusy} onClick={() => void publish()}>{publishBusy ? 'در حال انتشار…' : 'انتشار'}</button> : null}
 					{isPublished ? <a className="builder-toolbar-button builder-toolbar-button--quiet" href={`/pages/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">نمایش منتشرشده</a> : <button className="builder-toolbar-button builder-toolbar-button--quiet" type="button" disabled title="پس از انتشار در دسترس است">پس از انتشار</button>}
