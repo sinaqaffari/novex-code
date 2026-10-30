@@ -2,11 +2,12 @@
 import BuilderLayout from '../../../layouts/BuilderLayout.astro';
 import BuilderEditor from '../../../components/builder/BuilderEditor.tsx';
 import { can } from '../../../lib/cms/rbac';
-import { getDraftPage } from '../../../lib/builder/store';
+import { getDraftPage, listDeclarativePluginPackages } from '../../../lib/builder/store';
 import { applyFilters, collectOwnedBuilderComponents } from '../../../lib/plugins/hooks';
 import { collectBuilderPresets, type BuilderPluginPreset } from '../../../lib/builder/plugin-presets';
 import { collectOwnedPluginComponents } from '../../../lib/builder/plugin-components';
 import { findPlugin } from '../../../lib/plugins/registry';
+import { processorSummary, type WasmProcessorSummary } from '../../../lib/builder/plugin-wasm';
 import type { PluginBlockProps } from '../../../lib/builder/types';
 import { isValidPageSlug } from '../../../lib/builder/document';
 
@@ -21,6 +22,7 @@ if (!can(role, 'cms.pages:write')) return Astro.redirect('/cms/pages');
 const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
 let pluginPresets: BuilderPluginPreset[] = [];
 let pluginComponents: PluginBlockProps[] = [];
+const pluginProcessors: WasmProcessorSummary[] = [];
 try {
 	const collected = await collectOwnedBuilderComponents();
 	const result = collectOwnedPluginComponents(collected.contributions, (owner) => { const plugin = findPlugin(owner); return plugin?.active && !plugin.error ? plugin.manifest.version : undefined; });
@@ -28,13 +30,31 @@ try {
 	const rejected = collected.rejected + result.rejected;
 	if (rejected) console.warn(`[builder] rejected ${rejected} invalid plugin components`);
 } catch { console.error('[builder] plugin component collection failed'); }
+const packageWarnings: string[] = [];
+const uploadedPresets: BuilderPluginPreset[] = [];
+try {
+	for (const item of await listDeclarativePluginPackages()) {
+		if (!item.active) continue;
+		if (findPlugin(item.package.id) || pluginComponents.some((component) => component.pluginId === item.package.id)) {
+			packageWarnings.push(`شناسهٔ بستهٔ داده‌محور ${item.package.id} با افزونهٔ داخلی تداخل دارد و برای درج نمایش داده نشد.`);
+			continue;
+		}
+		pluginComponents.push(...item.package.components);
+		uploadedPresets.push(...(item.package.presets ?? []));
+		pluginProcessors.push(...(item.package.processors ?? []).map((processor) => processorSummary(processor, item.package.id, item.revision)));
+	}
+} catch { packageWarnings.push('خواندن بسته‌های داده‌محور ممکن نشد؛ بسته‌ها برای درج نمایش داده نشدند.'); }
 try {
 	const result = collectBuilderPresets(await applyFilters('builder.presets', []));
 	pluginPresets = result.presets;
 	if (result.rejected) console.warn(`[builder] rejected ${result.rejected} invalid or duplicate plugin presets`);
 } catch { console.error('[builder] plugin preset collection failed'); }
+const combinedPresets = collectBuilderPresets([...pluginPresets, ...uploadedPresets]);
+pluginPresets = combinedPresets.presets;
+if (combinedPresets.rejected) packageWarnings.push('برخی پیش‌تنظیم‌های افزونه به‌دلیل تداخل شناسه یا محدودیت تعداد نمایش داده نشدند.');
 ---
 
 <BuilderLayout title={record?.draft.title ?? 'صفحه'}>
-	{record ? <BuilderEditor client:load pluginComponents={pluginComponents} pluginPresets={pluginPresets} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+	{packageWarnings.map((warning) => <p role="alert">{warning}</p>)}
+	{record ? <BuilderEditor client:load pluginComponents={pluginComponents} pluginPresets={pluginPresets} pluginProcessors={pluginProcessors} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canPublishCode={can(role, 'cms.pages:publishCode')} canWritePosts={can(role, 'cms.posts:write')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
 </BuilderLayout>

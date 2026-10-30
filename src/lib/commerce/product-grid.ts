@@ -1,9 +1,10 @@
 import type { Product, ProductGridBinding, PublicProductCard } from './types.ts';
 import { readDatabase } from './db.ts';
 import { normalizeProductGridBinding } from './product-binding.ts';
+import { publicImageSrc } from '../cms/public-image.ts';
 
 function safePublicImage(value: string): string {
-	const image = value.trim();
+	const image = publicImageSrc(value).trim();
 	if (!image || /[\\\u0000-\u001f\u007f]/.test(image)) return '';
 	if (image.startsWith('/') && !image.startsWith('//')) return image;
 	try {

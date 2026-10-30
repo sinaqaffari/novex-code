@@ -4,7 +4,7 @@
  * for an unmapped route.
  */
 
-import type { Permission } from './rbac.ts';
+import { can, type Permission, type Role } from './rbac.ts';
 
 interface CmsRouteRule {
 	prefix: string;
@@ -30,6 +30,7 @@ const RULES: CmsRouteRule[] = [
 	{ prefix: '/cms/plugins', read: 'cms.plugins:read', write: 'cms.plugins:write' },
 	{ prefix: '/cms/api/settings', read: 'cms.settings:read', write: 'cms.settings:write' },
 	{ prefix: '/cms/settings', read: 'cms.settings:write', write: 'cms.settings:write' },
+	{ prefix: '/cms/api/builder/imports/wordpress-posts', exact: true, read: 'cms.posts:read', write: 'cms.posts:write' },
 	{ prefix: '/cms/api/builder', read: 'cms.pages:read', write: 'cms.pages:write' },
 	{ prefix: '/cms/builder', read: 'cms.pages:read', write: 'cms.pages:write' },
 	{ prefix: '/cms/pages', read: 'cms.pages:read', write: 'cms.pages:write' },
@@ -50,6 +51,11 @@ const RULES: CmsRouteRule[] = [
 	{ prefix: '/cms/language', read: 'cms.settings:read', write: 'cms.settings:write' },
 	{ prefix: '/cms', exact: true, read: 'commerce.orders:read', write: 'commerce.orders:write' },
 ];
+
+/** The full dashboard includes order data, so choose a permitted default for other roles. */
+export function cmsLandingPage(role: Role): string {
+	return can(role, 'commerce.orders:read') ? '/cms' : '/cms/posts';
+}
 
 function matches(pathname: string, rule: CmsRouteRule): boolean {
 	if (rule.exact) return pathname === rule.prefix;

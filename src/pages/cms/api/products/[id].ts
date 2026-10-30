@@ -9,6 +9,7 @@ import {
 	updateProduct,
 } from '../../../../lib/commerce/products';
 import type { ProductStatus } from '../../../../lib/commerce/types';
+import { mediaRequestOrigins } from '../../../../lib/urls';
 
 export const prerender = false;
 
@@ -20,7 +21,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
 		const id = decodeURIComponent(params.id ?? '');
 		if (!id) throw notFound('شناسهٔ محصول مشخص نیست.');
 		const payload = await readPayload(request);
-		const product = await updateProduct(id, toProductInput(payload));
+		const product = await updateProduct(id, toProductInput(payload), { origins: mediaRequestOrigins(request) });
 		const target = `/cms/products/${product.id}?flash=saved`;
 		return wantsJson ? json({ ok: true, id: product.id, redirect: target }) : redirect(target);
 	} catch (error) {
@@ -48,7 +49,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 		}
 
 		if (action === 'duplicate') {
-			const copy = await duplicateProduct(id);
+			const copy = await duplicateProduct(id, { origins: mediaRequestOrigins(request) });
 			const target = `/cms/products/${copy.id}?flash=duplicated`;
 			return wantsJson ? json({ ok: true, id: copy.id, redirect: target }) : redirect(target);
 		}

@@ -15,7 +15,7 @@ import {
 	type Role,
 	type Permission,
 } from '../src/lib/cms/rbac.ts';
-import { requiredCmsPermission } from '../src/lib/cms/access.ts';
+import { cmsLandingPage, requiredCmsPermission } from '../src/lib/cms/access.ts';
 
 describe('RBAC — hasPermission', () => {
 	it('admin has all core permissions', () => {
@@ -192,4 +192,14 @@ describe('CMS route authorization', () => {
 		);
 		assert.equal(requiredCmsPermission({ pathname: '/cms/api/logout', method: 'POST' }), null);
 	});
+});
+
+
+it('chooses a permitted post-login landing page for each role without granting new permissions', () => {
+	for (const role of ['admin', 'editor', 'contributor', 'subscriber'] as const) {
+		const destination = cmsLandingPage(role);
+		const permission = requiredCmsPermission({ pathname: destination, method: 'GET' });
+		assert.ok(permission && can(role, permission));
+		assert.equal(destination, role === 'admin' || role === 'editor' ? '/cms' : '/cms/posts');
+	}
 });

@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
-import { failure, json, readPayload, redirect } from '../../../../lib/cms/http';
-import { toPostInput } from '../../../../lib/cms/input';
-import { CmsError, deletePost, duplicatePost, getPostDraft, updatePost } from '../../../../lib/cms/posts';
-import { canEditPost } from '../../../../lib/cms/rbac';
+import { failure, json, readPayload, redirect } from '../../../../lib/cms/http.ts';
+import { toPostInput } from '../../../../lib/cms/input.ts';
+import { CmsError, deletePost, duplicatePost, updatePost } from '../../../../lib/cms/posts.ts';
+import { mediaRequestOrigins } from '../../../../lib/urls.ts';
 
 export const prerender = false;
 
@@ -31,12 +31,7 @@ export const PUT: APIRoute = async ({ request, params, locals }) => {
 		const payload = await readPayload(request);
 		const input = toPostInput(payload);
 		const role = locals.cmsUser?.role ?? 'subscriber';
-		const current = await getPostDraft(id);
-		const nextDraft = input.draft ?? current.draft;
-		if (!canEditPost(role, current.draft, nextDraft)) {
-			throw new CmsError('برای ویرایش نوشتهٔ منتشرشده یا تغییر وضعیت انتشار، مجوز ویراستار لازم است.', 'draft', 403);
-		}
-		const nextId = await updatePost(id, input);
+		const nextId = await updatePost(id, input, { role, origins: mediaRequestOrigins(request) });
 
 		if (wantsJson) {
 			return json({ ok: true, id: nextId, redirect: `/cms/posts/${nextId}?flash=saved` });
@@ -56,7 +51,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 		id = idFrom(params);
 
 		if (action === 'duplicate') {
-			const nextId = await duplicatePost(id);
+			const nextId = await duplicatePost(id, { origins: mediaRequestOrigins(request) });
 			if (wantsJson) return json({ ok: true, id: nextId, redirect: `/cms/posts/${nextId}` });
 			return redirect(`/cms/posts/${encodeURIComponent(nextId)}?flash=duplicated`);
 		}

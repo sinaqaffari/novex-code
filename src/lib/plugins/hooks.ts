@@ -93,8 +93,8 @@ export function listHooks(): Array<{ hook: string; owner: string; priority: numb
  * Collect builder component declarations per hook owner rather than chaining
  * mutable arrays between plugins. This remains trusted in-process code, not a sandbox.
  */
-export async function collectOwnedBuilderComponents(): Promise<{ contributions: Array<{ owner: string; value: unknown }>; rejected: number }> {
-	const entries = registry.get('builder.components') ?? [];
+export async function collectOwnedBuilderComponents(owner?: string): Promise<{ contributions: Array<{ owner: string; value: unknown }>; rejected: number }> {
+	const entries = (registry.get('builder.components') ?? []).filter((entry) => owner === undefined || entry.owner === owner);
 	const contributions: Array<{ owner: string; value: unknown }> = [];
 	let rejected = 0;
 	for (const entry of [...entries]) {

@@ -3,14 +3,16 @@
  * them, and every file is previewed through the panel's own streaming route.
  */
 
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import type { Stats } from 'node:fs';
+import { lstat, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import sharp from 'sharp';
 import { AppError as CmsError } from '../errors.ts';
 
-export const ASSETS_DIR = path.resolve(process.cwd(), 'src/assets');
+export const ASSETS_DIR = path.resolve(process.env.CMS_ASSETS_DIR || path.join(process.cwd(), 'src/assets'));
 export const UPLOAD_DIR = path.join(ASSETS_DIR, 'uploads');
-export const BLOG_DIR = path.resolve(process.cwd(), 'src/content/blog');
+export const BLOG_DIR = path.resolve(process.env.CMS_BLOG_DIR || path.join(process.cwd(), 'src/content/blog'));
 
 export const ALLOWED_EXTENSIONS = [
 	'jpg',
@@ -36,6 +38,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 const MAX_BYTES = 8 * 1024 * 1024; // ۸ مگابایت
+const MAX_IMAGE_PIXELS = 40_000_000;
 
 export interface MediaItem {
 	name: string;
@@ -47,6 +50,9 @@ export interface MediaItem {
 	bytes: number;
 	modifiedAt: string;
 	extension: string;
+	mimeType: string;
+	width?: number;
+	height?: number;
 	/** True for images that ship with the theme. */
 	builtin: boolean;
 }
@@ -100,6 +106,7 @@ async function collect(directory: string, builtin: boolean): Promise<MediaItem[]
 			.map(async (entry) => {
 				const absolute = path.join(directory, entry.name);
 				const info = await stat(absolute);
+				const dimensions = await imageDimensions(absolute).catch(() => ({}));
 				return {
 					name: entry.name,
 					reference: toReference(absolute),
@@ -108,6 +115,8 @@ async function collect(directory: string, builtin: boolean): Promise<MediaItem[]
 					bytes: info.size,
 					modifiedAt: info.mtime.toISOString(),
 					extension: extensionOf(entry.name),
+					mimeType: MIME_BY_EXTENSION[extensionOf(entry.name)] ?? 'application/octet-stream',
+					...dimensions,
 					builtin,
 				} satisfies MediaItem;
 			}),
@@ -129,7 +138,12 @@ export async function listMedia(): Promise<MediaItem[]> {
 	return [...uploads, ...builtin];
 }
 
-export async function validateUploadFile(file: File): Promise<void> {
+async function imageDimensions(input: string | Buffer): Promise<{ width?: number; height?: number }> {
+	const metadata = await sharp(input, { limitInputPixels: MAX_IMAGE_PIXELS }).metadata();
+	return { ...(metadata.width ? { width: metadata.width } : {}), ...(metadata.height ? { height: metadata.height } : {}) };
+}
+
+async function inspectUploadFile(file: File): Promise<{ width: number; height: number }> {
 	const extension = extensionOf(file.name);
 	if (!ALLOWED_UPLOAD_EXTENSIONS.includes(extension as never)) {
 		throw new CmsError('فقط تصاویر JPG، PNG، WebP، AVIF و GIF مجاز هستند.', 'file');
@@ -149,47 +163,124 @@ export async function validateUploadFile(file: File): Promise<void> {
 					? ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a'
 					: header.length >= 12 && ascii(4, 4) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 4));
 	if (!validSignature) throw new CmsError('محتوای فایل با قالب تصویر انتخاب‌شده سازگار نیست.', 'file');
+	try {
+		const metadata = await sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: MAX_IMAGE_PIXELS }).metadata();
+		const width = metadata.width ?? 0;
+		const height = metadata.height ?? 0;
+		const totalPixels = width * (metadata.pageHeight ?? height) * (metadata.pages ?? 1);
+		if (metadata.mediaType !== MIME_BY_EXTENSION[extension] || !width || !height || totalPixels > MAX_IMAGE_PIXELS) throw new Error('invalid image metadata');
+		return { width, height };
+	} catch {
+		throw new CmsError('ساختار یا ابعاد تصویر معتبر نیست (حداکثر ۴۰ میلیون پیکسل).', 'file');
+	}
 }
 
-export async function saveUpload(file: File): Promise<MediaItem> {
-	await validateUploadFile(file);
-	await mkdir(UPLOAD_DIR, { recursive: true });
+export async function validateUploadFile(file: File): Promise<void> {
+	await inspectUploadFile(file);
+}
+
+/** Reuse is opt-in and explicitly reported; ordinary uploads retain their own identity. */
+export type MediaUploadResult = MediaItem & { reused: boolean };
+
+export async function saveUpload(file: File, options: { deduplicate?: boolean } = {}): Promise<MediaUploadResult> {
+	const dimensions = await inspectUploadFile(file);
+	const bytes = Buffer.from(await file.arrayBuffer());
 	const extension = extensionOf(file.name);
+	const base = path.basename(file.name, path.extname(file.name)).toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'image';
+	const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
+	try {
+		return await withBuilderAssetLock(async () => {
+			await mkdir(UPLOAD_DIR, { recursive: true });
+			if (options.deduplicate) {
+				// Only managed regular uploads of the same type and size are examined.
+				// Exact byte equality avoids hash-collision ambiguity; nothing is deleted.
+				const entries = (await readdir(UPLOAD_DIR, { withFileTypes: true }))
+					.filter((entry) => entry.isFile() && !entry.name.startsWith('.') && MIME_BY_EXTENSION[extensionOf(entry.name)] === MIME_BY_EXTENSION[extension])
+					.sort((a, b) => a.name.localeCompare(b.name));
+				for (const entry of entries) {
+					const absolute = path.join(UPLOAD_DIR, entry.name);
+					const info = await stat(absolute);
+					if (info.size !== bytes.length) continue;
+					if (!bytes.equals(await readFile(absolute))) continue;
+					return uploadItem(entry.name, absolute, info, dimensions, true);
+				}
+			}
+			// Exclusive creation avoids overwriting an existing asset even if IDs collide.
+			for (let attempt = 0; attempt < 8; attempt++) {
+				const name = `${base}-${randomUUID().slice(0, 8)}.${extension}`;
+				const absolute = path.join(UPLOAD_DIR, name);
+				try {
+					await writeFile(absolute, bytes, { flag: 'wx' });
+					return uploadItem(name, absolute, await stat(absolute), dimensions, false);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+				}
+			}
+			throw new CmsError('ساخت نام یکتا برای فایل ممکن نشد.', 'file', 500);
+		});
+	} catch (error) {
+		if (error instanceof BuilderStoreError) throw new CmsError(error.message, 'file', error.status);
+		throw error;
+	}
+}
 
-	const base =
-		path
-			.basename(file.name, path.extname(file.name))
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-+|-+$/g, '')
-			.slice(0, 40) || 'image';
-
-	const name = `${base}-${randomUUID().slice(0, 8)}.${extension}`;
+/** Stable content-addressed kit assets permit three-way updates to recognize
+ * unchanged files. Existing files are verified, never overwritten or removed. */
+export async function saveKitUpload(file: File): Promise<MediaUploadResult> {
+	const dimensions = await inspectUploadFile(file);
+	const bytes = Buffer.from(await file.arrayBuffer());
+	const extension = extensionOf(file.name);
+	const name = `kit-${createHash('sha256').update(bytes).digest('hex')}.${extension}`;
 	const absolute = path.join(UPLOAD_DIR, name);
-	await writeFile(absolute, Buffer.from(await file.arrayBuffer()));
+	const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
+	try {
+		return await withBuilderAssetLock(async () => {
+			await mkdir(UPLOAD_DIR, { recursive: true });
+			try {
+				await writeFile(absolute, bytes, { flag: 'wx' });
+				return uploadItem(name, absolute, await stat(absolute), dimensions, false);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+				const info = await lstat(absolute);
+				if (!info.isFile() || info.isSymbolicLink() || info.size !== bytes.length || !bytes.equals(await readFile(absolute))) throw new CmsError('دارایی هم‌نام با محتوای متفاوت وجود دارد؛ بازنویسی نشد.', 'file', 409);
+				return uploadItem(name, absolute, info, dimensions, true);
+			}
+		});
+	} catch (error) {
+		if (error instanceof BuilderStoreError) throw new CmsError(error.message, 'file', error.status);
+		throw error;
+	}
+}
 
-	const info = await stat(absolute);
+function uploadItem(name: string, absolute: string, info: Stats, dimensions: { width: number; height: number }, reused: boolean): MediaUploadResult {
+	const extension = extensionOf(name);
 	return {
-		name,
-		reference: toReference(absolute),
-		previewUrl: previewUrlFor(absolute),
-		publicUrl: publicUrlFor(absolute),
-		bytes: info.size,
-		modifiedAt: info.mtime.toISOString(),
-		extension,
-		builtin: false,
+		name, reference: toReference(absolute), previewUrl: previewUrlFor(absolute), publicUrl: publicUrlFor(absolute),
+		bytes: info.size, modifiedAt: info.mtime.toISOString(), extension, mimeType: MIME_BY_EXTENSION[extension],
+		...dimensions, builtin: false, reused,
 	};
 }
 
 export async function deleteUpload(name: string): Promise<void> {
-	const safeName = path.basename(decodeURIComponent(name));
-	if (!ALLOWED_EXTENSIONS.includes(extensionOf(safeName) as never)) {
-		throw new CmsError('نام فایل معتبر نیست.', 'file');
-	}
+	let decoded: string;
+	try { decoded = decodeURIComponent(name); } catch { throw new CmsError('نام فایل معتبر نیست.', 'file'); }
+	if (decoded !== path.basename(decoded) || !ALLOWED_EXTENSIONS.includes(extensionOf(decoded) as never)) throw new CmsError('نام فایل معتبر نیست.', 'file');
+	// Protect persisted Builder snapshots, CMS posts and product images under
+	// the same lock. If a store cannot be inspected, fail closed.
+	const { BuilderStoreError, withUnusedBuilderUpload } = await import('../builder/store.ts');
 	try {
-		await unlink(path.join(UPLOAD_DIR, safeName));
-	} catch {
-		throw new CmsError('فایل مورد نظر پیدا نشد.', 'file', 404);
+		await withUnusedBuilderUpload(decoded, async () => {
+			const [{ BLOG_DIR: postDirectory }, { assertBlogUploadUnused }, { recoverPostBatchesUnderLock }, { assertProductUploadUnused }] = await Promise.all([import('./posts.ts'), import('./blog-media.ts'), import('./post-batch.ts'), import('../commerce/product-media.ts')]);
+			await recoverPostBatchesUnderLock(postDirectory);
+			await assertBlogUploadUnused(postDirectory, decoded);
+			await assertProductUploadUnused(decoded);
+			try { await unlink(path.join(UPLOAD_DIR, decoded)); }
+			catch { throw new CmsError('فایل مورد نظر پیدا نشد.', 'file', 404); }
+		});
+	} catch (error) {
+		if (error instanceof BuilderStoreError) throw new CmsError(error.message, 'file', error.status);
+		throw error;
 	}
 }
 
@@ -209,7 +300,8 @@ export async function assetExists(reference: string): Promise<boolean> {
 	const absolute = resolveAssetPath(reference);
 	if (!absolute) return false;
 	try {
-		return (await stat(absolute)).isFile();
+		const info = await lstat(absolute);
+		return info.isFile() && !info.isSymbolicLink();
 	} catch {
 		return false;
 	}

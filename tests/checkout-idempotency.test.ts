@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, it, after } from 'node:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readDatabase, updateDatabase } from '../src/lib/commerce/db.ts';
-import { createOrGetOrderFromCheckout } from '../src/lib/commerce/orders.ts';
-import { createEmptyDatabase } from '../src/lib/commerce/db.ts';
 import type { Product } from '../src/lib/commerce/types.ts';
 
 const previousCommerceFile = process.env.COMMERCE_DB_FILE;
+const previousBuilderFile = process.env.BUILDER_DATA_FILE;
 const testDirectory = await mkdtemp(join(tmpdir(), 'novex-checkout-idempotency-'));
 process.env.COMMERCE_DB_FILE = join(testDirectory, 'commerce.json');
+process.env.BUILDER_DATA_FILE = join(testDirectory, 'builder.json');
+
+// The commerce store resolves its data path when imported.
+const { readDatabase, updateDatabase, DB_FILE } = await import('../src/lib/commerce/db.ts');
+const { createOrGetOrderFromCheckout } = await import('../src/lib/commerce/orders.ts');
+assert.equal(DB_FILE, process.env.COMMERCE_DB_FILE);
 
 const testProduct: Product = {
 	id: 'prd_idem_test',
@@ -44,6 +48,8 @@ after(async () => {
 	await rm(testDirectory, { recursive: true, force: true });
 	if (previousCommerceFile === undefined) delete process.env.COMMERCE_DB_FILE;
 	else process.env.COMMERCE_DB_FILE = previousCommerceFile;
+	if (previousBuilderFile === undefined) delete process.env.BUILDER_DATA_FILE;
+	else process.env.BUILDER_DATA_FILE = previousBuilderFile;
 });
 
 async function seedProduct(): Promise<void> {

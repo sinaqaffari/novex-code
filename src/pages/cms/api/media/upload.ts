@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro';
-import { failure, json, redirect } from '../../../../lib/cms/http';
-import { builderMediaReferenceFromPublicUrl } from '../../../../lib/builder/media-reference';
-import { can } from '../../../../lib/cms/rbac';
-import { saveUpload, validateUploadFile } from '../../../../lib/cms/media';
-import { CmsError } from '../../../../lib/cms/posts';
+import { failure, json, redirect } from '../../../../lib/cms/http.ts';
+import { builderMediaReferenceFromPublicUrl } from '../../../../lib/builder/media-reference.ts';
+import { can } from '../../../../lib/cms/rbac.ts';
+import { saveUpload, validateUploadFile } from '../../../../lib/cms/media.ts';
+import { CmsError } from '../../../../lib/cms/posts.ts';
+import { readBoundedRequestBytes, RequestBodyError } from '../../../../lib/cms/request-body.ts';
 
 export const prerender = false;
 
@@ -22,7 +23,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	try {
-		const form = await request.formData();
+		const bytes = await readBoundedRequestBytes(request, MAX_BATCH_BYTES + MULTIPART_OVERHEAD_BYTES);
+		const form = await new Response(bytes, { headers: { 'content-type': request.headers.get('content-type') ?? '' } }).formData();
 		const files = form.getAll('files').filter((entry): entry is File => entry instanceof File);
 		const single = form.get('file');
 		if (single instanceof File) files.push(single);
@@ -33,13 +35,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
 		// Validate the whole batch before writing any file, avoiding partial uploads on a bad item.
 		for (const file of files) await validateUploadFile(file);
+		const deduplicate = form.get('deduplicate') === '1';
 		const uploaded = [];
-		for (const file of files) uploaded.push(await saveUpload(file));
+		for (const file of files) uploaded.push(await saveUpload(file, { deduplicate }));
 
 		if (wantsJson) {
 			return json({
 				ok: true,
-				files: uploaded.map(({ name, publicUrl, previewUrl, bytes, modifiedAt, builtin }) => ({
+				files: uploaded.map(({ name, publicUrl, previewUrl, bytes, modifiedAt, builtin, mimeType, width, height, reused }) => ({
 					name,
 					assetRef: builderMediaReferenceFromPublicUrl(publicUrl),
 					publicUrl,
@@ -47,13 +50,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
 					bytes,
 					modifiedAt,
 					builtin,
+					reused,
+					mimeType,
+					width,
+					height,
 				})),
 			});
 		}
-		return redirect('/cms/media?flash=uploaded');
+		return redirect(`/cms/media?flash=${uploaded.some((item) => item.reused) ? 'upload-reused' : 'uploaded'}`);
 	} catch (error) {
-		const message = error instanceof CmsError ? error.message : 'بارگذاری فایل ناموفق بود.';
-		const status = error instanceof CmsError ? error.status : 500;
+		const tooLarge = error instanceof RequestBodyError && error.code === 'payload_too_large';
+		const message = tooLarge ? 'حجم مجموع بارگذاری نمی‌تواند بیشتر از ۱۶ مگابایت باشد.' : error instanceof CmsError ? error.message : 'بارگذاری فایل ناموفق بود.';
+		const status = tooLarge ? 413 : error instanceof CmsError ? error.status : error instanceof RequestBodyError ? 400 : 500;
 		if (wantsJson) return failure(message, status, 'file');
 		return redirect(`/cms/media?error=${encodeURIComponent(message)}`);
 	}

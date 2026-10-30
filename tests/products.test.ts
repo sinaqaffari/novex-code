@@ -8,8 +8,10 @@ import { after, beforeEach, describe, it } from 'node:test';
 import type { Product } from '../src/lib/commerce/types.ts';
 
 const previousCommerceFile = process.env.COMMERCE_DB_FILE;
+const previousBuilderFile = process.env.BUILDER_DATA_FILE;
 const testDirectory = await mkdtemp(join(tmpdir(), 'novex-product-sorting-'));
 process.env.COMMERCE_DB_FILE = join(testDirectory, 'commerce.json');
+process.env.BUILDER_DATA_FILE = join(testDirectory, 'builder.json');
 
 const { listProducts, parseProductSort } = await import('../src/lib/commerce/products.ts');
 const { updateDatabase } = await import('../src/lib/commerce/db.ts');
@@ -18,6 +20,8 @@ after(async () => {
 	await rm(testDirectory, { recursive: true, force: true });
 	if (previousCommerceFile === undefined) delete process.env.COMMERCE_DB_FILE;
 	else process.env.COMMERCE_DB_FILE = previousCommerceFile;
+	if (previousBuilderFile === undefined) delete process.env.BUILDER_DATA_FILE;
+	else process.env.BUILDER_DATA_FILE = previousBuilderFile;
 });
 
 function product(id: string, name: string, overrides: Partial<Product> = {}): Product {

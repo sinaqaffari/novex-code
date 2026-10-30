@@ -6,9 +6,13 @@
  * to be migrated to a database.
  */
 
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, open, readFile, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { AppError as CmsError } from '../errors.ts';
+import { canEditPost, type Role } from './rbac.ts';
+import { assertPostUploadsExist } from './blog-media.ts';
+import { commitPostBatchUnderLock, recoverPostBatchesUnderLock } from './post-batch.ts';
 import {
 	asString,
 	type Frontmatter,
@@ -19,7 +23,7 @@ import {
 
 export { CmsError };
 
-export const BLOG_DIR = path.resolve(process.cwd(), 'src/content/blog');
+export const BLOG_DIR = path.resolve(process.env.CMS_BLOG_DIR || path.join(process.cwd(), 'src/content/blog'));
 
 const FRONTMATTER_ORDER = [
 	'title',
@@ -205,14 +209,15 @@ function isPostFile(name: string): boolean {
 }
 
 function resolvePostPath(id: string): string {
-	const decoded = decodeURIComponent(id);
+	let decoded: string;
+	try { decoded = decodeURIComponent(id); } catch { throw new CmsError('شناسهٔ نوشته معتبر نیست.', undefined, 400); }
 	if (!isPostFile(decoded) || decoded.includes('/') || decoded.includes('\\')) {
 		throw new CmsError('شناسهٔ نوشته معتبر نیست.', undefined, 400);
 	}
 	return path.join(BLOG_DIR, decoded);
 }
 
-export async function listPosts(): Promise<PostSummary[]> {
+async function listPostsUnlocked(): Promise<PostSummary[]> {
 	await mkdir(BLOG_DIR, { recursive: true });
 	const entries = await readdir(BLOG_DIR, { withFileTypes: true });
 	const files = entries.filter((entry) => entry.isFile() && isPostFile(entry.name));
@@ -232,7 +237,11 @@ export async function listPosts(): Promise<PostSummary[]> {
 	});
 }
 
-export async function getPostDraft(id: string): Promise<PostDraft & { raw: string; id: string }> {
+export async function listPosts(): Promise<PostSummary[]> {
+	return withPostWriteLock(listPostsUnlocked);
+}
+
+async function getPostDraftUnlocked(id: string): Promise<PostDraft & { raw: string; id: string }> {
 	const filePath = resolvePostPath(id);
 	let raw: string;
 	try {
@@ -242,11 +251,12 @@ export async function getPostDraft(id: string): Promise<PostDraft & { raw: strin
 	}
 
 	const { data, body } = parseFrontmatter(raw);
+	const canonicalId = path.basename(filePath);
 	return {
-		id,
+		id: canonicalId,
 		title: asString(data.title),
 		description: asString(data.description),
-		slug: id.replace(/\.(md|mdx)$/i, ''),
+		slug: canonicalId.replace(/\.(md|mdx)$/i, ''),
 		pubDate: asString(data.pubDate),
 		updatedDate: asString(data.updatedDate),
 		heroImage: asString(data.heroImage),
@@ -255,6 +265,10 @@ export async function getPostDraft(id: string): Promise<PostDraft & { raw: strin
 		body,
 		raw,
 	};
+}
+
+export async function getPostDraft(id: string): Promise<PostDraft & { raw: string; id: string }> {
+	return withPostWriteLock(() => getPostDraftUnlocked(id));
 }
 
 async function assertSlugAvailable(slug: string, currentId?: string): Promise<void> {
@@ -307,10 +321,42 @@ function validate(draft: PostDraft): void {
 	}
 }
 
-/** Create a post and return its file name. */
-export async function createPost(input: PostInput): Promise<string> {
-	await mkdir(BLOG_DIR, { recursive: true });
+/** CMS post reads and writes share the filesystem lock with Builder media.
+ * Recovery and slug checks are serialized across both .md and .mdx files. */
+async function withPostWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+	const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
+	try { return await withBuilderAssetLock(async () => { await recoverPostBatchesUnderLock(BLOG_DIR); return operation(); }); }
+	catch (error) {
+		if (error instanceof BuilderStoreError) throw new CmsError(error.message, undefined, error.status);
+		throw error;
+	}
+}
 
+/** Stage complete content before publishing a filename. New names use an
+ * exclusive hard link; same-name updates atomically replace the old file. */
+async function writeStagedPost(id: string, contents: string, replace: boolean): Promise<void> {
+	const temporary = path.join(BLOG_DIR, `.post-${randomUUID()}.tmp`);
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
+	let owned = false;
+	try {
+		handle = await open(temporary, 'wx', 0o600); owned = true;
+		await handle.writeFile(contents, 'utf8');
+		await handle.close(); handle = undefined;
+		if (replace) await rename(temporary, path.join(BLOG_DIR, id));
+		else {
+			try { await link(temporary, path.join(BLOG_DIR, id)); }
+			catch (error) {
+				if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new CmsError('این نامک قبلاً استفاده شده است. نام دیگری انتخاب کنید.', 'slug', 409);
+				throw error;
+			}
+		}
+	} finally {
+		if (handle) await handle.close().catch(() => undefined);
+		if (owned) await unlink(temporary).catch(() => undefined);
+	}
+}
+
+function newPostDraft(input: PostInput): PostDraft {
 	const title = (input.title ?? '').toString();
 	const slug = slugify(
 		(input.slug || title || 'post').toString(),
@@ -329,70 +375,113 @@ export async function createPost(input: PostInput): Promise<string> {
 	};
 
 	validate(draft);
-	await assertSlugAvailable(draft.slug);
+	return draft;
+}
 
-	const id = `${draft.slug}.md`;
-	await writeFile(path.join(BLOG_DIR, id), buildFile(null, draft), 'utf8');
-	return id;
+/** Create a post and return its file name. */
+export async function createPost(input: PostInput, options?: { origins?: readonly string[] }): Promise<string> {
+	await mkdir(BLOG_DIR, { recursive: true });
+	const draft = newPostDraft(input);
+	return withPostWriteLock(async () => {
+		await assertSlugAvailable(draft.slug);
+		const { UPLOAD_DIR } = await import('./media.ts');
+		await assertPostUploadsExist(UPLOAD_DIR, draft.heroImage, draft.body, undefined, options?.origins);
+		const id = `${draft.slug}.md`;
+		await writeStagedPost(id, buildFile(null, draft), false);
+		return id;
+	});
+}
+
+/** Create a bounded collection of drafts as one recoverable filesystem batch.
+ * Validation and media checks happen before any public filename is linked. */
+export async function createDraftPostBatch(inputs: PostInput[], options?: { origins?: readonly string[] }): Promise<string[]> {
+	if (!Array.isArray(inputs) || !inputs.length || inputs.length > 20 || inputs.some((input) => input.draft !== true)) throw new CmsError('بین ۱ تا ۲۰ نوشتهٔ پیش‌نویس لازم است.', 'draft', 422);
+	await mkdir(BLOG_DIR, { recursive: true });
+	const drafts = inputs.map(newPostDraft);
+	if (new Set(drafts.map((draft) => draft.slug)).size !== drafts.length) throw new CmsError('نامک‌های نوشته‌ها باید یکتا باشند.', 'slug', 409);
+	return withPostWriteLock(async () => {
+		const { UPLOAD_DIR } = await import('./media.ts');
+		for (const draft of drafts) {
+			await assertSlugAvailable(draft.slug);
+			await assertPostUploadsExist(UPLOAD_DIR, draft.heroImage, draft.body, undefined, options?.origins);
+		}
+		return commitPostBatchUnderLock(BLOG_DIR, drafts.map((draft) => ({ id: `${draft.slug}.md`, contents: buildFile(null, draft) })));
+	});
 }
 
 /** Update a post. When the slug changes the file is renamed and the old one removed. */
-export async function updatePost(id: string, input: PostInput): Promise<string> {
-	const current = await getPostDraft(id);
-	const requestedSlug = (input.slug ?? current.slug).toString().trim() || current.slug;
-	// Keep an existing slug untouched, but repair anything a keyboard produced
-	// that cannot live in a URL (spaces, punctuation, Persian punctuation).
-	const nextSlug = isValidSlug(requestedSlug)
-		? requestedSlug
-		: slugify(requestedSlug, Date.now());
+export async function updatePost(id: string, input: PostInput, options?: { role: Role; origins?: readonly string[] }): Promise<string> {
+	return withPostWriteLock(async () => {
+		const current = await getPostDraftUnlocked(id);
+		if (options && !canEditPost(options.role, current.draft, input.draft ?? current.draft)) {
+			throw new CmsError('برای ویرایش نوشتهٔ منتشرشده یا تغییر وضعیت انتشار، مجوز ویراستار لازم است.', 'draft', 403);
+		}
+		const requestedSlug = (input.slug ?? current.slug).toString().trim() || current.slug;
+		// Keep an existing slug untouched, but repair anything a keyboard produced
+		// that cannot live in a URL (spaces, punctuation, Persian punctuation).
+		const nextSlug = isValidSlug(requestedSlug)
+			? requestedSlug
+			: slugify(requestedSlug, Date.now());
 
-	const draft: PostDraft = {
-		title: (input.title ?? current.title).toString(),
-		description: (input.description ?? current.description).toString(),
-		slug: nextSlug,
-		pubDate: (input.pubDate ?? current.pubDate).toString(),
-		updatedDate: current.updatedDate,
-		heroImage: (input.heroImage ?? current.heroImage).toString(),
-		tags: input.tags === undefined ? current.tags : parseTags(input.tags),
-		draft: input.draft === undefined ? current.draft : input.draft === true,
-		body: (input.body ?? current.body).toString(),
-	};
+		const draft: PostDraft = {
+			title: (input.title ?? current.title).toString(),
+			description: (input.description ?? current.description).toString(),
+			slug: nextSlug,
+			pubDate: (input.pubDate ?? current.pubDate).toString(),
+			updatedDate: current.updatedDate,
+			heroImage: (input.heroImage ?? current.heroImage).toString(),
+			tags: input.tags === undefined ? current.tags : parseTags(input.tags),
+			draft: input.draft === undefined ? current.draft : input.draft === true,
+			body: (input.body ?? current.body).toString(),
+		};
 
-	validate(draft);
-	if (draft.slug !== current.slug) await assertSlugAvailable(draft.slug, id);
+		validate(draft);
+		if (draft.slug !== current.slug) await assertSlugAvailable(draft.slug, current.id);
+		const { UPLOAD_DIR } = await import('./media.ts');
+		await assertPostUploadsExist(UPLOAD_DIR, draft.heroImage, draft.body, current, options?.origins);
 
-	const isMdx = id.toLowerCase().endsWith('.mdx');
-	const nextId = `${draft.slug}${isMdx ? '.mdx' : '.md'}`;
-	const contents = buildFile(current.raw, draft);
+		const isMdx = current.id.toLowerCase().endsWith('.mdx');
+		const nextId = `${draft.slug}${isMdx ? '.mdx' : '.md'}`;
+		const contents = buildFile(current.raw, draft);
 
-	await writeFile(path.join(BLOG_DIR, nextId), contents, 'utf8');
-	if (nextId !== id) await unlink(path.join(BLOG_DIR, id));
-	return nextId;
+		if (nextId !== current.id) {
+			await writeStagedPost(nextId, contents, false);
+			await unlink(resolvePostPath(current.id));
+		} else await writeStagedPost(nextId, contents, true);
+		return nextId;
+	});
 }
 
 export async function deletePost(id: string): Promise<void> {
-	const filePath = resolvePostPath(id);
-	try {
-		await unlink(filePath);
-	} catch {
-		throw new CmsError('نوشتهٔ مورد نظر پیدا نشد.', undefined, 404);
-	}
+	return withPostWriteLock(async () => {
+		const filePath = resolvePostPath(id);
+		try {
+			await unlink(filePath);
+		} catch {
+			throw new CmsError('نوشتهٔ مورد نظر پیدا نشد.', undefined, 404);
+		}
+	});
 }
 
-export async function duplicatePost(id: string): Promise<string> {
-	const current = await getPostDraft(id);
-	const timestamp = Date.now();
-	const draft: PostDraft = {
-		...current,
-		title: `${current.title} — رونوشت`,
-		slug: `${current.slug}-copy-${timestamp.toString(36)}`,
-		pubDate: new Date().toISOString(),
-		updatedDate: '',
-		draft: true,
-	};
-	const nextId = `${draft.slug}.md`;
-	await writeFile(path.join(BLOG_DIR, nextId), buildFile(null, draft), 'utf8');
-	return nextId;
+export async function duplicatePost(id: string, options?: { origins?: readonly string[] }): Promise<string> {
+	return withPostWriteLock(async () => {
+		const current = await getPostDraftUnlocked(id);
+		const timestamp = Date.now();
+		const draft: PostDraft = {
+			...current,
+			title: `${current.title} — رونوشت`,
+			slug: `${current.slug}-copy-${timestamp.toString(36)}`,
+			pubDate: new Date().toISOString(),
+			updatedDate: '',
+			draft: true,
+		};
+		const nextId = `${draft.slug}.md`;
+		await assertSlugAvailable(draft.slug);
+		const { UPLOAD_DIR } = await import('./media.ts');
+		await assertPostUploadsExist(UPLOAD_DIR, draft.heroImage, draft.body, undefined, options?.origins);
+		await writeStagedPost(nextId, buildFile(null, draft), false);
+		return nextId;
+	});
 }
 
 export interface BlogStats {

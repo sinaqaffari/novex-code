@@ -127,8 +127,8 @@ function createBusinessPageTemplate(): PageDocument {
 		['پشتیبانی RTL', 'راست‌به‌چپ در هر قسمتی از سایت، دسکتاپ و موبایل.', '/about'],
 	] as const;
 
-	for (const [title, body, href] of features) {
-		const cardId = `node_bp_feature_${createNodeId().slice(-8)}`;
+	for (const [index, [title, body, href]] of features.entries()) {
+		const cardId = `node_bp_feature_${String(index + 1).padStart(2, '0')}`;
 		document = addNode(document, 'Container', { parentId: 'node_bp_grid01', id: cardId });
 		document = updateNodeProps(document, cardId, { layout: 'stack', maxWidth: 'full', gap: 8, padding: 16, background: 'surface' });
 		document = addNode(document, 'Heading', { parentId: cardId, id: `${cardId}h` });
@@ -165,8 +165,8 @@ function createBusinessPageTemplate(): PageDocument {
 		['تجاری', 'برای کسب‌وکارهای فعال و رشد یافته', 0, '/shop'],
 	] as const;
 
-	for (const [planName, planDesc, planPrice, planHref] of plans) {
-		const planId = `node_bp_plan_${createNodeId().slice(-8)}`;
+	for (const [index, [planName, planDesc, planPrice, planHref]] of plans.entries()) {
+		const planId = `node_bp_plan_${String(index + 1).padStart(2, '0')}`;
 		document = addNode(document, 'Container', { parentId: 'node_bp_pricing01', id: planId });
 		document = updateNodeProps(document, planId, { layout: 'stack', maxWidth: 'full', gap: 8, padding: 16, background: 'surface' });
 		document = addNode(document, 'Heading', { parentId: planId, id: `${planId}h` });
@@ -219,6 +219,7 @@ export function applyTemplate(
 	return validatePageDocument({
 		...currentDocument,
 		themeId: source.themeId,
+		breakpoints: source.breakpoints ?? currentDocument.breakpoints,
 		nodes: source.nodes.map((node) => cloneNode(node, idFactory)),
 	}, currentDocument.slug);
 }

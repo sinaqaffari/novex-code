@@ -1,15 +1,15 @@
 /**
- * Single-process, filesystem-backed commerce store.
+ * Filesystem-backed commerce store for cooperating processes on one filesystem.
  *
- * Writes are serialized within this Node process and committed by atomic rename.
- * This is suitable for a single-instance local deployment; it is not a
- * cross-process transaction store. The path can be overridden for isolated
+ * Writes share the Builder/media filesystem lock and are committed by atomic rename.
+ * This is not a distributed transaction store or a power-loss durability guarantee. The path can be overridden for isolated
  * integration tests with COMMERCE_DB_FILE. A missing file initializes empty —
  * corrupt or unreadable data is never silently replaced.
  */
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { AppError } from '../errors.ts';
 import path from 'node:path';
 import type { Database } from './types.ts';
 
@@ -68,8 +68,38 @@ function normalize(raw: unknown): Database {
 async function writeDatabase(db: Database): Promise<void> {
 	await mkdir(path.dirname(DB_FILE), { recursive: true });
 	const temporary = `${DB_FILE}.${process.pid}.${randomUUID()}.tmp`;
-	await writeFile(temporary, `${JSON.stringify(db, null, '\t')}\n`, 'utf8');
-	await rename(temporary, DB_FILE);
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
+	let owned = false;
+	try {
+		const existing = await lstat(DB_FILE);
+		if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('Commerce database is not a regular file.');
+		handle = await open(temporary, 'wx', existing.mode & 0o777); owned = true;
+		await handle.writeFile(`${JSON.stringify(db, null, '\t')}\n`, 'utf8');
+		await handle.close(); handle = undefined;
+		await rename(temporary, DB_FILE);
+	} finally {
+		if (handle) await handle.close();
+		if (owned) await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
+	}
+}
+
+/** An initial read must never replace a database concurrently created by a
+ * different process. The staged inode is linked only if the target is absent. */
+async function createInitialDatabase(db: Database): Promise<boolean> {
+	await mkdir(path.dirname(DB_FILE), { recursive: true });
+	const temporary = `${DB_FILE}.${process.pid}.${randomUUID()}.init`;
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
+	let owned = false;
+	try {
+		handle = await open(temporary, 'wx', 0o600); owned = true;
+		await handle.writeFile(`${JSON.stringify(db, null, '\t')}\n`, 'utf8');
+		await handle.close(); handle = undefined;
+		try { await link(temporary, DB_FILE); return true; }
+		catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false; throw error; }
+	} finally {
+		if (handle) await handle.close();
+		if (owned) await unlink(temporary);
+	}
 }
 
 async function readPersistedDatabase(): Promise<Database> {
@@ -101,8 +131,7 @@ export async function readDatabase(): Promise<Database> {
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
 				const empty = createEmptyDatabase();
-				await writeDatabase(empty);
-				return empty;
+				return await createInitialDatabase(empty) ? empty : readPersistedDatabase();
 			}
 		})();
 	}
@@ -117,13 +146,21 @@ export async function readDatabase(): Promise<Database> {
 
 let queue: Promise<unknown> = Promise.resolve();
 
-/** Serialized read, modify, write cycle within this process. */
+/** Serialized read, modify, write cycle under the shared asset lock. */
 export function updateDatabase<T>(mutator: (db: Database) => T | Promise<T>): Promise<T> {
 	const run = async () => {
-		const db = await readDatabase();
-		const result = await mutator(db);
-		await writeDatabase(db);
-		return result;
+		const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
+		try {
+			return await withBuilderAssetLock(async () => {
+				const db = await readDatabase();
+				const result = await mutator(db);
+				await writeDatabase(db);
+				return result;
+			});
+		} catch (error) {
+			if (error instanceof BuilderStoreError) throw new AppError(error.message, undefined, error.status);
+			throw error;
+		}
 	};
 
 	const next = queue.then(run, run);

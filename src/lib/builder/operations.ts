@@ -1,6 +1,8 @@
 import { validatePageDocument } from './document.ts';
+import { mergeFragmentBreakpoints } from './responsive.ts';
+import { adjustTextMarks } from './rich-text.ts';
 import { COMPONENT_REGISTRY, isBuilderComponentType } from './registry.ts';
-import type { BuilderComponentType, BuilderNode, ComponentPropsByType, NodeStyles, PageDocument } from './types.ts';
+import type { Breakpoint, BuilderComponentType, BuilderNode, ComponentPropsByType, NodeStyles, PageDocument, ResponsiveNodeStyles } from './types.ts';
 
 export function createNodeId(): string {
 	const uuid = globalThis.crypto?.randomUUID?.();
@@ -32,6 +34,66 @@ export function findNode(nodes: readonly BuilderNode[], id: string): BuilderNode
 		}
 	}
 	return null;
+}
+
+/** Visit the canonical tree in document order without exposing a mutable parent. */
+export function traversePageNodes(document: PageDocument, visit: (node: BuilderNode, parentId: string | null, index: number) => void): void {
+	function walk(nodes: readonly BuilderNode[], parentId: string | null): void {
+		nodes.forEach((node, index) => {
+			visit(node, parentId, index);
+			if (node.type === 'Container') walk(node.children, node.id);
+		});
+	}
+	walk(document.nodes, null);
+}
+
+/** Clone by validation, not by sharing nested property objects with the source. */
+export function clonePageDocument(document: PageDocument): PageDocument {
+	return validatePageDocument(structuredClone(document), document.slug);
+}
+
+export function updatePageMetadata(document: PageDocument, patch: Partial<Pick<PageDocument, 'title' | 'description' | 'themeId' | 'breakpoints'>>): PageDocument {
+	return validatePageDocument({ ...document, ...patch }, document.slug);
+}
+
+/** Explicitly remove a custom range and its node overrides as a single undoable edit. */
+export function removeCustomBreakpoint(document: PageDocument, id: import('./types.ts').CustomBreakpointId): PageDocument {
+	const widths = document.breakpoints;
+	if (!widths?.custom?.some((entry) => entry.id === id)) throw new Error('Custom breakpoint was not found.');
+	function strip(node: BuilderNode): BuilderNode {
+		const responsiveStyles = node.responsiveStyles ? { ...node.responsiveStyles } : undefined;
+		if (responsiveStyles) delete responsiveStyles[id];
+		const next = { ...node, responsiveStyles };
+		return node.type === 'Container' ? { ...next, children: node.children.map(strip) } as BuilderNode : next as BuilderNode;
+	}
+	const custom = widths.custom.filter((entry) => entry.id !== id);
+	return validatePageDocument({ ...document, breakpoints: { ...widths, custom }, nodes: document.nodes.map(strip) }, document.slug);
+}
+
+/** Replace an entire content tree as one validated edit (e.g. a confirmed import). */
+export function replacePageNodes(document: PageDocument, nodes: readonly BuilderNode[]): PageDocument {
+	return validatePageDocument({ ...document, nodes }, document.slug);
+}
+
+/** Replace a node atomically; IDs, type and nesting are revalidated in context. */
+export function replaceNode(document: PageDocument, id: string, replacement: BuilderNode): PageDocument {
+	let found = false;
+	const nodes = mapNode(document.nodes, id, () => { found = true; return structuredClone(replacement); });
+	if (!found) throw new Error(`Node '${id}' was not found.`);
+	return validatePageDocument({ ...document, nodes }, document.slug);
+}
+
+function freshIdAllocator(document: PageDocument, idFactory: () => string): () => string {
+	const used = new Set<string>();
+	traversePageNodes(document, (node) => used.add(node.id));
+	return () => {
+		// A broken or adversarial ID generator cannot hang the editor.
+		for (let attempt = 0; attempt < 32; attempt++) {
+			const id = idFactory();
+			if (!used.has(id)) { used.add(id); return id; }
+		}
+		throw new Error('Could not allocate a unique component ID.');
+	};
 }
 
 export interface NodeLocation {
@@ -97,15 +159,17 @@ export function insertDocumentFragment(
 	const location = selected ? findNodeLocation(target.nodes, selected.id) : null;
 	const parentId = selected?.type === 'Container' ? selected.id : location?.parentId ?? null;
 	let index = selected?.type === 'Container' ? selected.children.length : location ? location.index + 1 : target.nodes.length;
+	const allocateId = freshIdAllocator(target, idFactory);
 	function copy(node: BuilderNode): BuilderNode {
-		const id = idFactory();
+		const id = allocateId();
 		if (node.type === 'Container') return { ...node, id, children: node.children.map(copy) };
 		return { ...node, id };
 	}
 	const copies = source.nodes.map(copy);
 	let nodes = target.nodes;
 	for (const node of copies) nodes = insertAtParent(nodes, parentId, node, index++);
-	return { document: validatePageDocument({ ...target, nodes }, target.slug), firstId: copies[0]?.id ?? null };
+	const breakpoints = mergeFragmentBreakpoints(target, source);
+	return { document: validatePageDocument({ ...target, breakpoints, nodes }, target.slug), firstId: copies[0]?.id ?? null };
 }
 
 function insertAtParent(
@@ -162,7 +226,10 @@ export function updateNodeProps(document: PageDocument, id: string, patch: Recor
 	let found = false;
 	const nodes = mapNode(document.nodes, id, (node) => {
 		found = true;
-		return { ...node, props: { ...node.props, ...patch } } as BuilderNode;
+		const adjusted = (node.type === 'Text' || node.type === 'Heading' || node.type === 'Blockquote') && typeof patch.text === 'string' && !Object.hasOwn(patch, 'marks')
+			? { ...patch, marks: adjustTextMarks(node.props.text, patch.text, node.props.marks) }
+			: patch;
+		return { ...node, props: { ...node.props, ...adjusted } } as BuilderNode;
 	});
 	if (!found) throw new Error(`Node '${id}' was not found.`);
 	return validatePageDocument({ ...document, nodes }, document.slug);
@@ -172,12 +239,18 @@ export function updateNodeStyles(
 	document: PageDocument,
 	id: string,
 	patch: Partial<NodeStyles>,
-	breakpoint: 'desktop' | 'tablet' | 'mobile' = 'desktop',
+	breakpoint: Breakpoint = 'desktop',
 ): PageDocument {
 	let found = false;
 	const nodes = mapNode(document.nodes, id, (node) => {
 		found = true;
-		if (breakpoint === 'desktop') return { ...node, styles: { ...node.styles, ...patch } } as BuilderNode;
+		if (breakpoint === 'desktop') {
+			// Old documents may have desktop overrides. Move only the edited keys to
+			// the base surface so stale overrides cannot shadow the user's change.
+			const desktop: ResponsiveNodeStyles = { ...node.responsiveStyles?.desktop };
+			for (const key of Object.keys(patch) as (keyof NodeStyles)[]) delete desktop[key];
+			return { ...node, styles: { ...node.styles, ...patch }, responsiveStyles: { ...node.responsiveStyles, desktop } } as BuilderNode;
+		}
 		return {
 			...node,
 			responsiveStyles: {
@@ -193,7 +266,7 @@ export function updateNodeStyles(
 export function setNodeHiddenAtBreakpoint(
 	document: PageDocument,
 	id: string,
-	breakpoint: 'desktop' | 'tablet' | 'mobile',
+	breakpoint: Breakpoint,
 	hidden: boolean,
 ): PageDocument {
 	let found = false;
@@ -224,7 +297,7 @@ export function duplicateNode(
 ): { document: PageDocument; newId: string } {
 	const target = findNode(document.nodes, id);
 	if (!target) throw new Error(`Node '${id}' was not found.`);
-	const clone = cloneWithNewIds(target, idFactory);
+	const clone = cloneWithNewIds(target, freshIdAllocator(document, idFactory));
 	const inserted = insertAdjacent(document.nodes, id, clone, 'after');
 	if (!inserted.found) throw new Error(`Node '${id}' was not found.`);
 	return {

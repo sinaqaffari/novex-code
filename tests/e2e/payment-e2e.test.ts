@@ -7,42 +7,32 @@
 
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, after } from 'node:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import os from 'node:os';
 
-import {
-	claimOrderPaymentVerification,
-	createOrGetOrderFromCheckout,
-	createOrderFromCheckout,
-	findOrderByPaymentRef,
-	listOrders,
-	settleOrderPayment,
-	updateOrderPaymentRef,
-	updateOrderStatus,
-	type CheckoutInput,
-} from '../../src/lib/commerce/orders.ts';
-import { createEmptyDatabase, DB_FILE, readDatabase, updateDatabase } from '../../src/lib/commerce/db.ts';
+import type { CheckoutInput } from '../../src/lib/commerce/orders.ts';
 import { isRevenue, ORDER_STATUSES, type OrderStatus, type Product } from '../../src/lib/commerce/types.ts';
 import { AppError } from '../../src/lib/errors.ts';
-import { CART_COOKIE, readCart } from '../../src/lib/commerce/cart.ts';
 
+// Never back up or overwrite the application's data file: parallel tests may be writing it.
+const priorCommerceFile = process.env.COMMERCE_DB_FILE;
+const priorBuilderFile = process.env.BUILDER_DATA_FILE;
+const testDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'novex-payment-e2e-'));
+process.env.COMMERCE_DB_FILE = path.join(testDirectory, 'commerce.json');
+process.env.BUILDER_DATA_FILE = path.join(testDirectory, 'builder.json');
+const { claimOrderPaymentVerification, createOrGetOrderFromCheckout, createOrderFromCheckout, findOrderByPaymentRef, listOrders, settleOrderPayment, updateOrderPaymentRef, updateOrderStatus } = await import('../../src/lib/commerce/orders.ts');
+const { createEmptyDatabase, DB_FILE, readDatabase, updateDatabase } = await import('../../src/lib/commerce/db.ts');
+const { CART_COOKIE, readCart } = await import('../../src/lib/commerce/cart.ts');
+assert.equal(DB_FILE, process.env.COMMERCE_DB_FILE);
 const COMMERCE_FILE = DB_FILE;
-const BACKUP_FILE = `${DB_FILE}.test-backup-${process.pid}`;
 
-function backupCommerce() {
-	fs.mkdirSync(path.dirname(COMMERCE_FILE), { recursive: true });
-	if (fs.existsSync(COMMERCE_FILE)) fs.copyFileSync(COMMERCE_FILE, BACKUP_FILE);
-}
-
-function restoreCommerce() {
-	if (fs.existsSync(BACKUP_FILE)) {
-		fs.copyFileSync(BACKUP_FILE, COMMERCE_FILE);
-		fs.rmSync(BACKUP_FILE);
-	} else if (fs.existsSync(COMMERCE_FILE)) {
-		fs.rmSync(COMMERCE_FILE);
-	}
-}
+after(() => {
+	if (priorCommerceFile === undefined) delete process.env.COMMERCE_DB_FILE; else process.env.COMMERCE_DB_FILE = priorCommerceFile;
+	if (priorBuilderFile === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = priorBuilderFile;
+	fs.rmSync(testDirectory, { recursive: true, force: true });
+});
 
 function fixtureProduct(id: string, name: string, price: number, stock: number): Product {
 	const now = new Date('2026-10-26T00:00:00.000Z').toISOString();
@@ -64,7 +54,7 @@ function fixtureProduct(id: string, name: string, price: number, stock: number):
 }
 
 beforeEach(async () => {
-	backupCommerce();
+	fs.writeFileSync(COMMERCE_FILE, JSON.stringify(createEmptyDatabase()));
 	await updateDatabase((db) => {
 		db.products = [
 			fixtureProduct('test_rtl_template', 'قالب RTL آزمایشی', 890_000, 12),
@@ -72,7 +62,6 @@ beforeEach(async () => {
 		];
 	});
 });
-afterEach(restoreCommerce);
 
 function makeTestOrderInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
 	return {

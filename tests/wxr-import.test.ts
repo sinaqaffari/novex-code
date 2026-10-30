@@ -126,7 +126,9 @@ describe('WXR safe structured conversion', () => {
 		assert.equal(doc.nodes[3].type === 'Text' && doc.nodes[3].props.text, 'متن پیوند ادامه');
 		assert.equal(doc.nodes[4].type === 'Image' && doc.nodes[4].props.alt, 'نمونه');
 		assert.equal(doc.nodes[4].type === 'Image' && doc.nodes[4].props.src, '');
-		assert.doesNotMatch(JSON.stringify(doc), /example\.com|alert|BAD|<script/);
+		assert.deepEqual(doc.nodes[3].type === 'Text' && doc.nodes[3].props.marks, [{ kind: 'link', start: 4, end: 9, href: 'https://example.com/path' }]);
+		assert.deepEqual(doc.nodes[0].type === 'Heading' && doc.nodes[0].props.marks, [{ kind: 'italic', start: 5, end: 10 }]);
+		assert.doesNotMatch(JSON.stringify(doc), /secret\.jpg|alert|BAD|<script/);
 		assert.deepEqual(validatePageDocument(doc), doc);
 	});
 	it('preserves unsafe link text, long headings and unicode without retaining unsafe hrefs', () => {
@@ -142,4 +144,46 @@ describe('WXR safe structured conversion', () => {
 		assert.throws(() => wxrItemToDocument({ ...source, content: '<section>'.repeat(65) + 'x' + '</section>'.repeat(65) }, createEmptyPageDocument('deep-html')), /HTML/);
 		assert.throws(() => wxrItemToDocument({ ...source, content: '<p>x</p>'.repeat(201) }, createEmptyPageDocument('many-nodes')), /۲۰۰/);
 	});
+});
+
+describe('Elementor metadata within WXR', () => {
+	const source = [{ id: 'heading01', elType: 'widget', widgetType: 'heading', settings: { title: 'عنوان المنتور', header_size: 'h2' }, elements: [] }, { id: 'unknown01', elType: 'widget', widgetType: 'third-party', settings: { script: 'alert(1)' }, elements: [] }];
+	const meta = (data: string) => `<wp:postmeta><wp:meta_key>_elementor_data</wp:meta_key><wp:meta_value><![CDATA[${data}]]></wp:meta_value></wp:postmeta>`;
+	const item = (metadata: string) => `<item><title>صفحه</title><wp:post_type>page</wp:post_type><content:encoded><![CDATA[<p>متن وردپرس</p>]]></content:encoded>${metadata}</item>`;
+	const wrap = (items: string) => `<rss><channel><wp:wxr_version>1.2</wp:wxr_version>${items}</channel></rss>`;
+	it('offers a deliberate bounded conversion and reports unsupported widgets', async () => {
+		const { convertWxrItem, wxrToDraftPages } = await import('../src/lib/migrations/wordpress/wxr.ts');
+		const inspection = inspectWxr(wrap(item(meta(JSON.stringify(source))) + item('')));
+		assert.ok(inspection.items[0].elementorData);
+		const target = createEmptyPageDocument('target', 'عنوان مقصد');
+		assert.equal(convertWxrItem(inspection.items[0], target).document.nodes[0].type, 'Text');
+		const converted = convertWxrItem(inspection.items[0], target, true);
+		assert.equal(converted.source, 'elementor');
+		assert.equal(converted.document.title, target.title);
+		assert.equal(converted.document.nodes[0].type, 'Heading');
+		if (converted.document.nodes[0].type === 'Heading') assert.equal(converted.document.nodes[0].props.text, 'عنوان المنتور');
+		assert.ok(converted.warnings.some((warning) => warning.sourceId === 'unknown01'));
+		assert.doesNotMatch(JSON.stringify(converted.document), /alert\(1\)/);
+		const bulk = wxrToDraftPages(inspection, 'elementor-wp', true);
+		assert.deepEqual(bulk.map((page) => page.nodes[0].type), ['Heading', 'Text']);
+	});
+	it('warns and declines malformed or ambiguous Elementor metadata without changing HTML content', () => {
+		const malformed = inspectWxr(wrap(item(meta('{broken')))).items[0];
+		assert.equal(malformed.elementorData, undefined);
+		assert.ok(malformed.warnings.some((warning) => warning.includes('معتبر نیست')));
+		const duplicate = inspectWxr(wrap(item(meta(JSON.stringify(source)) + meta(JSON.stringify(source))))).items[0];
+		assert.equal(duplicate.elementorData, undefined);
+		assert.ok(duplicate.warnings.some((warning) => warning.includes('متعارض')));
+	});
+});
+
+it('converts WXR blockquotes into editable native quotes without retaining source code or media URLs', () => {
+	const source = inspectWxr(xml).items[0];
+	const html = '<p>پیش</p><blockquote><p>بخش اول</p><p>بخش دوم <strong>متن</strong></p><script>alert(1)</script><img src="https://example.com/secret" alt="تصویر"></blockquote><p>پس</p>';
+	const doc = wxrItemToDocument({ ...source, content: html }, createEmptyPageDocument('quote-import'));
+	assert.deepEqual(doc.nodes.map((node) => node.type), ['Text', 'Blockquote', 'Image', 'Text']);
+	const quote = doc.nodes[1];
+	assert.equal(quote.type === 'Blockquote' && quote.props.text, 'بخش اول\nبخش دوم متن');
+	assert.equal(doc.nodes[2].type === 'Image' && doc.nodes[2].props.alt, 'تصویر');
+	assert.doesNotMatch(JSON.stringify(doc), /alert|example\.com/);
 });

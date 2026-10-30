@@ -21,6 +21,7 @@ export type Permission =
 	| 'cms.pages:read'
 	| 'cms.pages:write'
 	| 'cms.pages:publish'
+	| 'cms.pages:publishCode'
 	| 'cms.media:read'
 	| 'cms.media:write'
 	| 'cms.media:delete'
@@ -48,6 +49,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 		'cms.pages:read',
 		'cms.pages:write',
 		'cms.pages:publish',
+		'cms.pages:publishCode',
 		'cms.media:read',
 		'cms.media:write',
 		'cms.media:delete',

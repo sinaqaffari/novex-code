@@ -1,0 +1,78 @@
+---
+import { textRuns } from '../../lib/builder/rich-text.ts';
+import RichTextRun from './RichTextRun.astro';
+import type { ExtendedContentNode } from '../../lib/builder/extended-content.ts';
+import { videoEmbedUrl } from '../../lib/builder/extended-content.ts';
+import { localBuilderAssetIdentity } from '../../lib/builder/assets.ts';
+import { resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
+import { assetExists } from '../../lib/cms/media.ts';
+
+interface Props { node: ExtendedContentNode; style?: string }
+const { node, style } = Astro.props;
+const videoUrl = node.type === 'VideoEmbed' ? videoEmbedUrl(node.props) : null;
+const available = node.type === 'ImageGallery' ? await Promise.all(node.props.items.map(async (item) => {
+	if (!item.src) return false;
+	const identity = localBuilderAssetIdentity(item.src);
+	return !identity || assetExists(identity.startsWith('assets/') ? identity.slice('assets/'.length) : identity);
+})) : [];
+---
+<div class:list={['nvx-builder-node', 'nvx-builder-extended', `nvx-builder-extended--${node.type}`]} data-builder-id={node.id} style={style}>
+	{node.type === 'Blockquote' ? (
+		<blockquote class="nvx-builder-quote"><p>{textRuns(node.props.text, node.props.marks).map((run) => <RichTextRun run={run} />)}</p>{node.props.author || node.props.role ? <footer>{node.props.author ? <cite>{node.props.author}</cite> : null}{node.props.author && node.props.role ? ' · ' : null}{node.props.role}</footer> : null}</blockquote>
+	) : node.type === 'Accordion' ? (
+		<div class="nvx-builder-accordion">
+			{node.props.items.map((item) => <details><summary>{item.title ? textRuns(item.title, item.titleMarks).map((run) => <RichTextRun run={run} />) : 'پرسش بدون عنوان'}</summary><p>{textRuns(item.body, item.bodyMarks).map((run) => <RichTextRun run={run} />)}</p></details>)}
+			{node.props.items.length ? null : <p class="nvx-builder-empty">هنوز پرسشی ثبت نشده است.</p>}
+		</div>
+	) : node.type === 'Tabs' ? (
+		<div class="nvx-builder-tabs" data-builder-tabs>
+			{node.props.items.length ? <div class="nvx-builder-tabs__list" role="tablist" aria-label="زبانه‌های محتوا" hidden>
+				{node.props.items.map((item, index) => <button type="button" role="tab" id={`${node.id}-${item.id}-tab`} aria-controls={`${node.id}-${item.id}-panel`} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1}>{item.title ? textRuns(item.title, item.titleMarks).map((run) => <RichTextRun run={run} />) : 'زبانهٔ بدون عنوان'}</button>)}
+			</div> : <p class="nvx-builder-empty">هنوز زبانه‌ای ثبت نشده است.</p>}
+			{node.props.items.map((item) => <section class="nvx-builder-tabs__panel" role="tabpanel" id={`${node.id}-${item.id}-panel`} aria-labelledby={`${node.id}-${item.id}-tab`} tabindex={0}><h3 class="nvx-builder-tab-fallback">{item.title ? textRuns(item.title, item.titleMarks).map((run) => <RichTextRun run={run} />) : 'زبانهٔ بدون عنوان'}</h3><p>{textRuns(item.body, item.bodyMarks).map((run) => <RichTextRun run={run} />)}</p></section>)}
+		</div>
+	) : node.type === 'List' ? (
+		node.props.kind === 'ordered' ? <ol class="nvx-builder-list">{node.props.items.map((item) => <li>{item.href ? <a href={item.href}>{textRuns(item.text, item.marks).map((run) => <RichTextRun run={run} />)}</a> : textRuns(item.text, item.marks).map((run) => <RichTextRun run={run} />)}</li>)}</ol> : <ul class="nvx-builder-list">{node.props.items.map((item) => <li>{item.href ? <a href={item.href}>{textRuns(item.text, item.marks).map((run) => <RichTextRun run={run} />)}</a> : textRuns(item.text, item.marks).map((run) => <RichTextRun run={run} />)}</li>)}</ul>
+	) : node.type === 'ImageGallery' ? (
+		<div class="nvx-builder-gallery" data-columns={node.props.columns}>
+			{node.props.items.map((item, index) => <figure class="nvx-builder-gallery__item">
+				<div class="nvx-builder-gallery__frame">{item.src && available[index] ? <img src={resolveBuilderImageSource(item.src)} alt={item.alt} loading="lazy" decoding="async" /> : <span class="nvx-builder-image__empty" role="img" aria-label={item.alt || 'تصویر در دسترس نیست'}>{item.src ? 'فایل تصویر پیدا نشد' : 'تصویر انتخاب نشده است'}</span>}</div>
+				{item.caption ? <figcaption>{item.caption}</figcaption> : null}
+			</figure>)}
+			{node.props.items.length ? null : <p class="nvx-builder-empty">هنوز تصویری ثبت نشده است.</p>}
+		</div>
+	) : (
+		<div class="nvx-builder-video">
+			{videoUrl ? <iframe src={videoUrl} title={node.props.title || 'ویدئو'} loading="lazy" referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe> : <div class="nvx-builder-video__placeholder">شناسهٔ معتبر ویدئو هنوز ثبت نشده است.</div>}
+		</div>
+	)}
+</div>
+
+<script>
+	/** The server emits every panel as a readable fallback. Enhance only once. */
+	function initializeTabs() {
+		document.querySelectorAll<HTMLElement>('[data-builder-tabs]:not([data-ready])').forEach((root) => {
+			const list = root.querySelector<HTMLElement>('[role=tablist]');
+			const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role=tab]'));
+			const panels = Array.from(root.querySelectorAll<HTMLElement>('[role=tabpanel]'));
+			if (!list || !tabs.length || tabs.length !== panels.length) return;
+			function select(index: number, focus = false) {
+				tabs.forEach((tab, position) => { tab.setAttribute('aria-selected', position === index ? 'true' : 'false'); tab.tabIndex = position === index ? 0 : -1; panels[position].hidden = position !== index; });
+				if (focus) tabs[index].focus();
+			}
+			tabs.forEach((tab, index) => {
+				tab.addEventListener('click', () => select(index));
+				tab.addEventListener('keydown', (event) => {
+					const rtl = getComputedStyle(root).direction === 'rtl';
+					const direction = event.key === 'ArrowRight' ? (rtl ? -1 : 1) : event.key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0;
+					const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : direction ? (index + direction + tabs.length) % tabs.length : -1;
+					if (target < 0) return;
+					event.preventDefault(); select(target, true);
+				});
+			});
+			select(0); root.dataset.ready = 'true'; list.hidden = false;
+		});
+	}
+	initializeTabs();
+	document.addEventListener('astro:page-load', initializeTabs);
+</script>

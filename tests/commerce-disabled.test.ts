@@ -3,15 +3,21 @@ import { describe, it, after } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readSettings, writeSettings } from '../src/lib/cms/settings.ts';
-import { readDatabase, updateDatabase } from '../src/lib/commerce/db.ts';
 import type { Product } from '../src/lib/commerce/types.ts';
 
 const previousSettingsFile = process.env.CMS_SETTINGS_FILE;
 const previousCommerceFile = process.env.COMMERCE_DB_FILE;
+const previousBuilderFile = process.env.BUILDER_DATA_FILE;
 const testDirectory = await mkdtemp(join(tmpdir(), 'novex-commerce-disabled-'));
 process.env.CMS_SETTINGS_FILE = join(testDirectory, 'cms-settings.json');
 process.env.COMMERCE_DB_FILE = join(testDirectory, 'commerce.json');
+process.env.BUILDER_DATA_FILE = join(testDirectory, 'builder.json');
+
+// Import after setting paths: both stores capture their paths at module initialization.
+const { readSettings, writeSettings, SETTINGS_FILE } = await import('../src/lib/cms/settings.ts');
+const { readDatabase, updateDatabase, DB_FILE } = await import('../src/lib/commerce/db.ts');
+assert.equal(SETTINGS_FILE, process.env.CMS_SETTINGS_FILE);
+assert.equal(DB_FILE, process.env.COMMERCE_DB_FILE);
 
 const testProduct: Product = {
 	id: 'prd_disabled_test',
@@ -52,6 +58,8 @@ after(async () => {
 	else process.env.CMS_SETTINGS_FILE = previousSettingsFile;
 	if (previousCommerceFile === undefined) delete process.env.COMMERCE_DB_FILE;
 	else process.env.COMMERCE_DB_FILE = previousCommerceFile;
+	if (previousBuilderFile === undefined) delete process.env.BUILDER_DATA_FILE;
+	else process.env.BUILDER_DATA_FILE = previousBuilderFile;
 });
 
 describe('Commerce disabled state', () => {

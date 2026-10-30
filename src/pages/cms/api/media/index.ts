@@ -12,7 +12,7 @@ export const GET: APIRoute = async ({ locals }) => {
 	}
 	try {
 		const media = (await listMedia())
-			.map(({ name, publicUrl, previewUrl, bytes, modifiedAt, builtin }) => ({
+			.map(({ name, publicUrl, previewUrl, bytes, modifiedAt, builtin, mimeType, width, height }) => ({
 				name,
 				assetRef: builderMediaReferenceFromPublicUrl(publicUrl),
 				publicUrl,
@@ -20,6 +20,9 @@ export const GET: APIRoute = async ({ locals }) => {
 				bytes,
 				modifiedAt,
 				builtin,
+				mimeType,
+				width,
+				height,
 			}))
 			.filter((item) => item.assetRef !== null);
 		return json({ ok: true, media });

@@ -1,8 +1,10 @@
+import { mediaRequestOrigins } from '../../../../../lib/urls.ts';
 import type { APIRoute } from 'astro';
 import { failure, json } from '../../../../../lib/cms/http.ts';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { BuilderStoreError, listBuilderTemplates, saveBuilderTemplate } from '../../../../../lib/builder/store.ts';
 import { listStarterTemplates } from '../../../../../lib/builder/templates.ts';
+import { readBoundedRequestText } from '../../../../../lib/builder/request.ts';
 
 export const prerender = false;
 
@@ -22,7 +24,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	try {
 		const payload = await readJson(request);
 		const name = typeof payload.name === 'string' ? payload.name : '';
-		const template = await saveBuilderTemplate({ name, document: payload.document });
+		const template = await saveBuilderTemplate({ name, document: payload.document, origins: mediaRequestOrigins(request) });
 		return json({ ok: true, template: { id: template.id, name: template.name, createdAt: template.createdAt, updatedAt: template.updatedAt } }, 201);
 	} catch (error) {
 		return reportError(error);
@@ -31,10 +33,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
 	if (!(request.headers.get('content-type') ?? '').includes('application/json')) throw new BuilderStoreError('درخواست باید JSON باشد.', 415, 'unsupported_content_type');
-	const length = Number(request.headers.get('content-length') ?? 0);
-	if (length > 1_200_000) throw new BuilderStoreError('بدنهٔ درخواست بیش از اندازه بزرگ است.', 413, 'payload_too_large');
-	const body = await request.text();
-	if (new TextEncoder().encode(body).byteLength > 1_200_000) throw new BuilderStoreError('بدنهٔ درخواست بیش از اندازه بزرگ است.', 413, 'payload_too_large');
+	const body = await readBoundedRequestText(request, 1_200_000);
 	try {
 		const parsed: unknown = JSON.parse(body);
 		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;

@@ -6,6 +6,7 @@ import {
 	verifyCredentials,
 } from '../../../lib/cms/auth';
 import { asText, failure, json, readPayload, redirect } from '../../../lib/cms/http';
+import { cmsLandingPage } from '../../../lib/cms/access';
 
 export const prerender = false;
 
@@ -45,15 +46,16 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
 			: redirect(`/cms/login?error=${encodeURIComponent(message)}`);
 	}
 
+	const destination = safeNext === '/cms' ? cmsLandingPage(result.user?.role ?? 'subscriber') : safeNext;
 	const { token, expiresAt } = createSessionToken(username, result.user?.role);
 	cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
 
 	return wantsJson
 		? json({
 				ok: true,
-				redirect: safeNext,
+				redirect: destination,
 				expiresAt: expiresAt.toISOString(),
 				user: { username: result.user?.username, role: result.user?.role },
 		  })
-		: redirect(safeNext);
+		: redirect(destination);
 };

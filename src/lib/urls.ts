@@ -43,6 +43,13 @@ export function publicOrigin(request: Request): string {
 	return `${requestProtocol(request, host)}://${host}`;
 }
 
+/** Public and server-observed origins for recognizing same-site absolute media.
+ * They only classify URLs; they are never used to make a network request. */
+export function mediaRequestOrigins(request: Request): string[] {
+	const host = requestHost(request);
+	return [publicOrigin(request), new URL(request.url).origin, ...(host ? [`${requestProtocol(request, host)}://${host}`] : [])];
+}
+
 /** نشانی مطلق یک مسیر، برای canonical و og:url. */
 export function absoluteUrl(request: Request, pathname: string): string {
 	const path = pathname.startsWith('/') ? pathname : `/${pathname}`;

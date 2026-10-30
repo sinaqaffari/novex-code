@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
-import { failure, json, readPayload, redirect } from '../../../../lib/cms/http';
-import { toPostInput } from '../../../../lib/cms/input';
-import { CmsError, createPost, listPosts } from '../../../../lib/cms/posts';
-import { can } from '../../../../lib/cms/rbac';
+import { failure, json, readPayload, redirect } from '../../../../lib/cms/http.ts';
+import { toPostInput } from '../../../../lib/cms/input.ts';
+import { CmsError, createPost, listPosts } from '../../../../lib/cms/posts.ts';
+import { can } from '../../../../lib/cms/rbac.ts';
+import { mediaRequestOrigins } from '../../../../lib/urls.ts';
 
 export const prerender = false;
 
@@ -12,10 +13,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	try {
 		const payload = await readPayload(request);
 		const input = toPostInput(payload);
-		if (!input.draft && !can(locals.cmsUser?.role ?? 'subscriber', 'cms.posts:publish')) {
+		const role = locals.cmsUser?.role ?? 'subscriber';
+		if (!can(role, 'cms.posts:write')) throw new CmsError('مجوز ساخت نوشته را ندارید.', undefined, 403);
+		if (!input.draft && !can(role, 'cms.posts:publish')) {
 			throw new CmsError('مجوز انتشار نوشته را ندارید؛ نوشته را به‌صورت پیش‌نویس ذخیره کنید.', 'draft', 403);
 		}
-		const id = await createPost(input);
+		const id = await createPost(input, { origins: mediaRequestOrigins(request) });
 
 		if (wantsJson) return json({ ok: true, id, redirect: `/cms/posts/${id}?flash=created` });
 		return redirect(`/cms/posts/${encodeURIComponent(id)}?flash=created`);

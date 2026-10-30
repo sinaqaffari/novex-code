@@ -3,9 +3,8 @@ import SiteLayout from '../../layouts/SiteLayout.astro';
 import BuilderNode from '../../components/builder/BuilderNode.astro';
 import '../../styles/builder.css';
 import { getPublishedPage } from '../../lib/builder/store';
-import { buildResponsiveCss } from '../../lib/builder/render';
+import { compilePageDocument } from '../../lib/builder/publishing';
 import { isValidPageSlug } from '../../lib/builder/document';
-import { themeStyleText } from '../../lib/builder/themes';
 
 export const prerender = false;
 
@@ -13,12 +12,14 @@ const slug = Astro.params.slug ?? '';
 const published = isValidPageSlug(slug) ? await getPublishedPage(slug) : null;
 if (!published) Astro.response.status = 404;
 const document = published?.document;
-const responsiveCss = document ? buildResponsiveCss(document) : '';
+const compiled = document ? compilePageDocument(document, slug) : null;
+const responsiveCss = compiled?.ok ? compiled.page.responsiveCss : '';
+const themeCss = compiled?.ok ? compiled.page.themeCss : undefined;
 ---
 
 <SiteLayout title={document?.title ?? 'صفحه پیدا نشد'} description={document?.description ?? ''}>
 	{document ? (
-		<article class="nvx-page" data-page-slug={document.slug} data-builder-theme={document.themeId} style={themeStyleText(document.themeId)}>
+		<article class="nvx-page" data-page-slug={document.slug} data-builder-theme={document.themeId} style={themeCss}>
 			{document.title || document.description ? (
 				<header class="nvx-page__intro">
 					<h1 class="nvx-page__title">{document.title}</h1>

@@ -4,6 +4,7 @@ import { AppError } from '../errors.ts';
 import { slugify } from '../cms/posts.ts';
 import { newId, readDatabase, updateDatabase } from './db.ts';
 import type { Product, ProductStatus } from './types.ts';
+import { assertProductUploadExists } from './product-media.ts';
 import { parseEnum, parseInteger, parseMoney, requireText, asBool, asText } from './validation.ts';
 
 
@@ -156,9 +157,10 @@ export async function getProduct(idOrSlug: string): Promise<Product | null> {
 	);
 }
 
-export async function createProduct(input: ProductInput): Promise<Product> {
-	return updateDatabase((db) => {
+export async function createProduct(input: ProductInput, options?: { origins?: readonly string[] }): Promise<Product> {
+	return updateDatabase(async (db) => {
 		assertSkuAndSlugFree(db.products, input);
+		await assertProductUploadExists(input.image, undefined, options?.origins);
 		const now = new Date().toISOString();
 		const product: Product = {
 			id: newId('prd'),
@@ -171,11 +173,12 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 	});
 }
 
-export async function updateProduct(id: string, input: ProductInput): Promise<Product> {
-	return updateDatabase((db) => {
+export async function updateProduct(id: string, input: ProductInput, options?: { origins?: readonly string[] }): Promise<Product> {
+	return updateDatabase(async (db) => {
 		const product = db.products.find((item) => item.id === id);
 		if (!product) throw new AppError('محصول مورد نظر پیدا نشد.', undefined, 404);
 		assertSkuAndSlugFree(db.products, input, id);
+		await assertProductUploadExists(input.image, product.image, options?.origins);
 		Object.assign(product, input, { updatedAt: new Date().toISOString() });
 		return product;
 	});
@@ -189,10 +192,11 @@ export async function deleteProduct(id: string): Promise<void> {
 	});
 }
 
-export async function duplicateProduct(id: string): Promise<Product> {
-	return updateDatabase((db) => {
+export async function duplicateProduct(id: string, options?: { origins?: readonly string[] }): Promise<Product> {
+	return updateDatabase(async (db) => {
 		const source = db.products.find((item) => item.id === id);
 		if (!source) throw new AppError('محصول مورد نظر پیدا نشد.', undefined, 404);
+		await assertProductUploadExists(source.image, undefined, options?.origins);
 		const now = new Date().toISOString();
 		const copy: Product = {
 			...source,

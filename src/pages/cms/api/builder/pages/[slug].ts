@@ -1,8 +1,10 @@
+import { mediaRequestOrigins } from '../../../../../lib/urls.ts';
 import type { APIRoute } from 'astro';
 import { failure, json } from '../../../../../lib/cms/http.ts';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { BuilderStoreError, getDraftPage, publishPage, saveDraftPage } from '../../../../../lib/builder/store.ts';
 import { isValidPageSlug } from '../../../../../lib/builder/document.ts';
+import { readBoundedRequestText } from '../../../../../lib/builder/request.ts';
 
 export const prerender = false;
 
@@ -36,6 +38,7 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 			slug,
 			expectedRevision: parseRevision(payload.expectedRevision),
 			document: payload.document,
+			origins: mediaRequestOrigins(request),
 		});
 		return json({ ok: true, revision: record.revision, updatedAt: record.updatedAt, document: record.draft });
 	} catch (error) {
@@ -53,6 +56,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			slug,
 			expectedRevision: parseRevision(payload.expectedRevision),
 			document: payload.document,
+			allowHostCode: can(locals.cmsUser?.role ?? 'subscriber', 'cms.pages:publishCode'),
+			acknowledgeExecutableCode: payload.acknowledgeExecutableCode === true,
+			origins: mediaRequestOrigins(request),
 		});
 		return json({
 			ok: true,
@@ -69,10 +75,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 async function readPayload(request: Request): Promise<Record<string, unknown>> {
 	const contentType = request.headers.get('content-type') ?? '';
 	if (!contentType.includes('application/json')) throw new BuilderStoreError('درخواست باید JSON باشد.', 415, 'unsupported_content_type');
-	const length = Number(request.headers.get('content-length') ?? 0);
-	if (length > 1_200_000) throw new BuilderStoreError('بدنهٔ درخواست بیش از اندازه بزرگ است.', 413, 'payload_too_large');
-	const body = await request.text();
-	if (new TextEncoder().encode(body).byteLength > 1_200_000) throw new BuilderStoreError('بدنهٔ درخواست بیش از اندازه بزرگ است.', 413, 'payload_too_large');
+	const body = await readBoundedRequestText(request, 1_200_000);
 	try {
 		const parsed: unknown = JSON.parse(body);
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Expected an object.');
@@ -90,7 +93,7 @@ function parseRevision(value: unknown): number {
 
 function reportError(error: unknown): Response {
 	if (error instanceof BuilderStoreError) {
-		return json({ ok: false, code: error.code, message: error.message, currentRevision: error.currentRevision }, error.status);
+		return json({ ok: false, code: error.code, message: error.message, currentRevision: error.currentRevision, ...(error.diagnostics ? { diagnostics: error.diagnostics } : {}) }, error.status);
 	}
 	return failure('عملیات صفحه‌ساز انجام نشد.', 500);
 }

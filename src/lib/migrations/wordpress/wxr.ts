@@ -1,9 +1,9 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
-import { Parser } from 'htmlparser2';
-import { safeHref } from '../../builder/registry.ts';
+import type { MigrationMediaMap } from '../media-map.ts';
+import { htmlToBuilderNodes } from '../html-to-nodes.ts';
+import { convertElementorJson, type ImportWarning } from '../elementor/converter.ts';
 import { createEmptyPageDocument, isValidPageSlug, validatePageDocument } from '../../builder/document.ts';
-import { createBuilderNode } from '../../builder/operations.ts';
-import type { BuilderNode, PageDocument } from '../../builder/types.ts';
+import type { PageDocument } from '../../builder/types.ts';
 
 const MAX_BYTES = 1024 * 1024;
 const MAX_ITEMS = 200;
@@ -11,13 +11,22 @@ export interface WxrItem {
 	id: string;
 	type: 'page' | 'post';
 	title: string;
+	/** CMS posts support longer titles than Builder page titles. */
+	blogTitle?: string;
+	blogTitleTruncated?: boolean;
 	slug: string;
 	status: string;
 	content: string;
 	excerpt: string;
+	/** Bounded metadata used only when explicitly creating a CMS blog draft. */
+	sourceDate?: string;
+	categories?: string[];
+	/** Locally inspected Elementor metadata; never executed or fetched. */
+	elementorData?: string;
 	warnings: string[];
 }
-export interface WxrInspection { version: string; items: WxrItem[]; ignored: number }
+export interface WxrAttachment { id: string; url: string; paths: string[] }
+export interface WxrInspection { version: string; items: WxrItem[]; ignored: number; attachments: WxrAttachment[] }
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const asText = (value: unknown): string => typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
 
@@ -73,127 +82,85 @@ export function inspectWxr(xml: string): WxrInspection {
 	if (entries.length > MAX_ITEMS) throw new Error('فایل بیش از ۲۰۰ مورد دارد.');
 	let ignored = 0;
 	const items: WxrItem[] = [];
+	const attachments: WxrAttachment[] = [];
 	for (const entry of entries) {
 		if (!isObject(entry)) throw new Error('ساختار یکی از موارد WXR معتبر نیست.');
 		const type = asText(entry['wp:post_type']);
-		if (type !== 'page' && type !== 'post') { ignored++; continue; }
-		const title = asText(entry.title).trim().slice(0, 100) || 'بدون عنوان';
+		if (type !== 'page' && type !== 'post') {
+			ignored++;
+			if (type === 'attachment') {
+				const meta = entry['wp:postmeta'] === undefined ? [] : Array.isArray(entry['wp:postmeta']) ? entry['wp:postmeta'] : [entry['wp:postmeta']];
+				const paths = meta.filter(isObject).filter((item) => asText(item['wp:meta_key']) === '_wp_attached_file').map((item) => asText(item['wp:meta_value']).slice(0, 512));
+				attachments.push({ id: asText(entry['wp:post_id']).slice(0, 80), url: asText(entry['wp:attachment_url']).slice(0, 2048), paths });
+			}
+			continue;
+		}
+		const fullTitle = asText(entry.title).trim();
+		let titleEnd = Math.min(100, fullTitle.length);
+		if (titleEnd < fullTitle.length && /[\uD800-\uDBFF]/.test(fullTitle[titleEnd - 1]) && /[\uDC00-\uDFFF]/.test(fullTitle[titleEnd])) titleEnd--;
+		const title = fullTitle.slice(0, titleEnd) || 'بدون عنوان';
+		let blogTitleEnd = Math.min(200, fullTitle.length);
+		if (blogTitleEnd < fullTitle.length && /[\uD800-\uDBFF]/.test(fullTitle[blogTitleEnd - 1]) && /[\uDC00-\uDFFF]/.test(fullTitle[blogTitleEnd])) blogTitleEnd--;
+		const blogTitle = fullTitle.slice(0, blogTitleEnd) || 'بدون عنوان';
 		const content = asText(entry['content:encoded']);
 		const excerpt = asText(entry['excerpt:encoded']);
-		const warnings = ['تیترها، متن و بعضی پیوندهای مستقل تقریبی تبدیل می‌شوند؛ قالب‌بندی، فهرست‌ها و پیوندهای درون متن را بررسی کنید.', 'این مورد به صفحهٔ پیش‌نویس صفحه‌ساز تبدیل می‌شود، نه نوشتهٔ وبلاگ.'];
-		if (/<(?:img|video|audio|iframe|object)\b/i.test(content) || entry['wp:attachment_url']) warnings.push('رسانه منتقل نمی‌شود؛ از کتابخانهٔ رسانه انتخاب کنید.');
-		if (/<a\b/i.test(content)) warnings.push('فقط پیوندهای ایمن و مستقل با متن کوتاه به دکمه تبدیل می‌شوند؛ بقیهٔ پیوندها و گزینه‌هایشان را بررسی کنید.');
+		const sourceDate = (asText(entry['wp:post_date_gmt']).replace(/^0000-00-00.*$/, '') || asText(entry.pubDate)).slice(0, 80);
+		const rawCategories = entry.category === undefined ? [] : Array.isArray(entry.category) ? entry.category : [entry.category];
+		const categories = rawCategories.map(asText).map((category) => category.trim()).filter(Boolean);
+		const warnings = ['تیتر، متن، نقل‌قول و فهرست با تأکید و پیوندهای ایمن قابل ویرایش تبدیل می‌شوند؛ ساختار و قالب‌بندی پیشرفته را بررسی کنید.', 'این مورد به صفحهٔ پیش‌نویس صفحه‌ساز تبدیل می‌شود، نه نوشتهٔ وبلاگ.'];
+		if (titleEnd < fullTitle.length) warnings.push('عنوان منبع برای محدودیت صفحه به ۱۰۰ نویسه کوتاه شد.');
+		if (excerpt.trim()) warnings.push('چکیدهٔ جداگانهٔ وردپرس منتقل نمی‌شود؛ در صورت نیاز آن را دستی بازبینی کنید.');
+		if (categories.length > 20) warnings.push('فقط ۲۰ دسته یا برچسب نخست برای مسیر ورود نوشته نگهداری شدند.');
+		if (/<(?:img|video|audio|iframe|object)\b/i.test(content) || entry['wp:attachment_url']) warnings.push('رسانه بدون نگاشت محلی منتقل نمی‌شود؛ تصویر را از کتابخانهٔ رسانه انتخاب یا نگاشت کنید.');
+		if (/<a\b/i.test(content)) warnings.push('پیوندهای ایمن حفظ می‌شوند؛ نشانی‌های ناامن و گزینه‌های اضافی پیوند منتقل نمی‌شوند.');
 		if (/<h[1-6]\b/i.test(content)) warnings.push('تیترهای بلند به متن تقسیم می‌شوند و سطح H5 و H6 به H4 تبدیل می‌شود.');
+		if (/<(?:ul|ol)\b/i.test(content)) warnings.push('فهرست‌های ساده به مؤلفهٔ بومی تبدیل می‌شوند؛ ساختار فهرست‌های تودرتو تقریبی است.');
+		if (/<blockquote\b/i.test(content)) warnings.push('نقل‌قول به مؤلفهٔ بومی تبدیل می‌شود؛ انتساب خودکار بررسی شود.');
 		if (entry.category || entry['wp:postmeta']) warnings.push('دسته‌ها، برچسب‌ها و فرادادهٔ وردپرس منتقل نمی‌شوند.');
-		items.push({ id: asText(entry['wp:post_id']).slice(0, 80), type, title, slug: asText(entry['wp:post_name']).slice(0, 120), status: asText(entry['wp:status']).slice(0, 40), content, excerpt, warnings });
+		const meta = entry['wp:postmeta'] === undefined ? [] : Array.isArray(entry['wp:postmeta']) ? entry['wp:postmeta'] : [entry['wp:postmeta']];
+		const candidates = meta.filter(isObject).filter((item) => asText(item['wp:meta_key']) === '_elementor_data');
+		let elementorData: string | undefined;
+		if (candidates.length === 1) {
+			try {
+				const parsed: unknown = JSON.parse(asText(candidates[0]['wp:meta_value']));
+				const normalized = Array.isArray(parsed) ? { version: 'wxr', content: parsed } : parsed;
+				if (!isObject(normalized) || typeof normalized.version !== 'string' || !Array.isArray(normalized.content)) throw new Error('invalid');
+				elementorData = JSON.stringify(normalized);
+				warnings.push('دادهٔ Elementor در WXR موجود است؛ می‌توانید تبدیل تقریبی و هشدارهای آن را جداگانه انتخاب و بررسی کنید.');
+			} catch { warnings.push('دادهٔ Elementor معتبر نیست؛ فقط محتوای HTML وردپرس قابل بررسی است.'); }
+		} else if (candidates.length > 1) warnings.push('چند دادهٔ Elementor متعارض پیدا شد؛ هیچ‌کدام خودکار انتخاب نشد.');
+		items.push({ id: asText(entry['wp:post_id']).slice(0, 80), type, title, ...(blogTitle !== title ? { blogTitle } : {}), ...(blogTitleEnd < fullTitle.length ? { blogTitleTruncated: true } : {}), slug: asText(entry['wp:post_name']).slice(0, 120), status: asText(entry['wp:status']).slice(0, 40), content, excerpt, ...(sourceDate ? { sourceDate } : {}), ...(categories.length ? { categories: categories.slice(0, 20) } : {}), ...(elementorData ? { elementorData } : {}), warnings });
 	}
-	return { version, items, ignored };
-}
-
-const cleanText = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
-
-/** Convert bounded HTML into editable host-owned nodes; source markup is never rendered. */
-function htmlToNodes(html: string): BuilderNode[] {
-	const nodes: BuilderNode[] = [];
-	let text = '';
-	let heading: 1 | 2 | 3 | 4 | null = null;
-	let tagCount = 0;
-	let depth = 0;
-	let skipDepth = 0;
-	let anchor: { href: string; text: string } | null = null;
-	let links: Array<{ href: string; text: string }> = [];
-	const push = (node: BuilderNode) => {
-		nodes.push(node);
-		if (nodes.length > 200) throw new Error('محتوای تبدیل‌شده بیش از ۲۰۰ مؤلفه دارد.');
-	};
-	const safeEnd = (value: string, max: number) => {
-		let end = Math.min(max, value.length);
-		if (end < value.length && /[\uD800-\uDBFF]/.test(value[end - 1])) end--;
-		return end;
-	};
-	const emitText = (content: string) => {
-		let rest = content;
-		while (rest.length) {
-			const end = safeEnd(rest, 5000);
-			const node = createBuilderNode('Text');
-			node.props.text = rest.slice(0, end);
-			push(node);
-			rest = rest.slice(end);
-		}
-	};
-	const flush = () => {
-		const content = cleanText(text).trim();
-		if (content) {
-			if (heading) {
-				const end = safeEnd(content, 240);
-				const node = createBuilderNode('Heading');
-				node.props.text = content.slice(0, end);
-				node.props.level = heading;
-				push(node);
-				emitText(content.slice(end));
-			} else if (links.length === 1 && links[0].text.trim() === content && content.length <= 80 && links[0].href.length <= 500 && safeHref(links[0].href) && links[0].href) {
-				const node = createBuilderNode('Button');
-				node.props.label = content;
-				node.props.href = links[0].href;
-				node.props.variant = 'outline';
-				push(node);
-			} else emitText(content);
-		}
-		text = '';
-		links = [];
-		anchor = null;
-	};
-	const blocks = new Set(['p', 'div', 'section', 'article', 'li', 'blockquote', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-	const parser = new Parser({
-		onopentag(name, attributes) {
-			if (++tagCount > 20_000 || ++depth > 64) throw new Error('ساختار HTML واردشده بیش از حد مجاز است.');
-			if (skipDepth) { skipDepth++; return; }
-			if (['script', 'style', 'iframe', 'object', 'template', 'svg', 'math'].includes(name)) { skipDepth = 1; return; }
-			if (blocks.has(name)) {
-				flush();
-				const match = /^h([1-6])$/.exec(name);
-				heading = match ? Math.min(4, Number(match[1])) as 1 | 2 | 3 | 4 : null;
-			}
-			if (name === 'br') text += '\n';
-			if (name === 'a') anchor = { href: attributes.href ?? '', text: '' };
-			if (name === 'img') {
-				flush();
-				const image = createBuilderNode('Image');
-				image.props.alt = cleanText(attributes.alt ?? '').slice(0, 240);
-				push(image);
-			}
-		},
-		ontext(value) {
-			if (skipDepth) return;
-			text += value;
-			if (anchor) anchor.text += value;
-		},
-		onclosetag(name) {
-			depth--;
-			if (skipDepth) { skipDepth--; return; }
-			if (name === 'a' && anchor) { links.push(anchor); anchor = null; }
-			if (blocks.has(name)) { flush(); heading = null; }
-		},
-	}, { decodeEntities: true });
-	parser.write(html);
-	parser.end();
-	flush();
-	return nodes;
+	return { version, items, ignored, attachments };
 }
 
 /** Convert into native editable nodes without mutating or publishing the target. */
-export function wxrItemToDocument(item: WxrItem, target: PageDocument): PageDocument {
-	return validatePageDocument({ ...target, nodes: htmlToNodes(item.content) }, target.slug);
+export function wxrItemToDocument(item: WxrItem, target: PageDocument, mediaMap?: MigrationMediaMap): PageDocument {
+	return validatePageDocument({ ...target, nodes: htmlToBuilderNodes(item.content, mediaMap) }, target.slug);
+}
+
+/** Explicitly choose the bounded Elementor converter when metadata exists. */
+export function convertWxrItem(item: WxrItem, target: PageDocument, preferElementor = false, mediaMap?: MigrationMediaMap): { document: PageDocument; warnings: ImportWarning[]; source: 'html' | 'elementor' } {
+	if (preferElementor && item.elementorData) {
+		const result = convertElementorJson(item.elementorData, target, mediaMap);
+		return { document: result.document, warnings: result.warnings, source: 'elementor' };
+	}
+	const warnings: ImportWarning[] = [];
+	const seen = new Set<string>();
+	const nodes = htmlToBuilderNodes(item.content, mediaMap, (code, message) => {
+		if (!seen.has(code)) { seen.add(code); warnings.push({ sourceId: item.id || 'wordpress', code, message }); }
+	});
+	return { document: validatePageDocument({ ...target, nodes }, target.slug), warnings, source: 'html' };
 }
 
 /** Convert all inspected entries into distinct drafts without changing an existing page. */
-export function wxrToDraftPages(inspection: WxrInspection, prefix: string): PageDocument[] {
+export function wxrToDraftPages(inspection: WxrInspection, prefix: string, preferElementor = false, mediaMap?: MigrationMediaMap): PageDocument[] {
 	if (!isValidPageSlug(prefix)) throw new Error('پیشوند نامک معتبر نیست.');
 	if (!Array.isArray(inspection.items) || !inspection.items.length || inspection.items.length > 20) throw new Error('برای ساخت گروهی، فایل باید بین ۱ تا ۲۰ صفحه یا نوشته داشته باشد.');
 	return inspection.items.map((item, index) => {
 		const slug = `${prefix}-${index + 1}`;
 		if (!isValidPageSlug(slug)) throw new Error('نامک تولیدشده بیش از حد طولانی است.');
 		const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 100) : 'بدون عنوان';
-		return wxrItemToDocument(item, createEmptyPageDocument(slug, title));
+		return convertWxrItem(item, createEmptyPageDocument(slug, title), preferElementor, mediaMap).document;
 	});
 }

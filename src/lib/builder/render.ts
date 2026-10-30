@@ -1,51 +1,74 @@
-import { BREAKPOINT_MAX_WIDTH } from './responsive.ts';
+import { breakpointRanges, breakpointWidths, resolveNodeStyles } from './responsive.ts';
+import { normalizeNodeStyles } from './registry.ts';
 import type { BuilderNode, NodeStyles, PageDocument, ResponsiveNodeStyles } from './types.ts';
 
 export function publicPagePath(slug: string): string {
 	return `/pages/${encodeURIComponent(slug)}`;
 }
 
-export function controlledNodeStyle(styles: NodeStyles | undefined): string | undefined {
-	if (!styles) return undefined;
-	const declarations: string[] = [];
-	if (styles.width) declarations.push(...widthDeclarations(styles.width));
-	for (const key of [
-		'marginBlockStart',
-		'marginBlockEnd',
-		'paddingBlockStart',
-		'paddingBlockEnd',
-		'paddingInlineStart',
-		'paddingInlineEnd',
-	] as const) {
-		const value = styles[key];
-		if (value !== undefined) declarations.push(`${kebab(key)}:${value}px`);
+type Declaration = readonly [property: string, value: string];
+
+/** Single, validated style resolution path used by React and Astro. */
+export function nodeStyleDeclarations(input: NodeStyles | undefined): Declaration[] {
+	const styles = normalizeNodeStyles(input);
+	const declarations: Declaration[] = [];
+	if (styles.width) {
+		switch (styles.width) {
+			case 'content': declarations.push(['width', 'max-content'], ['max-width', '100%']); break;
+			case 'narrow': declarations.push(['width', 'min(100%,40rem)'], ['max-width', '100%']); break;
+			case 'wide': declarations.push(['width', 'min(100%,72rem)'], ['max-width', '100%']); break;
+			case 'full': declarations.push(['width', '100%'], ['max-width', 'none']); break;
+			default: declarations.push(['width', styles.width]);
+		}
 	}
-	if (styles.borderRadius) declarations.push(`border-radius:${borderRadius(styles.borderRadius)}`);
-	return declarations.length ? declarations.join(';') : undefined;
+	for (const key of ['height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const) {
+		const value = styles[key];
+		if (value !== undefined) declarations.push([kebab(key), value]);
+	}
+	for (const key of ['marginBlockStart', 'marginBlockEnd', 'paddingBlockStart', 'paddingBlockEnd', 'paddingInlineStart', 'paddingInlineEnd'] as const) {
+		const value = styles[key];
+		if (value !== undefined) declarations.push([kebab(key), `${value}px`]);
+	}
+	if (styles.borderRadius) declarations.push(['border-radius', { none: '0', sm: '.35rem', md: '.7rem', lg: '1.1rem' }[styles.borderRadius]]);
+	if (styles.layout) declarations.push(['display', styles.layout]);
+	if (styles.direction) declarations.push(['flex-direction', styles.direction]);
+	if (styles.columns) declarations.push(['grid-template-columns', `repeat(${styles.columns},minmax(0,1fr))`]);
+	if (styles.gap !== undefined) declarations.push(['gap', `${styles.gap}px`]);
+	if (styles.alignItems) declarations.push(['align-items', styles.alignItems]);
+	if (styles.justifyContent) declarations.push(['justify-content', styles.justifyContent]);
+	if (styles.overflow) declarations.push(['overflow', styles.overflow]);
+	return declarations;
+}
+
+export function nodeStyleObject(styles: NodeStyles | undefined): Record<string, string> {
+	return Object.fromEntries(nodeStyleDeclarations(styles).map(([key, value]) => [key.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase()), value]));
+}
+
+export function controlledNodeStyle(styles: NodeStyles | undefined): string | undefined {
+	const declarations = nodeStyleDeclarations(styles);
+	return declarations.length ? declarations.map(([key, value]) => `${key}:${value}`).join(';') : undefined;
 }
 
 export function buildResponsiveCss(document: PageDocument): string {
-	const rules: string[] = [];
+	const widths = breakpointWidths(document);
+	const ranges = breakpointRanges(document);
+	// Intrinsic row behavior follows the document's mobile boundary.
+	const rules: string[] = [`@media (max-width:${widths.mobile}px){:where(.nvx-page) .nvx-builder-container[data-layout='row']{flex-direction:column}:where(.nvx-page) .nvx-builder-container{width:100%}}`];
 	for (const node of flattenNodes(document.nodes)) {
-		const desktopHidden = node.responsiveStyles?.desktop?.hidden === true;
-		const tabletHidden = node.responsiveStyles?.tablet?.hidden === true;
-		const mobileHidden = node.responsiveStyles?.mobile?.hidden === true;
 		const selector = `[data-builder-id="${node.id}"]`;
-		if (desktopHidden) rules.push(`${selector}{display:none!important}`);
-		for (const breakpoint of ['tablet', 'mobile'] as const) {
-			const styles = node.responsiveStyles?.[breakpoint];
-			const declarations = styles ? responsiveDeclarations(styles) : [];
-			const shouldResetVisibility = breakpoint === 'tablet'
-				? desktopHidden || tabletHidden
-				: desktopHidden || tabletHidden || mobileHidden;
-			if (shouldResetVisibility) {
-				const hidden = breakpoint === 'tablet' ? tabletHidden : mobileHidden;
-				const display = node.type === 'Container' ? (node.props.layout === 'grid' ? 'grid' : 'flex') : node.type === 'PluginBlock' ? 'flex' : 'block';
-				declarations.unshift(`display:${hidden ? 'none' : display}!important`);
+		const anyHidden = Object.values(node.responsiveStyles ?? {}).some((entry) => entry?.hidden === true);
+		if (node.responsiveStyles?.desktop?.hidden === true) rules.push(`${selector}{display:none!important}`);
+		for (const range of ranges.slice(1)) {
+			const styles = node.responsiveStyles?.[range.id];
+			let declarations = styles ? responsiveDeclarations(styles) : [];
+			if (anyHidden) {
+				const fallback = node.type === 'Container' ? (node.props.layout === 'grid' ? 'grid' : 'flex') : node.type === 'PluginBlock' || node.type === 'Button' ? 'flex' : 'block';
+				const display = resolveNodeStyles(node, range.id, document).layout ?? fallback;
+				// Each named range has independent visibility; restore display on the next range.
+				declarations = declarations.filter((declaration) => !declaration.startsWith('display:'));
+				declarations.push(`display:${styles?.hidden === true ? 'none' : display}!important`);
 			}
-			if (!declarations.length) continue;
-			const maxWidth = `${BREAKPOINT_MAX_WIDTH[breakpoint]}px`;
-			rules.push(`@media (max-width:${maxWidth}){${selector}{${declarations.join(';')}}}`);
+			if (declarations.length) rules.push(`@media (max-width:${range.maxWidth}px){${selector}{${declarations.join(';')}}}`);
 		}
 	}
 	return rules.join('\n');
@@ -56,35 +79,8 @@ function flattenNodes(nodes: BuilderNode[]): BuilderNode[] {
 }
 
 function responsiveDeclarations(styles: ResponsiveNodeStyles): string[] {
-	const declarations: string[] = [];
-	if (styles.width) declarations.push(...widthDeclarations(styles.width));
-	for (const key of [
-		'marginBlockStart',
-		'marginBlockEnd',
-		'paddingBlockStart',
-		'paddingBlockEnd',
-		'paddingInlineStart',
-		'paddingInlineEnd',
-	] as const) {
-		const value = styles[key];
-		if (value !== undefined) declarations.push(`${kebab(key)}:${value}px`);
-	}
-	if (styles.borderRadius) declarations.push(`border-radius:${borderRadius(styles.borderRadius)}`);
-	// Published base styles are inline; breakpoint overrides must win over them.
-	return declarations.map((declaration) => `${declaration}!important`);
-}
-
-function widthDeclarations(width: NonNullable<NodeStyles['width']>): string[] {
-	switch (width) {
-		case 'content': return ['width:max-content', 'max-width:100%'];
-		case 'narrow': return ['width:min(100%,40rem)', 'max-width:100%'];
-		case 'wide': return ['width:min(100%,72rem)', 'max-width:100%'];
-		case 'full': return ['width:100%', 'max-width:none'];
-	}
-}
-
-function borderRadius(value: NonNullable<NodeStyles['borderRadius']>): string {
-	return { none: '0', sm: '.35rem', md: '.7rem', lg: '1.1rem' }[value];
+	const { hidden: _hidden, ...surface } = styles;
+	return nodeStyleDeclarations(surface).map(([key, value]) => `${key}:${value}!important`);
 }
 
 function kebab(value: string): string {

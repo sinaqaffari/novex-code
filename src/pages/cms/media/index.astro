@@ -46,6 +46,7 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 			<span data-dropzone-label>
 				تصاویر را اینجا رها کنید یا کلیک کنید — JPG، PNG، WebP، AVIF و GIF تا ۸ مگابایت
 			</span>
+			<label data-deduplicate-option><input type="checkbox" name="deduplicate" value="1" /> استفاده از فایل یکسان موجود به‌جای ساخت رونوشت</label>
 			<button class="btn btn--outline btn--sm" type="submit" data-upload-submit hidden>
 				<span>شروع بارگذاری</span>
 			</button>
@@ -199,7 +200,7 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 
 	form?.addEventListener('click', (event) => {
 		const target = event.target as HTMLElement;
-		if (target.closest('button') || target === input) return;
+		if (target.closest('button, [data-deduplicate-option]') || target === input) return;
 		input?.click();
 	});
 
@@ -241,9 +242,9 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 				headers: { accept: 'application/json' },
 				body: new FormData(form),
 			});
-			const payload = (await response.json()) as { ok?: boolean; message?: string };
+			const payload = (await response.json()) as { ok?: boolean; message?: string; files?: Array<{ reused?: boolean }> };
 			if (response.ok && payload.ok) {
-				window.location.assign('/cms/media?flash=uploaded');
+				window.location.assign(`/cms/media?flash=${payload.files?.some((file) => file.reused) ? 'upload-reused' : 'uploaded'}`);
 				return;
 			}
 			if (label) label.textContent = payload.message ?? 'بارگذاری ناموفق بود.';

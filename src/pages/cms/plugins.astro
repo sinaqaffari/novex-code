@@ -9,6 +9,8 @@ import {
 } from '../../lib/plugins/registry';
 import { hasPluginSecret, pluginSecretEnvironmentName } from '../../lib/plugins/secrets';
 import { PLUGIN_CAPABILITY_LABELS, type PluginCapability } from '../../lib/plugins/types';
+import { listDeclarativePluginPackages } from '../../lib/builder/store';
+import type { DeclarativePluginRecord } from '../../lib/builder/declarative-plugin-package';
 
 export const prerender = false;
 
@@ -19,6 +21,9 @@ const status = Astro.url.searchParams.get('status') ?? 'all';
 const selectedId = Astro.url.searchParams.get('plugin') ?? '';
 const view = Astro.url.searchParams.get('view') ?? 'settings';
 
+let dataPackages: DeclarativePluginRecord[] = [];
+let dataPackagesError = '';
+try { dataPackages = await listDeclarativePluginPackages(); } catch { dataPackagesError = 'خواندن بسته‌های داده‌محور ممکن نشد؛ داده‌ها تغییر نکردند.'; }
 const installed = listInstalledPlugins();
 const activeCount = installed.filter((plugin) => plugin.active).length;
 
@@ -74,6 +79,34 @@ const hookLabels: Record<string, string> = {
 	<Fragment slot="actions">
 		<a class="btn btn--sm" href="#plugin-docs">ساخت افزونه</a>
 	</Fragment>
+
+	<section class="card" id="data-plugin-packages">
+		<div class="card__head"><div><h2 class="card__title">بسته‌های مؤلفهٔ داده‌محور</h2><p class="card__hint">JSON یا ZIP با مؤلفه‌های میزبان و پردازشگر عددی WebAssembly ایزوله؛ JavaScript، قلاب و افزونهٔ PHP بارگذاری نمی‌شود. محیط ایزوله باید روی سرور پشتیبانی شود.</p></div></div>
+		<div class="card__body stack" style="gap:12px">
+			{dataPackagesError ? <p role="alert">{dataPackagesError}</p> : null}
+			{dataPackages.length ? <ul>{dataPackages.map((item) => <li data-data-plugin-id={item.package.id} data-revision={item.revision}>
+				<strong>{item.package.name}</strong> · <bdi>{item.package.id}</bdi> · نسخهٔ <bdi>{item.package.version}</bdi> · {item.active ? 'فعال' : 'غیرفعال'} · {item.package.components.length} مؤلفه · {item.package.presets?.length ?? 0} پیش‌تنظیم · {item.package.processors?.length ?? 0} پردازشگر ایزوله
+				<button class="btn btn--sm" type="button" data-data-plugin-toggle data-active={item.active ? 'true' : 'false'}>{item.active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button>
+				<button class="btn btn--sm" type="button" data-data-plugin-delete>حذف بسته</button>
+			</li>)}</ul> : <p>هنوز بسته‌ای نصب نشده است.</p>}
+			<label for="data-plugin-file">انتخاب بستهٔ مؤلفهٔ JSON یا ZIP</label>
+			<input id="data-plugin-file" type="file" accept=".json,.zip,application/json,application/zip" />
+			<p id="data-plugin-summary">ابتدا فایل را برای بررسی انتخاب کنید.</p>
+			<pre id="data-plugin-readme" class="code-block" hidden></pre>
+			<div><button class="btn btn--sm" type="button" id="data-plugin-install" disabled>نصب بستهٔ مؤلفه</button> <button class="btn btn--sm" type="button" id="data-plugin-update" disabled>به‌روزرسانی بستهٔ مؤلفه</button></div>
+			<p id="data-plugin-status" role="status"></p>
+			<p class="hint">نسخه‌های درج‌شده در صفحات به‌صورت snapshot باقی می‌مانند؛ غیرفعال‌سازی یا حذف تنها درج نسخه‌های تازه را متوقف می‌کند.</p>
+			<details><summary>نمونهٔ قالب JSON</summary><pre class="code-block ltr" dir="ltr"><code>{`{
+  "schemaVersion": 1, "id": "data-example", "version": "1.0.0",
+  "name": "Example", "description": "Data only",
+  "components": [{
+    "pluginId": "data-example", "pluginVersion": "1.0.0", "componentId": "notice", "label": "Notice",
+    "fields": [{ "key": "message", "label": "Message", "kind": "text", "value": "Hello", "maxLength": 240 }],
+    "parts": [{ "type": "text", "textKey": "message" }]
+  }]
+}`}</code></pre></details>
+		</div>
+	</section>
 
 	<section class="card">
 		<div class="card__head">
@@ -536,3 +569,108 @@ export function register(api: PluginApi) {
 		</div>
 	</section>
 </CmsLayout>
+
+<script>
+	import { validateDeclarativePluginPackage, type DeclarativePluginPackage } from '../../lib/builder/declarative-plugin-package.ts';
+	const input = document.getElementById('data-plugin-file');
+	const summary = document.getElementById('data-plugin-summary');
+	const status = document.getElementById('data-plugin-status');
+	const readme = document.getElementById('data-plugin-readme');
+	const install = document.getElementById('data-plugin-install');
+	const update = document.getElementById('data-plugin-update');
+	let candidate: DeclarativePluginPackage | null = null;
+	let candidateArchive: File | null = null;
+	let sending = false;
+	let inspection = 0;
+	const rowFor = (id: string) => Array.from(document.querySelectorAll<HTMLElement>('[data-data-plugin-id]')).find((row) => row.dataset.dataPluginId === id);
+	const message = (value: string) => { if (status) status.textContent = value; };
+	const setButtons = () => {
+		if (install instanceof HTMLButtonElement) install.disabled = sending || !candidate || Boolean(rowFor(candidate.id));
+		if (update instanceof HTMLButtonElement) update.disabled = sending || !candidate || !rowFor(candidate.id);
+	};
+	input?.addEventListener('change', async () => {
+		const current = ++inspection;
+		candidate = null; candidateArchive = null; message(''); setButtons();
+		if (readme) { readme.textContent = ''; readme.hidden = true; }
+		const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined;
+		if (!file) return;
+		try {
+			let parsed: unknown;
+			let guide = '';
+			let assetCount = 0;
+			if (file.name.toLowerCase().endsWith('.zip')) {
+				if (file.size > 12 * 1024 * 1024) throw new Error('حجم ZIP نباید بیش از ۱۲ مگابایت باشد.');
+				const form = new FormData(); form.set('archive', file);
+				const response = await fetch('/cms/api/builder/plugin-archive', { method: 'POST', headers: { accept: 'application/json' }, body: form });
+				const result: unknown = await response.json();
+				if (!result || typeof result !== 'object' || !('ok' in result) || result.ok !== true || !('package' in result) || !response.ok) throw new Error(result && typeof result === 'object' && 'message' in result && typeof result.message === 'string' ? result.message : 'بستهٔ ZIP معتبر نیست.');
+				parsed = result.package;
+				if ('readme' in result && typeof result.readme === 'string') guide = result.readme;
+				if (!('assetCount' in result) || typeof result.assetCount !== 'number' || !Number.isSafeInteger(result.assetCount) || result.assetCount < 0) throw new Error('پاسخ دارایی‌های بسته معتبر نیست.');
+				assetCount = result.assetCount;
+			} else {
+				if (file.size > 500_000) throw new Error('حجم JSON نباید بیش از ۵۰۰ کیلوبایت باشد.');
+				parsed = JSON.parse(await file.text());
+			}
+			const valid = validateDeclarativePluginPackage(parsed);
+			if (current !== inspection) return;
+			candidate = valid; candidateArchive = file.name.toLowerCase().endsWith('.zip') ? file : null;
+			if (summary) summary.textContent = `${candidate.name} · ${candidate.id} · نسخهٔ ${candidate.version} · ${candidate.components.length} مؤلفه · ${candidate.presets?.length ?? 0} پیش‌تنظیم · ${candidate.processors?.length ?? 0} پردازشگر ایزوله · ${assetCount} تصویر بسته`;
+			if (readme && guide) { readme.textContent = guide; readme.hidden = false; }
+			setButtons();
+		} catch (error) { if (current === inspection && summary) summary.textContent = error instanceof Error ? error.message : 'فایل معتبر نیست.'; }
+	});
+	async function send(method: string, payload: unknown) {
+		if (sending) return; sending = true; setButtons();
+		message('در حال بررسی…');
+		try {
+			const response = await fetch('/cms/api/builder/plugin-packages', { method, headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(payload) });
+			const result: unknown = await response.json();
+			if (!response.ok) throw new Error(result && typeof result === 'object' && 'message' in result && typeof result.message === 'string' ? result.message : 'عملیات انجام نشد.');
+			if (!result || typeof result !== 'object' || !('ok' in result) || result.ok !== true) throw new Error('پاسخ موفق سرور معتبر نیست؛ وضعیت بسته را دوباره بررسی کنید.');
+			if (method === 'POST') {
+				if (!('record' in result) || !result.record || typeof result.record !== 'object' || !('revision' in result.record) || !Number.isSafeInteger(result.record.revision) || !('package' in result.record)) throw new Error('پاسخ نصب معتبر نیست؛ وضعیت بسته را دوباره بررسی کنید.');
+				const installed = validateDeclarativePluginPackage(result.record.package);
+				if (!candidate || installed.id !== candidate.id || installed.version !== candidate.version) throw new Error('پاسخ نصب با بستهٔ انتخاب‌شده تطابق ندارد.');
+			}
+			window.location.reload();
+		} catch (error) { message(error instanceof Error ? error.message : 'عملیات انجام نشد.'); }
+		finally { sending = false; setButtons(); }
+	}
+	async function sendArchive(action: 'install' | 'update', file: File, expectedRevision?: number) {
+		if (sending || !candidate) return; sending = true; setButtons(); message('در حال نصب بسته…');
+		try {
+			const form = new FormData(); form.set('archive', file); form.set('action', action); form.set('confirm', 'true');
+			if (expectedRevision !== undefined) form.set('expectedRevision', String(expectedRevision));
+			const response = await fetch('/cms/api/builder/plugin-archive', { method: 'POST', headers: { accept: 'application/json' }, body: form });
+			const result: unknown = await response.json();
+			if (!response.ok) throw new Error(result && typeof result === 'object' && 'message' in result && typeof result.message === 'string' ? result.message : 'نصب بسته ممکن نشد.');
+			if (!result || typeof result !== 'object' || !('ok' in result) || result.ok !== true || !('record' in result) || !result.record || typeof result.record !== 'object' || !('revision' in result.record) || !Number.isSafeInteger(result.record.revision) || !('package' in result.record)) throw new Error('پاسخ نصب معتبر نیست؛ وضعیت بسته را دوباره بررسی کنید.');
+			const installed = validateDeclarativePluginPackage(result.record.package);
+			if (installed.id !== candidate.id || installed.version !== candidate.version) throw new Error('پاسخ نصب با بستهٔ انتخاب‌شده تطابق ندارد.');
+			window.location.reload();
+		} catch (error) { message(error instanceof Error ? error.message : 'نصب بسته ممکن نشد.'); }
+		finally { sending = false; setButtons(); }
+	}
+	install?.addEventListener('click', () => {
+		if (candidate && window.confirm(candidate.processors?.length ? 'پردازشگرهای WebAssembly این بسته فقط هنگام درخواست در محیط ایزوله اجرا می‌شوند؛ JavaScript افزونه اجرا نمی‌شود. ادامه می‌دهید؟' : 'بستهٔ داده‌محور فعال می‌شود؛ هیچ کدی روی سرور اجرا نمی‌شود. ادامه می‌دهید؟')) {
+			if (candidateArchive) void sendArchive('install', candidateArchive);
+			else void send('POST', { action: 'install', confirm: true, package: candidate });
+		}
+	});
+	update?.addEventListener('click', () => {
+		const row = candidate ? rowFor(candidate.id) : undefined;
+		if (candidate && row && window.confirm(candidate.processors?.length ? 'بسته شامل پردازشگر WebAssembly ایزوله است؛ مؤلفه‌های درج‌شده تغییر نمی‌کنند. ادامه می‌دهید؟' : 'مؤلفه‌های تازه برای درج آماده می‌شوند؛ نسخه‌های درج‌شده تغییر نمی‌کنند. ادامه می‌دهید؟')) {
+			if (candidateArchive) void sendArchive('update', candidateArchive, Number(row.dataset.revision));
+			else void send('POST', { action: 'update', confirm: true, package: candidate, expectedRevision: Number(row.dataset.revision) });
+		}
+	});
+	document.querySelectorAll<HTMLButtonElement>('[data-data-plugin-toggle], [data-data-plugin-delete]').forEach((button) => button.addEventListener('click', () => {
+		const row = button.closest<HTMLElement>('[data-data-plugin-id]');
+		if (!row?.dataset.dataPluginId) return;
+		const base = { id: row.dataset.dataPluginId, expectedRevision: Number(row.dataset.revision) };
+		if (button.hasAttribute('data-data-plugin-delete')) {
+			if (window.confirm('بسته حذف می‌شود؛ نسخه‌های درج‌شده در صفحه‌ها باقی می‌مانند. ادامه می‌دهید؟')) void send('DELETE', { ...base, confirm: true });
+		} else void send('PATCH', { ...base, active: button.dataset.active !== 'true' });
+	}));
+</script>

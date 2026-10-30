@@ -11,7 +11,9 @@
  * cached by Node after deactivation; lazy loading is not a security sandbox.
  */
 
-import { addAction, addFilter, removePluginHooks } from './hooks';
+import { addAction, addFilter, collectOwnedBuilderComponents, removePluginHooks } from './hooks';
+import { collectOwnedPluginComponents } from '../builder/plugin-components.ts';
+import { resolvePluginLoadOrder } from './dependencies.ts';
 import { createLazyModuleCache } from './lazy-module';
 import { parseReadme } from './readme';
 import { hasPluginSecret, readPluginSecret } from './secrets';
@@ -238,7 +240,7 @@ function createPublicApi(entry: PluginEntry): PublicPluginApi {
 /** وابستگی‌های فعال‌نشده را برمی‌گرداند؛ خالی یعنی مشکلی نیست. */
 function missingDependencies(entry: PluginEntry, active: string[]): string[] {
 	return (entry.manifest.requiresPlugins ?? []).filter(
-		(dependency) => dependency !== entry.id && !active.includes(dependency),
+		(dependency) => dependency !== entry.id && (!active.includes(dependency) || !registered.has(dependency)),
 	);
 }
 
@@ -274,6 +276,11 @@ async function registerPlugin(entry: PluginEntry, runActivate: boolean): Promise
 		}
 
 		await module.register(api);
+		if (entry.manifest.hooks?.includes('builder.components')) {
+			const contributions = await collectOwnedBuilderComponents(entry.id);
+			const result = collectOwnedPluginComponents(contributions.contributions, (owner) => owner === entry.id ? entry.manifest.version : undefined);
+			if (contributions.rejected || result.rejected || !result.components.length) throw new Error('ثبت مؤلفه‌های افزونه معتبر نیست؛ فعال‌سازی لغو شد.');
+		}
 		if (runActivate && module.activate) {
 			activationStarted = true;
 			await module.activate(api);
@@ -310,12 +317,17 @@ async function boot(): Promise<void> {
 		console.error('[plugins] state is invalid; plugins remain disabled and the file is preserved.', error);
 		return;
 	}
-	for (const entry of buildEntries()) {
-		if (!cache.active.includes(entry.id)) continue;
+	const entries = buildEntries();
+	const plan = resolvePluginLoadOrder(entries.map((entry) => ({ id: entry.id, requiresPlugins: entry.manifest.requiresPlugins })), cache.active);
+	for (const issue of plan.issues) errors.set(issue.pluginId, issue.code === 'dependency_cycle' ? 'چرخهٔ وابستگی افزونه‌ها شناسایی شد.' : `وابستگی افزونه در دسترس نیست: ${issue.dependency ?? issue.pluginId}.`);
+	for (const id of plan.order) {
+		const entry = entries.find((item) => item.id === id)!;
+		const failed = (entry.manifest.requiresPlugins ?? []).find((dependency) => !registered.has(dependency));
+		if (failed) { errors.set(id, `وابستگی افزونه بارگذاری نشد: ${failed}.`); continue; }
 		try {
 			await registerPlugin(entry, true);
 		} catch {
-			// خطای هر افزونه جدا نگه داشته می‌شود تا بقیهٔ پنل از کار نیفتد.
+			// Failure of one extension does not prevent unrelated plugins from booting.
 		}
 	}
 }
@@ -349,7 +361,7 @@ export async function activatePlugin(id: string): Promise<void> {
 
 	const active = cache?.active ?? [];
 	if (active.includes(id) && registered.has(id)) return;
-	const missing = missingDependencies(entry, active);
+	const missing = (entry.manifest.requiresPlugins ?? []).filter((dependency) => !active.includes(dependency) || !registered.has(dependency));
 	if (missing.length) {
 		const names = missing
 			.map((dependency) => buildEntries().find((item) => item.id === dependency)?.manifest.name ?? dependency)
@@ -475,7 +487,7 @@ export function listPluginPages(): PluginPageEntry[] {
 	const active = new Set(cache?.active ?? []);
 
 	return buildEntries()
-		.filter((entry) => active.has(entry.id) && !entry.validationError)
+		.filter((entry) => active.has(entry.id) && registered.has(entry.id) && !entry.validationError)
 		.flatMap((entry) => {
 			const module = pluginModules.get(entry.id);
 			return (entry.manifest.admin?.pages ?? [])
@@ -494,9 +506,10 @@ export async function renderPluginPage(
 	pluginId: string,
 	path: string,
 ): Promise<{ manifest: PluginManifest; page: PluginAdminPage; html: string } | null> {
+	await ensurePluginsBooted();
 	const entry = buildEntries().find((item) => item.id === pluginId);
 	if (!entry || entry.validationError) return null;
-	if (!(cache?.active ?? []).includes(pluginId)) return null;
+	if (!(cache?.active ?? []).includes(pluginId) || !registered.has(pluginId)) return null;
 
 	const page = (entry.manifest.admin?.pages ?? []).find((item) => item.path === path);
 	if (!page) return null;

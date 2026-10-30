@@ -132,7 +132,7 @@ describe('Reusable sections and templates', () => {
 
 	it('compatible templates carry the same schema version', () => {
 		for (const template of listStarterTemplates()) {
-			assert.equal(template.document.schemaVersion, 2);
+			assert.equal(template.document.schemaVersion, 5);
 			assert.doesNotThrow(() => validatePageDocument(template.document, template.document.slug));
 		}
 	});

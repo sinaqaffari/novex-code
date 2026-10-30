@@ -77,3 +77,33 @@ describe('Builder revision store', () => {
 		assert.equal(await readFile(file, 'utf8'), corrupt);
 	});
 });
+
+it('preserves unknown store metadata on subsequent writes rather than silently discarding it', async () => {
+	const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
+	const os = await import('node:os');
+	const path = await import('node:path');
+	const { createEmptyPageDocument } = await import('../src/lib/builder/document.ts');
+	const { saveDraftPage, saveBuilderTemplate } = await import('../src/lib/builder/store.ts');
+	const directory = await mkdtemp(path.join(os.tmpdir(), 'novex-store-metadata-'));
+	const old = process.env.BUILDER_DATA_FILE; const file = path.join(directory, 'pages.json'); process.env.BUILDER_DATA_FILE = file;
+	try {
+		const document = createEmptyPageDocument('metadata-page');
+		await saveDraftPage({ slug: document.slug, expectedRevision: 0, document });
+		const template = await saveBuilderTemplate({ name: 'Metadata template', document });
+		const database = JSON.parse(await readFile(file, 'utf8'));
+		database.futureRoot = { retained: true };
+		database.pages[document.slug].futurePage = { retained: 2 };
+		database.pages[document.slug].revisions[0].futureRevision = 'retained';
+		database.templates[template.id].futureTemplate = [1, 2];
+		await writeFile(file, JSON.stringify(database));
+		await saveDraftPage({ slug: document.slug, expectedRevision: 1, document });
+		const persisted = JSON.parse(await readFile(file, 'utf8'));
+		assert.deepEqual(persisted.futureRoot, { retained: true });
+		assert.deepEqual(persisted.pages[document.slug].futurePage, { retained: 2 });
+		assert.equal(persisted.pages[document.slug].revisions[0].futureRevision, 'retained');
+		assert.deepEqual(persisted.templates[template.id].futureTemplate, [1, 2]);
+	} finally {
+		if (old === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = old;
+		await rm(directory, { recursive: true, force: true });
+	}
+});

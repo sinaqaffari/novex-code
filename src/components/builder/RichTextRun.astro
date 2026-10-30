@@ -1,0 +1,8 @@
+---
+import type { TextRun } from '../../lib/builder/rich-text.ts';
+interface Props { run: TextRun }
+const { run } = Astro.props;
+const Bold = run.bold ? 'strong' : 'span';
+const Italic = run.italic ? 'em' : 'span';
+---
+{run.href ? <a href={run.href}><Bold><Italic>{run.text}</Italic></Bold></a> : <Bold><Italic>{run.text}</Italic></Bold>}

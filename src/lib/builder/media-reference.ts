@@ -8,7 +8,7 @@ export interface BuilderMediaReference {
 export function parseBuilderMediaReference(value: string): BuilderMediaReference | null {
 	const match = MEDIA_REFERENCE.exec(value);
 	if (!match || match[2].includes('..')) return null;
-	return { bucket: match[1] as BuilderMediaReference['bucket'], name: match[2] };
+	return { bucket: match[1].toLowerCase() as BuilderMediaReference['bucket'], name: match[2] };
 }
 
 /** Convert a stable serialized asset reference to its public streaming URL. */

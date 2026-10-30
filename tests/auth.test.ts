@@ -1,46 +1,31 @@
 /**
  * تست‌های احراز هویت — auth و users.
  * اجرا: `node --test tests/auth.test.ts`
- * نکته: فایل data/users.json را برای تست‌ها تغییر می‌دهد و بعداً بازمی‌گرداند.
+ * از فایل کاربران موقت استفاده می‌کند و به دادهٔ واقعی دست نمی‌زند.
  */
 
 import assert from 'node:assert/strict';
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import { hashPassword, verifyPassword } from '../src/lib/cms/auth.ts';
-import {
-	createUser,
-	getUserByUsername,
-	updateUser,
-	deleteUser,
-	ensureDefaultAdmin,
-	listUsers,
-} from '../src/lib/cms/users.ts';
-
+import { describe, it, beforeEach, after } from 'node:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import os from 'node:os';
 
-const BACKUP = path.join(process.cwd(), 'data/users.json.bak');
-const USERS = path.join(process.cwd(), 'data/users.json');
+// Auth imports users transitively; set its path before importing either module.
+const priorUsersFile = process.env.CMS_USERS_FILE;
+const testDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'novex-auth-test-'));
+process.env.CMS_USERS_FILE = path.join(testDirectory, 'users.json');
+const { hashPassword, verifyPassword } = await import('../src/lib/cms/auth.ts');
+const { createUser, getUserByUsername, updateUser, deleteUser, ensureDefaultAdmin, listUsers, USERS_FILE } = await import('../src/lib/cms/users.ts');
+assert.equal(USERS_FILE, process.env.CMS_USERS_FILE);
+const USERS = USERS_FILE;
 
 beforeEach(() => {
-	// بک‌آپ فایل کاربران فعلی (اگر وجود دارد)
-	if (fs.existsSync(USERS)) {
-		fs.copyFileSync(USERS, BACKUP);
-	}
-	// حذف فایل برای شروع تازه
-	if (fs.existsSync(USERS)) {
-		fs.rmSync(USERS);
-	}
+	fs.rmSync(USERS, { force: true });
 });
 
-afterEach(() => {
-	// بازگردانی فایل قبلی
-	if (fs.existsSync(BACKUP)) {
-		fs.copyFileSync(BACKUP, USERS);
-		fs.rmSync(BACKUP);
-	} else if (fs.existsSync(USERS)) {
-		fs.rmSync(USERS);
-	}
+after(() => {
+	if (priorUsersFile === undefined) delete process.env.CMS_USERS_FILE; else process.env.CMS_USERS_FILE = priorUsersFile;
+	fs.rmSync(testDirectory, { recursive: true, force: true });
 });
 
 describe('Auth — password hashing', () => {

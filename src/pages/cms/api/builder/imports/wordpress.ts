@@ -1,3 +1,4 @@
+import { mediaRequestOrigins } from '../../../../../lib/urls.ts';
 import type { APIRoute } from 'astro';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { failure, json } from '../../../../../lib/cms/http.ts';
@@ -38,7 +39,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
 	if (!Array.isArray(body.documents) || !body.documents.length || body.documents.length > 20) return failure('تعداد صفحه‌ها معتبر نیست.', 422);
 	try {
 		const documents = body.documents.map((document) => validatePageDocument(document));
-		const records = await installDraftPages(documents);
+		const records = await installDraftPages(documents, undefined, { origins: mediaRequestOrigins(request) });
 		return json({ ok: true, pages: records.map(({ slug, revision }) => ({ slug, revision })) }, 201);
 	} catch (error) {
 		if (error instanceof BuilderStoreError) return json({ ok: false, code: error.code, message: error.message }, error.status);

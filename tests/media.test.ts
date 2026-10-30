@@ -18,3 +18,12 @@ describe('CMS media upload policy', () => {
 		assert.equal(resolveAssetPath('../../../../etc/passwd'), null);
 	});
 });
+
+it('inspects image dimensions and rejects truncated or excessive pixel headers', async () => {
+	const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p2cAAAAASUVORK5CYII=', 'base64');
+	await validateUploadFile(new File([png], 'valid.png', { type: 'image/png' }));
+	await assert.rejects(validateUploadFile(new File([png.subarray(0, 12)], 'truncated.png', { type: 'image/png' })), /ساختار یا ابعاد تصویر معتبر نیست/);
+	const oversized = Buffer.from(png);
+	oversized.writeUInt32BE(10_000, 16); oversized.writeUInt32BE(10_000, 20);
+	await assert.rejects(validateUploadFile(new File([oversized], 'large.png', { type: 'image/png' })), /ساختار یا ابعاد تصویر معتبر نیست/);
+});

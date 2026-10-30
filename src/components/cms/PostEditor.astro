@@ -39,7 +39,7 @@ const values = {
 };
 
 const heroOptions = media.map((item) => ({
-	value: item.reference,
+	value: item.publicUrl,
 	label: item.builtin ? `${item.name} — تصویر همراه قالب` : item.name,
 	preview: item.previewUrl,
 }));
@@ -52,7 +52,7 @@ if (values.heroImage && !heroOptions.some((option) => option.value === values.he
 	});
 }
 
-const activeHero = media.find((item) => item.reference === values.heroImage);
+const activeHero = media.find((item) => item.reference === values.heroImage || item.publicUrl === values.heroImage);
 const initialWords = values.body
 	.replace(/```[\s\S]*?```/g, ' ')
 	.replace(/[#>*_~`|\-[\]()!]/g, ' ')

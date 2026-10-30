@@ -3,7 +3,7 @@ import { readSessionToken, SESSION_COOKIE } from './lib/cms/auth';
 import { json } from './lib/cms/http';
 import { ensurePluginsBooted } from './lib/plugins/registry';
 import { can } from './lib/cms/rbac';
-import { requiredCmsPermission } from './lib/cms/access';
+import { cmsLandingPage, requiredCmsPermission } from './lib/cms/access';
 import { getUserByUsername } from './lib/cms/users';
 
 const LOGIN_PATH = '/cms/login';
@@ -81,7 +81,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
 	if (session && isLoginPage) {
 		const role = context.locals.cmsUser?.role ?? 'subscriber';
-		return noStore(context.redirect(can(role, 'commerce.orders:read') ? '/cms' : '/cms/posts'));
+		return noStore(context.redirect(cmsLandingPage(role)));
 	}
 
 	if (session) {

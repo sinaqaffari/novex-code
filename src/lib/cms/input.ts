@@ -1,5 +1,5 @@
-import { asBoolean, asText } from './http';
-import type { PostInput } from './posts';
+import { asBoolean, asText } from './http.ts';
+import type { PostInput } from './posts.ts';
 
 /** Map a raw form/JSON payload onto the post store's input shape. */
 export function toPostInput(payload: Record<string, unknown>): PostInput {

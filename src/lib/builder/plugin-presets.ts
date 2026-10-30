@@ -1,5 +1,5 @@
 import { validatePageDocument } from './document.ts';
-import { findNode, updateNodeProps } from './operations.ts';
+import { findNode, traversePageNodes, updateNodeProps } from './operations.ts';
 import type { PageDocument } from './types.ts';
 
 /** Declarative native compositions; never executable renderers or arbitrary HTML. */
@@ -30,6 +30,7 @@ export function validateBuilderPresets(value: unknown): BuilderPluginPreset[] {
 		if (typeof item.id !== 'string' || item.id.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.id) || ids.has(item.id) || typeof item.label !== 'string' || !item.label.trim() || item.label.length > 100 || typeof item.description !== 'string' || item.description.length > 300) throw new Error('شناسه یا مشخصات پیش‌تنظیم نامعتبر است.');
 		ids.add(item.id);
 		const document = validatePageDocument(item.document);
+		traversePageNodes(document, (node) => { if (node.type === 'CodeWidget' || node.type === 'GlobalCode') throw new Error('پیش‌تنظیم داده‌محور نمی‌تواند کد اجرایی داشته باشد.'); });
 		if (item.parameters === undefined) return { id: item.id, label: item.label, description: item.description, document };
 		if (!Array.isArray(item.parameters) || item.parameters.length > 12) throw new Error('فهرست ورودی‌ها نامعتبر است.');
 		const parameterKeys = new Set<string>();

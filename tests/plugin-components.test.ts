@@ -67,7 +67,7 @@ describe('declarative plugin component runtime', () => {
 	it('migrates v1 without mutating source and rejects unknown future versions', () => {
 		const current = createEmptyPageDocument('legacy-v1');
 		const legacy = { ...current, schemaVersion: 1 };
-		assert.equal(validatePageDocument(legacy).schemaVersion, 2);
+		assert.equal(validatePageDocument(legacy).schemaVersion, 5);
 		assert.equal(legacy.schemaVersion, 1);
 		assert.throws(() => validatePageDocument({ ...current, schemaVersion: 999 }));
 	});
@@ -88,7 +88,7 @@ describe('plugin snapshot persistence and migration', () => {
 			const v1 = { ...initial, schemaVersion: 1 };
 			const storage = JSON.stringify({ schemaVersion: 1, pages: { 'v1-existing': { slug: 'v1-existing', revision: 1, updatedAt: '2024-01-01', draft: v1, revisions: [{ revision: 1, savedAt: '2024-01-01', document: v1 }] } }, templates: {} });
 			await writeFile(file, storage);
-			assert.equal((await getDraftPage('v1-existing')).draft.schemaVersion, 2);
+			assert.equal((await getDraftPage('v1-existing')).draft.schemaVersion, 5);
 			assert.equal(await readFile(file, 'utf8'), storage);
 			const node = { ...createBuilderNode('PluginBlock', 'node_pluginblock1'), props: example() };
 			const document = validatePageDocument({ ...initial, nodes: [node] });
