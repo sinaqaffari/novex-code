@@ -58,3 +58,88 @@ describe('WXR draft persistence', () => {
 		} finally { if (prior === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = prior; await rm(dir, { recursive: true, force: true }); }
 	});
 });
+
+describe('WXR structural limits', () => {
+	it('rejects excessive XML nesting and tag count before object parsing', () => {
+		const deep = `<rss><channel><wp:wxr_version>1.2</wp:wxr_version>${'<a>'.repeat(64)}x${'</a>'.repeat(64)}</channel></rss>`;
+		assert.throws(() => inspectWxr(deep), /عمق/);
+		const many = `<rss><channel><wp:wxr_version>1.2</wp:wxr_version>${'<x/>'.repeat(20_001)}</channel></rss>`;
+		assert.throws(() => inspectWxr(many), /برچسب/);
+	});
+	it('does not count markup-like text in CDATA, comments or quoted attributes', () => {
+		const xml = `<rss><channel><wp:wxr_version>1.2</wp:wxr_version><!-- <a><b> --><item title="> <x>"><wp:post_type>page</wp:post_type><content:encoded><![CDATA[<p>سلام</p>]]></content:encoded></item></channel></rss>`;
+		const inspection = inspectWxr(xml);
+		assert.equal(inspection.items.length, 1);
+		assert.match(inspection.items[0].content, /سلام/);
+	});
+});
+
+describe('WXR bulk draft import', () => {
+	it('generates distinct validated page drafts from all inspected items, without source mutation', async () => {
+		const { wxrToDraftPages } = await import('../src/lib/migrations/wordpress/wxr.ts');
+		const inspection = inspectWxr(xml);
+		const before = JSON.stringify(inspection);
+		const docs = wxrToDraftPages(inspection, 'wp-sample');
+		assert.deepEqual(docs.map((doc) => doc.slug), ['wp-sample-1', 'wp-sample-2']);
+		assert.deepEqual(docs.map((doc) => doc.title), inspection.items.map((item) => item.title));
+		assert.equal(JSON.stringify(inspection), before);
+		assert.throws(() => wxrToDraftPages(inspection, '../unsafe'));
+		assert.throws(() => wxrToDraftPages({ ...inspection, items: Array(21).fill(inspection.items[0]) }, 'bulk'));
+		assert.throws(() => wxrToDraftPages({ ...inspection, items: [] }, 'bulk'));
+	});
+	it('requires writer permission and confirmation, creates only drafts, and rejects collisions atomically', async () => {
+		const { wxrToDraftPages } = await import('../src/lib/migrations/wordpress/wxr.ts');
+		const { POST } = await import('../src/pages/cms/api/builder/imports/wordpress.ts');
+		const { getDraftPage, getPublishedPage } = await import('../src/lib/builder/store.ts');
+		const { mkdtemp, rm } = await import('node:fs/promises');
+		const { default: os } = await import('node:os');
+		const { default: path } = await import('node:path');
+		const dir = await mkdtemp(path.join(os.tmpdir(), 'novex-wxr-bulk-'));
+		const old = process.env.BUILDER_DATA_FILE;
+		process.env.BUILDER_DATA_FILE = path.join(dir, 'pages.json');
+		const docs = wxrToDraftPages(inspectWxr(xml), 'wp-import');
+		const call = (body: unknown, role = 'editor') => POST({ locals: { cmsUser: { role } }, request: new Request('http://local/cms/api/builder/imports/wordpress', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) } as never);
+		try {
+			assert.equal((await call({ confirmCreate: true, documents: docs }, 'subscriber')).status, 403);
+			assert.equal((await call({ documents: docs })).status, 400);
+			assert.equal((await call({ confirmCreate: true, documents: [docs[0], { ...docs[1], nodes: [{ type: 'Script' }] }] })).status, 422);
+			assert.equal((await getDraftPage(docs[0].slug)).revision, 0);
+			assert.equal((await call({ confirmCreate: true, documents: docs })).status, 201);
+			assert.deepEqual((await getDraftPage(docs[0].slug)).draft, docs[0]);
+			assert.equal(await getPublishedPage(docs[0].slug), null);
+			const extra = wxrToDraftPages({ ...inspectWxr(xml), items: [inspectWxr(xml).items[0]] }, 'different')[0];
+			assert.equal((await call({ confirmCreate: true, documents: [extra, docs[0]] })).status, 409);
+			assert.equal((await getDraftPage(extra.slug)).revision, 0);
+		} finally { if (old === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = old; await rm(dir, { recursive: true, force: true }); }
+	});
+});
+
+describe('WXR safe structured conversion', () => {
+	it('preserves headings, paragraphs, standalone safe links and image placeholders without remote URLs or scripts', () => {
+		const source = inspectWxr(xml).items[0];
+		const html = '<h2>تیتر <em>فارسی</em></h2><p>پاراگراف &amp; متن</p><p><a href="/contact">تماس</a></p><p>متن <a href="https://example.com/path">پیوند</a> ادامه</p><img src="https://example.com/secret.jpg" alt="نمونه"><script>alert(1)</script><iframe src="https://example.com/x">BAD</iframe>';
+		const doc = wxrItemToDocument({ ...source, content: html }, createEmptyPageDocument('structured'));
+		assert.equal(doc.nodes[0].type === 'Heading' && doc.nodes[0].props.level, 2);
+		assert.equal(doc.nodes[0].type === 'Heading' && doc.nodes[0].props.text, 'تیتر فارسی');
+		assert.equal(doc.nodes[1].type === 'Text' && doc.nodes[1].props.text, 'پاراگراف & متن');
+		assert.equal(doc.nodes[2].type === 'Button' && doc.nodes[2].props.href, '/contact');
+		assert.equal(doc.nodes[3].type === 'Text' && doc.nodes[3].props.text, 'متن پیوند ادامه');
+		assert.equal(doc.nodes[4].type === 'Image' && doc.nodes[4].props.alt, 'نمونه');
+		assert.equal(doc.nodes[4].type === 'Image' && doc.nodes[4].props.src, '');
+		assert.doesNotMatch(JSON.stringify(doc), /example\.com|alert|BAD|<script/);
+		assert.deepEqual(validatePageDocument(doc), doc);
+	});
+	it('preserves unsafe link text, long headings and unicode without retaining unsafe hrefs', () => {
+		const source = inspectWxr(xml).items[0];
+		const heading = 'الف😀'.repeat(100);
+		const doc = wxrItemToDocument({ ...source, content: `<h5>${heading}</h5><p><a href="javascript:alert(1)">متن امن</a></p>` }, createEmptyPageDocument('links'));
+		assert.equal(doc.nodes[0].type === 'Heading' && doc.nodes[0].props.level, 4);
+		assert.equal(doc.nodes.map((node) => node.type === 'Heading' || node.type === 'Text' ? node.props.text : '').join(''), `${heading}متن امن`);
+		assert.doesNotMatch(JSON.stringify(doc), /javascript:/);
+	});
+	it('rejects excessive HTML depth and output nodes', () => {
+		const source = inspectWxr(xml).items[0];
+		assert.throws(() => wxrItemToDocument({ ...source, content: '<section>'.repeat(65) + 'x' + '</section>'.repeat(65) }, createEmptyPageDocument('deep-html')), /HTML/);
+		assert.throws(() => wxrItemToDocument({ ...source, content: '<p>x</p>'.repeat(201) }, createEmptyPageDocument('many-nodes')), /۲۰۰/);
+	});
+});

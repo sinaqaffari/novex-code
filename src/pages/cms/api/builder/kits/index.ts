@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { failure, json } from '../../../../../lib/cms/http.ts';
 import { listSiteKits, prepareSiteKit } from '../../../../../lib/builder/site-kits.ts';
+import { assetExists } from '../../../../../lib/cms/media.ts';
+import { verifySiteKitAssets } from '../../../../../lib/builder/site-kit-assets.ts';
 import { BuilderStoreError, installDraftPages } from '../../../../../lib/builder/store.ts';
 
 export const prerender = false;
@@ -22,6 +24,7 @@ export const POST: APIRoute = async ({ locals, request }) => {
 		if (typeof payload.id !== 'string' || typeof payload.prefix !== 'string') return failure('شناسه و پیشوند لازم است.', 400);
 		const kit = listSiteKits().find((item) => item.id === payload.id);
 		if (!kit) return failure('بسته پیدا نشد.', 404);
+		if (!await verifySiteKitAssets(kit, assetExists)) return failure('دارایی بومی بسته پیدا نشد؛ هیچ صفحه‌ای ساخته نشد.', 422);
 		const records = await installDraftPages(prepareSiteKit(kit, payload.prefix));
 		return json({ ok: true, pages: records.map(({ slug, revision }) => ({ slug, revision })) }, 201);
 	} catch (error) {

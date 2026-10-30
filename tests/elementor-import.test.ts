@@ -112,3 +112,31 @@ describe('Elementor image box conversion', () => {
 		assert.doesNotMatch(JSON.stringify(result.document), /example\.com/);
 	});
 });
+
+describe('Elementor icon list conversion', () => {
+	it('preserves list text and safe links as editable native nodes, warning about lost semantics and unsafe URLs', () => {
+		const input = { version: '0.4', content: [{ id: 'list01', elType: 'widget', widgetType: 'icon-list', settings: { icon_list: [
+			{ text: '<b>فارسی</b>', link: { url: '/about' }, selected_icon: { value: 'icon' } },
+			{ text: 'بدون پیوند', link: { url: 'javascript:alert(1)' } },
+			{ text: 'مورد ساده', link: { url: '' } },
+		] }, elements: [] }] };
+		const result = convertElementorJson(JSON.stringify(input), page());
+		const list = result.document.nodes[0];
+		assert.equal(list.type, 'Container');
+		if (list.type !== 'Container') throw new Error('expected container');
+		assert.equal(list.children[0].type === 'Button' && list.children[0].props.href, '/about');
+		assert.equal(list.children[0].type === 'Button' && list.children[0].props.label, 'فارسی');
+		assert.equal(list.children[1].type === 'Text' && list.children[1].props.text, 'بدون پیوند');
+		assert.equal(list.children[2].type === 'Text' && list.children[2].props.text, 'مورد ساده');
+		assert.ok(result.warnings.some((warning) => warning.code === 'list-layout'));
+		assert.ok(result.warnings.some((warning) => warning.code === 'list-link'));
+		assert.doesNotMatch(JSON.stringify(result.document), /javascript:/);
+		assert.deepEqual(importPageDocument(exportPageDocument(result.document), 'import-test'), result.document);
+	});
+	it('enforces expansion and item limits rather than silently dropping content', () => {
+		const list = { id: 'list', elType: 'widget', widgetType: 'icon-list', settings: { icon_list: Array(51).fill({ text: 'x' }) }, elements: [] };
+		assert.throws(() => convertElementorJson(JSON.stringify({ version: '0.4', content: [list] }), page()), /۵۰/);
+		list.settings.icon_list = Array(50).fill({ text: 'x' });
+		assert.throws(() => convertElementorJson(JSON.stringify({ version: '0.4', content: Array(4).fill(list) }), page()), /200/);
+	});
+});

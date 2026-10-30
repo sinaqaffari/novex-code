@@ -4,7 +4,7 @@ import { COMPONENT_LIST, getComponentDefinition } from '../../lib/builder/regist
 import { explicitNodeStyle, resolveNodeStyle, resolveNodeStyles } from '../../lib/builder/responsive.ts';
 import { fieldVisibleInMode } from '../../lib/builder/editor-mode.ts';
 import { convertElementorJson, type ElementorImport } from '../../lib/migrations/elementor/converter.ts';
-import { inspectWxr, wxrItemToDocument, type WxrInspection } from '../../lib/migrations/wordpress/wxr.ts';
+import { inspectWxr, wxrItemToDocument, wxrToDraftPages, type WxrInspection } from '../../lib/migrations/wordpress/wxr.ts';
 import {
 	AutosaveConflictError,
 	AutosaveController,
@@ -148,6 +148,9 @@ export default function BuilderEditor({ pluginPresets, initialDocument, initialR
 	const [previewOpen, setPreviewOpen] = useState(false);
 	const [elementorImport, setElementorImport] = useState<ElementorImport | null>(null);
 	const [wxrImport, setWxrImport] = useState<{ inspection: WxrInspection; index: number; document: PageDocument } | null>(null);
+	const [wxrBulkPrefix, setWxrBulkPrefix] = useState('');
+	const [wxrBulkBusy, setWxrBulkBusy] = useState(false);
+	const [wxrBulkStatus, setWxrBulkStatus] = useState('');
 	const wxrInputRef = useRef<HTMLInputElement | null>(null);
 	const elementorInputRef = useRef<HTMLInputElement | null>(null);
 // Preferences are editor UI state only; they never modify the page document.
@@ -419,6 +422,8 @@ async function refreshRevisionHistory(): Promise<void> {
 		try {
 			const inspection = inspectWxr(await file.text());
 			if (!inspection.items.length) throw new Error('صفحه یا نوشته‌ای در فایل پیدا نشد.');
+			setWxrBulkStatus('');
+			setWxrBulkPrefix('');
 			setWxrImport({ inspection, index: 0, document: wxrItemToDocument(inspection.items[0], historyRef.current.present) });
 		} catch (error) { setMessage(error instanceof Error ? error.message : 'بررسی فایل وردپرس انجام نشد.'); }
 	}
@@ -428,12 +433,12 @@ async function refreshRevisionHistory(): Promise<void> {
 		catch (error) { setMessage(error instanceof Error ? error.message : 'تبدیل مورد انتخابی انجام نشد.'); }
 	}
 	function applyWordPress(): void {
-		if (!wxrImport || !window.confirm('محتوای فعلی با متن تبدیل‌شده جایگزین می‌شود. انتشار انجام نمی‌شود. ادامه می‌دهید؟')) return;
+		if (!wxrImport || !window.confirm('محتوای فعلی با محتوای تبدیل‌شده جایگزین می‌شود. انتشار انجام نمی‌شود. ادامه می‌دهید؟')) return;
 		try {
 			const current = historyRef.current.present;
 			applyDocument(validatePageDocument({ ...current, nodes: wxrImport.document.nodes }, slug));
 			setSelectedId(null); setWxrImport(null);
-			setMessage('متن وارد پیش‌نویس شد؛ نتیجه را بررسی و وضعیت ذخیره را کنترل کنید. انتشار انجام نشده است.');
+			setMessage('محتوای تبدیل‌شده وارد پیش‌نویس شد؛ نتیجه را بررسی و وضعیت ذخیره را کنترل کنید. انتشار انجام نشده است.');
 		} catch (error) { setMessage(error instanceof Error ? error.message : 'ورود انجام نشد.'); }
 	}
 
@@ -690,6 +695,22 @@ async function refreshRevisionHistory(): Promise<void> {
 			setKitStatus(`پیش‌نویس‌ها ساخته شدند: ${result.pages.map((page: { slug: string }) => page.slug).join('، ')}. از صفحه‌های پنل آن‌ها را ویرایش کنید.`);
 		} catch (error) { setKitStatus(error instanceof Error ? error.message : 'نصب بسته انجام نشد.'); }
 		finally { setKitBusy(false); }
+	}
+
+	async function installWordPressDrafts(): Promise<void> {
+		if (!wxrImport || wxrBulkBusy) return;
+		let documents: PageDocument[];
+		try { documents = wxrToDraftPages(wxrImport.inspection, wxrBulkPrefix.trim()); }
+		catch (error) { setWxrBulkStatus(error instanceof Error ? error.message : 'آماده‌سازی صفحه‌ها ممکن نشد.'); return; }
+		if (!window.confirm(`${documents.length.toLocaleString('fa-IR')} صفحه و نوشتهٔ فایل به صفحه‌های جدید پیش‌نویس تبدیل می‌شوند. در صورت تداخل نامک هیچ صفحه‌ای ساخته نمی‌شود و هیچ صفحه‌ای منتشر نمی‌شود. ادامه می‌دهید؟`)) return;
+		setWxrBulkBusy(true); setWxrBulkStatus('در حال ساخت پیش‌نویس‌ها…');
+		try {
+			const response = await fetch('/cms/api/builder/imports/wordpress', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ confirmCreate: true, documents }) });
+			const result = await readResponse(response);
+			if (!response.ok) throw new Error(result.message || 'ساخت پیش‌نویس‌ها ممکن نشد.');
+			setWxrBulkStatus(`پیش‌نویس‌ها ساخته شدند: ${result.pages.map((page: { slug: string }) => page.slug).join('، ')}. هیچ صفحه‌ای منتشر نشد.`);
+		} catch (error) { setWxrBulkStatus(error instanceof Error ? error.message : 'ساخت پیش‌نویس‌ها ممکن نشد.'); }
+		finally { setWxrBulkBusy(false); }
 	}
 
 	function insertPluginPreset(preset: BuilderPluginPreset, values: Record<string, string>): void {
@@ -1053,7 +1074,7 @@ async function refreshRevisionHistory(): Promise<void> {
 					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="wxr-import-title">
 						<header className="builder-modal__header"><div><h2 id="wxr-import-title">بررسی خروجی WordPress WXR</h2><p>نسخهٔ {wxrImport.inspection.version} · {wxrImport.inspection.items.length.toLocaleString('fa-IR')} صفحه و نوشته · {wxrImport.inspection.ignored.toLocaleString('fa-IR')} مورد دیگر نادیده گرفته شد.</p></div><button type="button" aria-label="بستن" onClick={() => setWxrImport(null)}>×</button></header>
 						<div className="builder-elementor-report"><label className="builder-field"><span>مورد منبع</span><select value={wxrImport.index} onChange={(event) => selectWordPressItem(Number(event.target.value))}>{wxrImport.inspection.items.map((item, index) => <option key={`${item.id}-${index}`} value={index}>{item.title} · {item.type === 'post' ? 'نوشته' : 'صفحه'} · {item.status}</option>)}</select></label>
-						<p>مقصد: صفحهٔ فعلی. فقط متن جایگزین می‌شود؛ عنوان و نامک فعلی حفظ می‌شوند. نتیجه تا ذخیرهٔ موفق ذخیره‌شده نیست.</p><ul>{wxrImport.inspection.items[wxrImport.index].warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><h3>پیش‌نمایش متن تبدیل‌شده</h3><div className="builder-elementor-preview"><DocumentPreview document={wxrImport.document} viewport={viewport} /></div></div>
+						<p>مقصد: صفحهٔ فعلی. محتوای تبدیل‌شده جایگزین می‌شود؛ عنوان و نامک فعلی حفظ می‌شوند. نتیجه تا ذخیرهٔ موفق ذخیره‌شده نیست.</p><ul>{wxrImport.inspection.items[wxrImport.index].warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><h3>پیش‌نمایش محتوای تبدیل‌شده</h3><div className="builder-elementor-preview"><DocumentPreview document={wxrImport.document} viewport={viewport} /></div><section><h3>ساخت گروهی پیش‌نویس‌ها</h3><p>تمام صفحه‌ها و نوشته‌های بررسی‌شده (حداکثر ۲۰ مورد) با عنوان منبع و نامک عددی ساخته می‌شوند؛ نوشته‌ها به صفحه تبدیل می‌شوند. خروجی رسانه و فراداده را شامل نمی‌شود.</p><details><summary>هشدارهای تمام موارد برای ورود گروهی</summary>{wxrImport.inspection.items.map((item, index) => <div key={`${item.id}-${index}`}><strong>{index + 1}. {item.title}</strong><ul>{item.warnings.map((warning, warningIndex) => <li key={warningIndex}>{warning}</li>)}</ul></div>)}</details>{wxrImport.inspection.items.length > 20 ? <p>ورود گروهی بیش از ۲۰ مورد پشتیبانی نمی‌شود؛ ورود تکی همچنان در دسترس است.</p> : null}<label className="builder-field"><span>پیشوند نامک برای ورود گروهی</span><input dir="ltr" value={wxrBulkPrefix} maxLength={55} onChange={(event) => setWxrBulkPrefix(event.target.value)} placeholder="wordpress" /></label><button type="button" disabled={wxrBulkBusy || !wxrBulkPrefix.trim() || wxrImport.inspection.items.length > 20} onClick={() => void installWordPressDrafts()}>ساخت صفحه‌های پیش‌نویس</button>{wxrBulkStatus ? <p role="status">{wxrBulkStatus}</p> : null}</section></div>
 						<footer className="builder-modal__footer"><button type="button" onClick={() => setWxrImport(null)}>انصراف</button><button type="button" className="builder-toolbar-button--publish" onClick={applyWordPress}>جایگزینی پیش‌نویس</button></footer>
 					</section>
 				</div>
@@ -1075,7 +1096,7 @@ async function refreshRevisionHistory(): Promise<void> {
 					<section className="builder-modal" role="dialog" aria-modal="true" aria-labelledby="builder-template-title">
 						<header className="builder-modal__header"><div><h2 id="builder-template-title">کتابخانهٔ قالب‌ها</h2><p>قالب‌ها را روی همین صفحه اعمال کنید یا نمونهٔ خودتان را بازاستفاده کنید.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateDialogOpen(false)}>×</button></header>
 						<details className="builder-kit-panel"><summary>بستهٔ چندصفحه‌ای کسب‌وکار</summary>
-							{siteKits.map((kit) => <div key={kit.id}><p>{kit.description}</p><p>نسخهٔ {kit.version} · فارسی، راست‌به‌چپ · مؤلفه‌ها: <bdi>{kit.requiredComponents.join(', ')}</bdi></p><ul>{kit.pages.map((page) => <li key={page.suffix}>{page.title} <button type="button" onClick={() => setTemplatePreview({ name: page.title, document: page.document })}>پیش‌نمایش</button></li>)}</ul><label className="builder-field"><span>پیشوند نامک لاتین برای صفحه‌های تازه</span><input dir="ltr" value={kitPrefix} maxLength={50} onChange={(event) => setKitPrefix(event.target.value)} placeholder="my-business" /></label><button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void installKit(kit.id)}>ساخت پیش‌نویس‌های بسته</button></div>)}
+							{siteKits.map((kit) => <div key={kit.id}><p>{kit.description}</p><p>نسخهٔ {kit.version} · فارسی، راست‌به‌چپ · مؤلفه‌ها: <bdi>{kit.requiredComponents.join(', ')}</bdi></p><p>پیوندهای میان صفحه‌ها با پیشوند انتخابی ساخته می‌شوند و تا انتشار هر مقصد در دسترس عمومی نیستند.</p><ul>{kit.pages.map((page) => <li key={page.suffix}>{page.title} <button type="button" onClick={() => setTemplatePreview({ name: page.title, document: page.document })}>پیش‌نمایش</button></li>)}</ul><label className="builder-field"><span>پیشوند نامک لاتین برای صفحه‌های تازه</span><input dir="ltr" value={kitPrefix} maxLength={50} onChange={(event) => setKitPrefix(event.target.value)} placeholder="my-business" /></label><button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void installKit(kit.id)}>ساخت پیش‌نویس‌های بسته</button></div>)}
 							{kitStatus ? <p role="status">{kitStatus}</p> : null}
 						</details>
 						<label className="builder-field builder-template-search"><span>جست‌وجوی قالب و بخش</span><input type="search" value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} /></label>

@@ -53,7 +53,7 @@ export function convertElementorJson(json: string, target: PageDocument): Elemen
 			node = container;
 		} else if (raw.elType === 'widget') {
 			const widget = typeof raw.widgetType === 'string' ? raw.widgetType : 'unknown';
-			const supported = ['heading', 'text-editor', 'button', 'image', 'image-box'].includes(widget);
+			const supported = ['heading', 'text-editor', 'button', 'image', 'image-box', 'icon-list'].includes(widget);
 			const counts = supported ? supportedWidgets : unsupportedWidgets;
 			counts[widget] = (counts[widget] ?? 0) + 1;
 			if (Array.isArray(raw.elements) && raw.elements.length) warn(id, 'widget-children', 'فرزندان ویجت منتقل نشدند.');
@@ -85,6 +85,35 @@ export function convertElementorJson(json: string, target: PageDocument): Elemen
 				else if (href) warn(id, 'unsafe-link', 'نشانی ناامن دکمه حذف شد.');
 				if (record(link) && Object.keys(link).some((key) => key !== 'url' && link[key])) warn(id, 'link-options', 'تنظیمات اضافی پیوند منتقل نشد.');
 				node = button;
+			} else if (widget === 'icon-list') {
+				const list = createBuilderNode('Container');
+				list.props.gap = 8;
+				list.props.padding = 0;
+				const entries = use('icon_list');
+				if (!Array.isArray(entries)) throw new Error('فهرست موارد ویجت Elementor معتبر نیست.');
+				if (entries.length > 50) throw new Error('فهرست Elementor بیش از ۵۰ مورد دارد.');
+				for (const entry of entries) {
+					if (!record(entry)) throw new Error('یکی از موارد فهرست Elementor معتبر نیست.');
+					const text = plainText(entry.text);
+					const linkRecord = record(entry.link) ? entry.link : null;
+					const link = linkRecord && typeof linkRecord.url === 'string' ? linkRecord.url : '';
+					if (link && safeHref(link) && link.length <= 500 && text.length <= 80) {
+						const button = createBuilderNode('Button');
+						button.props.label = text;
+						button.props.href = link;
+						button.props.variant = 'outline';
+						list.children.push(button);
+					} else {
+						const paragraph = createBuilderNode('Text');
+						paragraph.props.text = text.slice(0, 5000);
+						list.children.push(paragraph);
+						if (text.length > 5000) warn(id, 'truncated', 'متن فهرست به ۵۰۰۰ نویسه محدود شد.');
+						if (link) warn(id, 'list-link', 'پیوند ناامن یا ناسازگار با محدودیت متن دکمه منتقل نشد.');
+					}
+					if (linkRecord && Object.keys(linkRecord).some((key) => key !== 'url' && linkRecord[key])) warn(id, 'link-options', 'تنظیمات اضافی پیوند فهرست منتقل نشد.');
+				}
+				warn(id, 'list-layout', 'فهرست به متن و دکمه‌های بومی تبدیل شد؛ آیکن‌ها و معنای فهرست منتقل نشدند.');
+				node = list;
 			} else if (widget === 'image-box') {
 				const box = createBuilderNode('Container');
 				const image = createBuilderNode('Image');

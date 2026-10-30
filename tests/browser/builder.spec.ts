@@ -509,3 +509,63 @@ test('reviews actionable diagnostics without publishing the current draft', asyn
 	expect(published.status()).toBe(404);
 	assertNoBrowserIssues(issues);
 });
+
+test('installs a linked site kit with a bundled asset as drafts', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('kit-editor');
+	const prefix = slugFor('kit');
+	await createPage(page, slug);
+	await page.getByRole('button', { name: 'قالب‌ها', exact: true }).click();
+	const library = page.getByRole('dialog', { name: 'کتابخانهٔ قالب‌ها' });
+	await library.getByText('بستهٔ چندصفحه‌ای کسب‌وکار').click();
+	await library.getByLabel('پیشوند نامک لاتین برای صفحه‌های تازه').fill(prefix);
+	page.once('dialog', (dialog) => dialog.accept());
+	await library.getByRole('button', { name: 'ساخت پیش‌نویس‌های بسته' }).click();
+	await expect(library.getByRole('status')).toContainText(`${prefix}-contact`);
+	const response = await page.request.get(`/cms/api/builder/pages/${prefix}-contact`);
+	expect(response.ok()).toBeTruthy();
+	const result = await response.json();
+	expect(JSON.stringify(result.document.nodes)).toContain(`/pages/${prefix}-home`);
+	expect(JSON.stringify(result.document.nodes)).toContain('media://assets/blog-placeholder-about.jpg');
+	expect((await page.request.get(`/pages/${prefix}-home`)).status()).toBe(404);
+	assertNoBrowserIssues(issues);
+});
+
+test('creates multiple WXR drafts only after confirmation and does not publish them', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('wxr-bulk-editor');
+	const prefix = slugFor('wxr-bulk');
+	await createPage(page, slug);
+	await page.getByTestId('wxr-import-file').setInputFiles('tests/fixtures/wordpress-sample.xml');
+	const dialog = page.getByRole('dialog', { name: 'بررسی خروجی WordPress WXR' });
+	await dialog.getByLabel('پیشوند نامک برای ورود گروهی').fill(prefix);
+	await dialog.getByText('هشدارهای تمام موارد برای ورود گروهی').click();
+	await expect(dialog).toContainText('نوشته');
+	page.once('dialog', (confirmation) => confirmation.accept());
+	await dialog.getByRole('button', { name: 'ساخت صفحه‌های پیش‌نویس' }).click();
+	await expect(dialog.getByRole('status')).toContainText(`${prefix}-2`);
+	const item = await page.request.get(`/cms/api/builder/pages/${prefix}-1`);
+	expect((await item.json()).document.title).toBe('درباره ما');
+	expect((await page.request.get(`/pages/${prefix}-1`)).status()).toBe(404);
+	assertNoBrowserIssues(issues);
+});
+
+test('converts WXR headings and standalone links into editable native components', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('wxr-structure');
+	await createPage(page, slug);
+	const xml = '<rss><channel><wp:wxr_version>1.2</wp:wxr_version><item><title>نمونه</title><wp:post_type>page</wp:post_type><content:encoded><![CDATA[<h2>عنوان واردشده</h2><p><a href="/contact">تماس</a></p>]]></content:encoded></item></channel></rss>';
+	await page.getByTestId('wxr-import-file').setInputFiles({ name: 'sample.xml', mimeType: 'application/xml', buffer: Buffer.from(xml) });
+	const dialog = page.getByRole('dialog', { name: 'بررسی خروجی WordPress WXR' });
+	await expect(dialog).toContainText('عنوان واردشده');
+	page.once('dialog', (confirmation) => confirmation.accept());
+	await dialog.getByRole('button', { name: 'جایگزینی پیش‌نویس' }).click();
+	await expect(page.getByTestId('builder-canvas')).toContainText('عنوان واردشده');
+	await expect(page.getByTestId('builder-canvas')).toContainText('تماس');
+	await page.getByTestId('save-page').click();
+	await expect.poll(async () => (await (await page.request.get(`/cms/api/builder/pages/${slug}`)).json()).document.nodes.length).toBe(2);
+	const saved = (await (await page.request.get(`/cms/api/builder/pages/${slug}`)).json()).document.nodes;
+	expect(saved[0].type).toBe('Heading');
+	expect(saved[1]).toMatchObject({ type: 'Button', props: { href: '/contact' } });
+	assertNoBrowserIssues(issues);
+});
