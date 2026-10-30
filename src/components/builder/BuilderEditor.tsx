@@ -1,14 +1,18 @@
-import { createElement, useEffect, useRef, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { COMPONENT_LIST, getComponentDefinition } from '../../lib/builder/registry.ts';
+import { explicitNodeStyle, resolveNodeStyle, resolveNodeStyles } from '../../lib/builder/responsive.ts';
+import { fieldVisibleInMode } from '../../lib/builder/editor-mode.ts';
+import { convertElementorJson, type ElementorImport } from '../../lib/migrations/elementor/converter.ts';
+import { inspectWxr, wxrItemToDocument, type WxrInspection } from '../../lib/migrations/wordpress/wxr.ts';
 import {
 	AutosaveConflictError,
 	AutosaveController,
 	type AutosaveStatus,
 } from '../../lib/builder/autosave.ts';
 import { exportPageDocument, hiddenAtBreakpoint, importPageDocument, validatePageDocument } from '../../lib/builder/document.ts';
-import { buildResponsiveCss } from '../../lib/builder/render.ts';
 import { resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
+import type { BuilderDiagnostic } from '../../lib/builder/diagnostics.ts';
 import {
 	addNode,
 	createNodeId,
@@ -17,6 +21,7 @@ import {
 	findNode,
 	findNodeLocation,
 	findNodePath,
+	insertDocumentFragment,
 	moveNode,
 	moveNodeBy,
 	setNodeHiddenAtBreakpoint,
@@ -24,8 +29,10 @@ import {
 	updateNodeStyles,
 } from '../../lib/builder/operations.ts';
 import { commitDocument, createDocumentHistory, redoDocument, undoDocument } from '../../lib/builder/history.ts';
-import { BUILDER_THEME_LIST, themeStyleText, themeVariables } from '../../lib/builder/themes.ts';
+import { BUILDER_THEME_LIST, themeVariables } from '../../lib/builder/themes.ts';
 import { applyTemplate, listStarterTemplates } from '../../lib/builder/templates.ts';
+import { listSiteKits } from '../../lib/builder/site-kits.ts';
+import { materializeBuilderPreset, type BuilderPluginPreset } from '../../lib/builder/plugin-presets.ts';
 import { productGridApiPath } from '../../lib/commerce/product-binding.ts';
 import { faMoney } from '../../lib/cms/fa.ts';
 import type { ProductGridBinding, PublicProductCard } from '../../lib/commerce/types.ts';
@@ -37,13 +44,13 @@ import type {
 	InspectorField,
 	NodeStyles,
 	PageDocument,
-	ResponsiveNodeStyles,
 } from '../../lib/builder/types.ts';
 import '../../styles/builder.css';
 import '../../styles/builder-editor.css';
 import '../../styles/design-system.css';
 
 interface Props {
+	pluginPresets: BuilderPluginPreset[];
 	initialDocument: PageDocument;
 	initialRevision: number;
 	publishedAt: string | null;
@@ -92,7 +99,7 @@ const STATUS_LABELS: Record<AutosaveStatus, string> = {
 	conflict: 'تعارض نسخه',
 };
 
-export default function BuilderEditor({ initialDocument, initialRevision, publishedAt, slug, canPublish, canReadMedia, canUploadMedia }: Props) {
+export default function BuilderEditor({ pluginPresets, initialDocument, initialRevision, publishedAt, slug, canPublish, canReadMedia, canUploadMedia }: Props) {
 	const [history, setHistory] = useState(() => createDocumentHistory(initialDocument));
 	const historyRef = useRef(history);
 	const [revision, setRevision] = useState(initialRevision);
@@ -112,6 +119,14 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const revisionHistoryRequestRef = useRef(0);
 	const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 	const [templateItems, setTemplateItems] = useState<TemplateSummary[]>([]);
+	const [templateQuery, setTemplateQuery] = useState('');
+	const siteKits = useMemo(() => listSiteKits(), []);
+	const [kitPrefix, setKitPrefix] = useState('');
+	const [kitStatus, setKitStatus] = useState('');
+	const [kitBusy, setKitBusy] = useState(false);
+	const [templatePreview, setTemplatePreview] = useState<{ name: string; document: PageDocument } | null>(null);
+	const [presetDialog, setPresetDialog] = useState<{ preset: BuilderPluginPreset; values: Record<string, string>; error: string } | null>(null);
+	const [saveSelectedSection, setSaveSelectedSection] = useState(false);
 	const [templateLoading, setTemplateLoading] = useState(false);
 	const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
 	const [templateName, setTemplateName] = useState('');
@@ -122,6 +137,8 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const [mediaUploading, setMediaUploading] = useState(false);
 	const [mediaError, setMediaError] = useState('');
 	const [publishBusy, setPublishBusy] = useState(false);
+	const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+	const [diagnosticReport, setDiagnosticReport] = useState<{ snapshot: string; items: BuilderDiagnostic[] } | null>(null);
 	const controllerRef = useRef<AutosaveController | null>(null);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const mediaFileRef = useRef<HTMLInputElement | null>(null);
@@ -129,38 +146,30 @@ export default function BuilderEditor({ initialDocument, initialRevision, publis
 	const document = history.present;
 	const selectedNode = selectedId ? findNode(document.nodes, selectedId) : null;
 	const [previewOpen, setPreviewOpen] = useState(false);
-// Simple/Pro mode and theme preferences
-const [mode, setMode] = useState<'simple' | 'pro'>(() => {
-	if (typeof localStorage !== 'undefined') {
-		const stored = localStorage.getItem('novex-editor-mode');
-		return stored === 'simple' || stored === 'pro' ? stored : 'pro';
-	}
-	return 'pro';
-});
-const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
-	if (typeof localStorage !== 'undefined') {
-		const stored = localStorage.getItem('novex-editor-theme');
-		if (stored === 'light' || stored === 'dark') return stored;
-	}
-	if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-		return 'dark';
-	}
-	return 'light';
-});
-
+	const [elementorImport, setElementorImport] = useState<ElementorImport | null>(null);
+	const [wxrImport, setWxrImport] = useState<{ inspection: WxrInspection; index: number; document: PageDocument } | null>(null);
+	const wxrInputRef = useRef<HTMLInputElement | null>(null);
+	const elementorInputRef = useRef<HTMLInputElement | null>(null);
+// Preferences are editor UI state only; they never modify the page document.
+const [mode, setMode] = useState<'simple' | 'pro'>('pro');
+const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>('dark');
+const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 useEffect(() => {
-	const root = window.document.documentElement;
-	root.setAttribute('data-theme', editorTheme);
-	if (typeof localStorage !== 'undefined') {
+	try {
+		const storedMode = localStorage.getItem('novex-editor-mode');
+		const storedTheme = localStorage.getItem('novex-editor-theme');
+		if (storedMode === 'simple' || storedMode === 'pro') setMode(storedMode);
+		if (storedTheme === 'light' || storedTheme === 'dark') setEditorTheme(storedTheme);
+	} catch { /* Storage can be disabled by the browser. */ }
+	setPreferencesLoaded(true);
+}, []);
+useEffect(() => {
+	if (!preferencesLoaded) return;
+	try {
 		localStorage.setItem('novex-editor-theme', editorTheme);
-	}
-}, [editorTheme]);
-
-useEffect(() => {
-	if (typeof localStorage !== 'undefined') {
 		localStorage.setItem('novex-editor-mode', mode);
-	}
-}, [mode]);
+	} catch { /* Preferences are optional. */ }
+}, [editorTheme, mode, preferencesLoaded]);
 
 useEffect(() => {
 	function handleKeyDown(event: KeyboardEvent) {
@@ -174,7 +183,6 @@ useEffect(() => {
 	}
 }, [previewOpen]);
 
-const toggleMode = () => setMode((prev) => (prev === 'simple' ? 'pro' : 'simple'));
 const toggleTheme = () => setEditorTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
 async function refreshRevisionHistory(): Promise<void> {
@@ -383,7 +391,7 @@ async function refreshRevisionHistory(): Promise<void> {
 			setMessage('حداکثر اندازهٔ سند واردشده ۱ مگابایت است.');
 			return;
 		}
-		if (controllerRef.current?.isDirty() && !window.confirm('محتوای فعلی با سند واردشده جایگزین شود؟')) return;
+		if ((historyRef.current.present.nodes.length || controllerRef.current?.isDirty()) && !window.confirm('محتوای فعلی با سند واردشده جایگزین شود؟')) return;
 		try {
 			const imported = importPageDocument(await file.text(), slug);
 			const current = historyRef.current.present;
@@ -394,6 +402,51 @@ async function refreshRevisionHistory(): Promise<void> {
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : 'بارگیری سند JSON انجام نشد.');
 		}
+	}
+
+	async function inspectElementor(file: File): Promise<void> {
+		if (file.size > 1024 * 1024) { setMessage('حداکثر اندازهٔ فایل Elementor یک مگابایت است.'); return; }
+		try {
+			const result = convertElementorJson(await file.text(), historyRef.current.present);
+			setElementorImport(result);
+		} catch (error) {
+			setMessage(error instanceof Error ? error.message : 'بررسی فایل Elementor انجام نشد.');
+		}
+	}
+
+	async function inspectWordPress(file: File): Promise<void> {
+		if (file.size > 1024 * 1024) { setMessage('حداکثر اندازهٔ فایل WXR یک مگابایت است.'); return; }
+		try {
+			const inspection = inspectWxr(await file.text());
+			if (!inspection.items.length) throw new Error('صفحه یا نوشته‌ای در فایل پیدا نشد.');
+			setWxrImport({ inspection, index: 0, document: wxrItemToDocument(inspection.items[0], historyRef.current.present) });
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'بررسی فایل وردپرس انجام نشد.'); }
+	}
+	function selectWordPressItem(index: number): void {
+		if (!wxrImport || !wxrImport.inspection.items[index]) return;
+		try { setWxrImport({ ...wxrImport, index, document: wxrItemToDocument(wxrImport.inspection.items[index], historyRef.current.present) }); }
+		catch (error) { setMessage(error instanceof Error ? error.message : 'تبدیل مورد انتخابی انجام نشد.'); }
+	}
+	function applyWordPress(): void {
+		if (!wxrImport || !window.confirm('محتوای فعلی با متن تبدیل‌شده جایگزین می‌شود. انتشار انجام نمی‌شود. ادامه می‌دهید؟')) return;
+		try {
+			const current = historyRef.current.present;
+			applyDocument(validatePageDocument({ ...current, nodes: wxrImport.document.nodes }, slug));
+			setSelectedId(null); setWxrImport(null);
+			setMessage('متن وارد پیش‌نویس شد؛ نتیجه را بررسی و وضعیت ذخیره را کنترل کنید. انتشار انجام نشده است.');
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'ورود انجام نشد.'); }
+	}
+
+	function applyElementor(): void {
+		if (!elementorImport) return;
+		if (!window.confirm('محتوای صفحه با محتوای تبدیل‌شده جایگزین می‌شود. انتشار انجام نمی‌شود. ادامه می‌دهید؟')) return;
+		try {
+			const current = historyRef.current.present;
+			applyDocument(validatePageDocument({ ...current, nodes: elementorImport.document.nodes }, slug));
+			setSelectedId(null);
+			setElementorImport(null);
+			setMessage('محتوا وارد پیش‌نویس شد؛ تغییرات قابل واگرد هستند و انتشار انجام نشده است.');
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'ورود انجام نشد.'); }
 	}
 
 	function addComponent(type: BuilderComponentType, initialProps: Record<string, unknown> = {}): void {
@@ -611,6 +664,7 @@ async function refreshRevisionHistory(): Promise<void> {
 			document: template.document,
 		}));
 		setTemplateItems(starters);
+		setTemplateQuery('');
 		setTemplateDialogOpen(true);
 		setTemplateLoading(true);
 		try {
@@ -624,6 +678,62 @@ async function refreshRevisionHistory(): Promise<void> {
 		} finally {
 			setTemplateLoading(false);
 		}
+	}
+
+	async function installKit(id: string): Promise<void> {
+		if (kitBusy || !window.confirm('صفحه‌های جدید به‌صورت پیش‌نویس ساخته می‌شوند و منتشر نمی‌شوند. ادامه می‌دهید؟')) return;
+		setKitBusy(true); setKitStatus('در حال نصب…');
+		try {
+			const response = await fetch('/cms/api/builder/kits', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ id, prefix: kitPrefix.trim() }) });
+			const result = await readResponse(response);
+			if (!response.ok) throw new Error(result.message || 'نصب بسته انجام نشد.');
+			setKitStatus(`پیش‌نویس‌ها ساخته شدند: ${result.pages.map((page: { slug: string }) => page.slug).join('، ')}. از صفحه‌های پنل آن‌ها را ویرایش کنید.`);
+		} catch (error) { setKitStatus(error instanceof Error ? error.message : 'نصب بسته انجام نشد.'); }
+		finally { setKitBusy(false); }
+	}
+
+	function insertPluginPreset(preset: BuilderPluginPreset, values: Record<string, string>): void {
+		try {
+			const fragment = materializeBuilderPreset(preset, values);
+			const result = insertDocumentFragment(historyRef.current.present, fragment, selectedId);
+			applyDocument(result.document);
+			setSelectedId(result.firstId);
+			setPresetDialog(null);
+			setMessage(`«${preset.label}» به‌صورت مؤلفه‌های بومی و قابل ویرایش اضافه شد.`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'افزودن پیش‌تنظیم انجام نشد.';
+			if (preset.parameters?.length) setPresetDialog((current) => current ? { ...current, error: message } : current);
+			else setMessage(message);
+		}
+	}
+
+	function choosePluginPreset(preset: BuilderPluginPreset): void {
+		if (!preset.parameters?.length) { insertPluginPreset(preset, {}); return; }
+		setPresetDialog({ preset, values: Object.fromEntries(preset.parameters.map((field) => [field.key, field.defaultValue])), error: '' });
+	}
+
+	async function loadTemplateDocument(item: TemplateSummary): Promise<PageDocument> {
+		if (item.document) return validatePageDocument(item.document);
+		const response = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' } });
+		const result = await readResponse(response);
+		if (!response.ok || !result.template?.document) throw new Error(result.message || 'قالب بارگیری نشد.');
+		return validatePageDocument(result.template.document);
+	}
+
+	async function previewTemplate(item: TemplateSummary): Promise<void> {
+		try { setTemplatePreview({ name: item.name, document: await loadTemplateDocument(item) }); }
+		catch (error) { setMessage(error instanceof Error ? error.message : 'پیش‌نمایش قالب آماده نشد.'); }
+	}
+
+	async function insertTemplate(item: TemplateSummary): Promise<void> {
+		try {
+			const fragment = await loadTemplateDocument(item);
+			const result = insertDocumentFragment(historyRef.current.present, fragment, selectedId);
+			applyDocument(result.document);
+			setSelectedId(result.firstId);
+			setTemplateDialogOpen(false);
+			setMessage(`رونوشت مستقل «${item.name}» اضافه شد؛ تم صفحه تغییر نکرد.`);
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'افزودن بخش انجام نشد.'); }
 	}
 
 	async function useTemplate(item: TemplateSummary): Promise<void> {
@@ -675,14 +785,18 @@ async function refreshRevisionHistory(): Promise<void> {
 		if (!name || templateSaving) return;
 		setTemplateSaving(true);
 		try {
+			const selectedSection = selectedId ? findNode(historyRef.current.present.nodes, selectedId) : null;
+			if (saveSelectedSection && !selectedSection) throw new Error('بخش انتخاب‌شده دیگر در سند نیست.');
+			const templateDocument = saveSelectedSection && selectedSection ? validatePageDocument({ ...historyRef.current.present, nodes: [selectedSection] }) : historyRef.current.present;
 			const response = await fetch('/cms/api/builder/templates', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json', accept: 'application/json' },
-				body: JSON.stringify({ name, document: historyRef.current.present }),
+				body: JSON.stringify({ name, document: templateDocument }),
 			});
 			const result = await readResponse(response);
 			if (!response.ok) throw new Error(result.message || 'ذخیرهٔ قالب انجام نشد.');
 			setTemplateSaveOpen(false);
+			setSaveSelectedSection(false);
 			setTemplateName('');
 			setMessage(`قالب «${name}» ذخیره شد و در کتابخانه در دسترس است.`);
 		} catch (error) {
@@ -690,6 +804,21 @@ async function refreshRevisionHistory(): Promise<void> {
 		} finally {
 			setTemplateSaving(false);
 		}
+	}
+
+	async function inspectPage(): Promise<void> {
+		if (diagnosticsBusy) return;
+		setDiagnosticsBusy(true);
+		try {
+			const snapshot = JSON.stringify(historyRef.current.present);
+			const response = await fetch(`/cms/api/builder/pages/${encodeURIComponent(slug)}/diagnostics`, {
+				method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: `{"document":${snapshot}}`,
+			});
+			const result = await readResponse(response);
+			if (!response.ok || !Array.isArray(result.diagnostics)) throw new Error(result.message || 'بررسی صفحه ممکن نشد.');
+			setDiagnosticReport({ snapshot, items: result.diagnostics });
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'بررسی صفحه ممکن نشد.'); }
+		finally { setDiagnosticsBusy(false); }
 	}
 
 	async function publish(): Promise<void> {
@@ -718,7 +847,7 @@ async function refreshRevisionHistory(): Promise<void> {
 	}
 
 	return (
-		<div className="builder-shell" dir="rtl">
+		<div className="builder-shell" data-theme={editorTheme} dir="rtl">
 			<header className="builder-toolbar">
 				<div className="builder-toolbar__start">
 					<a className="builder-back" href="/cms/pages" aria-label="بازگشت به صفحه‌ها">‹ صفحه‌ها</a>
@@ -733,18 +862,18 @@ async function refreshRevisionHistory(): Promise<void> {
 						<button
 							type="button"
 							className={`builder-mode-btn${mode === 'simple' ? ' is-active' : ''}`}
-							onClick={() => toggleMode()}
+							onClick={() => setMode('simple')}
 							aria-pressed={mode === 'simple'}
 						>ساده</button>
 						<button
 							type="button"
 							className={`builder-mode-btn${mode === 'pro' ? ' is-active' : ''}`}
-							onClick={() => toggleMode()}
+							onClick={() => setMode('pro')}
 							aria-pressed={mode === 'pro'}
 						>حرفه‌ای</button>
 					</div>
 					<button className="builder-icon-button builder-theme-toggle" type="button" onClick={toggleTheme} title={editorTheme === 'light' ? 'تیره کردن تم ویرایشگر' : 'روشن کردن تم ویرایشگر'} aria-label={editorTheme === 'light' ? 'تیره کردن تم ویرایشگر' : 'روشن کردن تم ویرایشگر'}>
-						{editorTheme === 'light' ? '🌙' : '☀️'}
+						{editorTheme === 'light' ? '◐' : '☼'}
 					</button>
 					<div className={`builder-save-state builder-save-state--${status}`} role="status" aria-live="polite">
 						<span className="builder-save-state__dot" />{STATUS_LABELS[status]}
@@ -755,7 +884,7 @@ async function refreshRevisionHistory(): Promise<void> {
 				<div className="builder-toolbar__actions">
 					<button className="builder-icon-button" type="button" title={`واگرد (Ctrl/⌘ Z) — ${history.past.length} مرحلهٔ قبلی`} aria-label={`واگرد، ${history.past.length} مرحلهٔ قبلی در دسترس است`} data-testid="undo" disabled={!history.past.length} onClick={undo}>↶{history.past.length ? <span className="builder-history-count">{history.past.length}</span> : null}</button>
 					<button className="builder-icon-button" type="button" title={`ازنو (Ctrl/⌘ Shift Z) — ${history.future.length} مرحلهٔ بعدی`} aria-label={`ازنو، ${history.future.length} مرحلهٔ بعدی در دسترس است`} data-testid="redo" disabled={!history.future.length} onClick={redo}>↷{history.future.length ? <span className="builder-history-count">{history.future.length}</span> : null}</button>
-					{mode === 'pro' ? (
+					{(
 						<div className="builder-breakpoints" role="group" aria-label="اندازهٔ پیش‌نمایش">
 							{(["desktop", "tablet", "mobile"] as const).map((size) => (
 								<button type="button" key={size} className={viewport === size ? 'is-active' : ''} aria-pressed={viewport === size} onClick={() => setViewport(size)}>
@@ -763,11 +892,12 @@ async function refreshRevisionHistory(): Promise<void> {
 								</button>
 							))}
 						</div>
-						) : null}
+						)}
 					<button className="builder-toolbar-button" type="button" data-testid="save-page" onClick={() => void saveNow().catch(() => undefined)}>ذخیره</button>
+					<button className="builder-toolbar-button" type="button" data-testid="diagnose-page" disabled={diagnosticsBusy} onClick={() => void inspectPage()}>{diagnosticsBusy ? 'در حال بررسی…' : 'بررسی صفحه'}</button>
 					{canPublish ? <button className="builder-toolbar-button builder-toolbar-button--publish" type="button" data-testid="publish-page" disabled={publishBusy} onClick={() => void publish()}>{publishBusy ? 'در حال انتشار…' : 'انتشار'}</button> : null}
 					{isPublished ? <a className="builder-toolbar-button builder-toolbar-button--quiet" href={`/pages/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">نمایش منتشرشده</a> : <button className="builder-toolbar-button builder-toolbar-button--quiet" type="button" disabled title="پس از انتشار در دسترس است">پس از انتشار</button>}
-					<button className="builder-icon-button builder-preview-toggle" type="button" title="پیش‌نمایش صفحه" aria-label="پیش‌نمایش صفحه" onClick={() => setPreviewOpen(true)}>👁️</button>
+					<button className="builder-icon-button builder-preview-toggle" type="button" title="پیش‌نمایش صفحه" aria-label="پیش‌نمایش صفحه" onClick={() => setPreviewOpen(true)}>پیش‌نمایش</button>
 				</div>
 			</header>
 
@@ -800,6 +930,7 @@ async function refreshRevisionHistory(): Promise<void> {
 							<span><strong>شبکه</strong><small>بخش Grid با ستون‌های واکنش‌گرا</small></span>
 							<span className="builder-component-card__add">+</span>
 						</button>
+						{pluginPresets.map((preset) => <button className="builder-component-card" type="button" key={preset.id} onClick={() => choosePluginPreset(preset)} title={preset.description}><span className="builder-component-card__icon">▦</span><span><strong>{preset.label}</strong><small>{preset.description}</small></span><span className="builder-component-card__add">+</span></button>)}
 					</div>
 					{selectedId ? (
 						<Breadcrumb path={findNodePath(document.nodes, selectedId) ?? []} onSelect={setSelectedId} />
@@ -815,9 +946,14 @@ async function refreshRevisionHistory(): Promise<void> {
 					<div className="builder-panel__footer builder-panel__footer--wrap">
 						<button type="button" onClick={() => void toggleHistory()}>{historyOpen ? 'بستن تاریخچه' : 'تاریخچهٔ نسخه‌ها'}</button>
 						<button type="button" onClick={() => void openTemplateLibrary()}>قالب‌ها</button>
-						<button type="button" onClick={() => { setTemplateName(''); setTemplateSaveOpen(true); }}>ذخیرهٔ قالب</button>
+						<button type="button" onClick={() => { setSaveSelectedSection(false); setTemplateName(''); setTemplateSaveOpen(true); }}>ذخیرهٔ قالب</button>
+						<button type="button" disabled={!selectedNode} onClick={() => { setSaveSelectedSection(true); setTemplateName(''); setTemplateSaveOpen(true); }}>ذخیرهٔ انتخاب به‌عنوان بخش</button>
 						<button type="button" onClick={downloadDocument}>خروجی JSON</button>
 						<button type="button" onClick={() => importInputRef.current?.click()}>ورود JSON</button>
+						<button type="button" onClick={() => elementorInputRef.current?.click()}>بررسی خروجی Elementor</button>
+						<input ref={elementorInputRef} data-testid="elementor-import-file" hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void inspectElementor(file); }} />
+						<button type="button" onClick={() => wxrInputRef.current?.click()}>بررسی خروجی WordPress WXR</button>
+						<input ref={wxrInputRef} data-testid="wxr-import-file" hidden type="file" accept=".xml,text/xml,application/xml" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void inspectWordPress(file); }} />
 						<input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => {
 							const file = event.target.files?.[0];
 							event.target.value = '';
@@ -869,6 +1005,7 @@ async function refreshRevisionHistory(): Promise<void> {
 					{selectedNode ? (
 						<Inspector
 							node={selectedNode}
+							mode={mode}
 							viewport={viewport}
 							canMoveUp={Boolean(findNodeLocation(document.nodes, selectedNode.id)?.index)}
 							canMoveDown={canMoveDown(document.nodes, selectedNode.id)}
@@ -889,15 +1026,66 @@ async function refreshRevisionHistory(): Promise<void> {
 					)}
 				</aside>
 			</div>
+			{diagnosticReport ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDiagnosticReport(null); }}>
+					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="builder-diagnostics-title">
+						<header className="builder-modal__header"><div><h2 id="builder-diagnostics-title">بررسی پیش از انتشار</h2><p>این گزارش از نسخهٔ فعلی ویرایشگر است؛ بررسی، ذخیره یا انتشار انجام نمی‌دهد.</p></div><button type="button" aria-label="بستن" onClick={() => setDiagnosticReport(null)}>×</button></header>
+						<div className="builder-elementor-report">
+							{diagnosticReport.snapshot !== JSON.stringify(document) ? <p role="alert">سند پس از بررسی تغییر کرده است؛ برای گزارش تازه دوباره بررسی کنید.</p> : null}
+							<p>این هشدارها مانع انتشار نیستند. پیوندها و فایل‌های خارجی از راه شبکه بررسی نمی‌شوند.</p>
+							{diagnosticReport.items.length ? <ul>{diagnosticReport.items.map((item, index) => <li key={`${item.code}-${item.nodeId ?? 'page'}-${index}`}>{item.message} {item.nodeId ? <button type="button" onClick={() => { setSelectedId(item.nodeId!); setDiagnosticReport(null); }}>انتخاب مؤلفه</button> : null}</li>)}</ul> : <p>در بررسی‌های محدود این گزارش هشداری پیدا نشد.</p>}
+						</div>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => setDiagnosticReport(null)}>بستن</button><button type="button" disabled={diagnosticsBusy} onClick={() => void inspectPage()}>بررسی دوباره</button></footer>
+					</section>
+				</div>
+			) : null}
+			{presetDialog ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPresetDialog(null); }}>
+					<form className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="builder-preset-title" onSubmit={(event) => { event.preventDefault(); insertPluginPreset(presetDialog.preset, presetDialog.values); }}>
+						<header className="builder-modal__header"><div><h2 id="builder-preset-title">{presetDialog.preset.label}</h2><p>مقادیر در رونوشت بومی ذخیره می‌شوند و پس از درج قابل ویرایش هستند.</p></div><button type="button" aria-label="بستن" onClick={() => setPresetDialog(null)}>×</button></header>
+						<div className="builder-elementor-report">{presetDialog.preset.parameters?.map((field) => <label className="builder-field" key={field.key}><span>{field.label}</span><input type="text" maxLength={field.maxLength} value={presetDialog.values[field.key] ?? ''} onChange={(event) => setPresetDialog((current) => current ? { ...current, values: { ...current.values, [field.key]: event.target.value }, error: '' } : current)} /></label>)}{presetDialog.error ? <p role="alert">{presetDialog.error}</p> : null}</div>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => setPresetDialog(null)}>انصراف</button><button type="submit" className="builder-toolbar-button--publish">افزودن به صفحه</button></footer>
+					</form>
+				</div>
+			) : null}
+			{wxrImport ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setWxrImport(null); }}>
+					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="wxr-import-title">
+						<header className="builder-modal__header"><div><h2 id="wxr-import-title">بررسی خروجی WordPress WXR</h2><p>نسخهٔ {wxrImport.inspection.version} · {wxrImport.inspection.items.length.toLocaleString('fa-IR')} صفحه و نوشته · {wxrImport.inspection.ignored.toLocaleString('fa-IR')} مورد دیگر نادیده گرفته شد.</p></div><button type="button" aria-label="بستن" onClick={() => setWxrImport(null)}>×</button></header>
+						<div className="builder-elementor-report"><label className="builder-field"><span>مورد منبع</span><select value={wxrImport.index} onChange={(event) => selectWordPressItem(Number(event.target.value))}>{wxrImport.inspection.items.map((item, index) => <option key={`${item.id}-${index}`} value={index}>{item.title} · {item.type === 'post' ? 'نوشته' : 'صفحه'} · {item.status}</option>)}</select></label>
+						<p>مقصد: صفحهٔ فعلی. فقط متن جایگزین می‌شود؛ عنوان و نامک فعلی حفظ می‌شوند. نتیجه تا ذخیرهٔ موفق ذخیره‌شده نیست.</p><ul>{wxrImport.inspection.items[wxrImport.index].warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><h3>پیش‌نمایش متن تبدیل‌شده</h3><div className="builder-elementor-preview"><DocumentPreview document={wxrImport.document} viewport={viewport} /></div></div>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => setWxrImport(null)}>انصراف</button><button type="button" className="builder-toolbar-button--publish" onClick={applyWordPress}>جایگزینی پیش‌نویس</button></footer>
+					</section>
+				</div>
+			) : null}
+			{elementorImport ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setElementorImport(null); }}>
+					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="elementor-import-title">
+						<header className="builder-modal__header"><div><h2 id="elementor-import-title">بررسی ورود Elementor</h2><p>{elementorImport.converted.toLocaleString('fa-IR')} مؤلفه بررسی شد · فایل فقط در مرورگر خوانده شد.</p></div><button type="button" aria-label="بستن" onClick={() => setElementorImport(null)}>×</button></header>
+						<div className="builder-elementor-report"><p>فرمت: Elementor JSON · ۱ صفحهٔ منبع · تصویرهای نیازمند انتخاب: {elementorImport.missingAssets.toLocaleString('fa-IR')}</p><p>ویجت‌های تبدیل‌شده: <bdi>{Object.entries(elementorImport.supportedWidgets).map(([type, count]) => `${type}: ${count}`).join('، ') || '—'}</bdi></p><p>ویجت‌های پشتیبانی‌نشده: <bdi>{Object.entries(elementorImport.unsupportedWidgets).map(([type, count]) => `${type}: ${count}`).join('، ') || '—'}</bdi></p><p>این پیش‌نمایش تقریبی است. تصویرها منتقل نمی‌شوند؛ موارد پشتیبانی‌نشده را پس از ورود جایگزین کنید. نتیجه تا ذخیرهٔ خودکار موفق، ذخیره‌شده نیست.</p>
+							<ul>{elementorImport.warnings.map((warning, index) => <li key={index}><b dir="ltr">{warning.sourceId}</b> — {warning.message}</li>)}</ul>
+							<h3>پیش‌نمایش محتوای تبدیل‌شده</h3><div className="builder-elementor-preview" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) event.preventDefault(); }}><DocumentPreview document={elementorImport.document} viewport={viewport} /></div>
+						</div>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => setElementorImport(null)}>انصراف</button><button type="button" className="builder-toolbar-button--publish" onClick={applyElementor}>جایگزینی پیش‌نویس</button></footer>
+					</section>
+				</div>
+			) : null}
 			{templateDialogOpen ? (
 				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplateDialogOpen(false); }}>
 					<section className="builder-modal" role="dialog" aria-modal="true" aria-labelledby="builder-template-title">
 						<header className="builder-modal__header"><div><h2 id="builder-template-title">کتابخانهٔ قالب‌ها</h2><p>قالب‌ها را روی همین صفحه اعمال کنید یا نمونهٔ خودتان را بازاستفاده کنید.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateDialogOpen(false)}>×</button></header>
+						<details className="builder-kit-panel"><summary>بستهٔ چندصفحه‌ای کسب‌وکار</summary>
+							{siteKits.map((kit) => <div key={kit.id}><p>{kit.description}</p><p>نسخهٔ {kit.version} · فارسی، راست‌به‌چپ · مؤلفه‌ها: <bdi>{kit.requiredComponents.join(', ')}</bdi></p><ul>{kit.pages.map((page) => <li key={page.suffix}>{page.title} <button type="button" onClick={() => setTemplatePreview({ name: page.title, document: page.document })}>پیش‌نمایش</button></li>)}</ul><label className="builder-field"><span>پیشوند نامک لاتین برای صفحه‌های تازه</span><input dir="ltr" value={kitPrefix} maxLength={50} onChange={(event) => setKitPrefix(event.target.value)} placeholder="my-business" /></label><button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void installKit(kit.id)}>ساخت پیش‌نویس‌های بسته</button></div>)}
+							{kitStatus ? <p role="status">{kitStatus}</p> : null}
+						</details>
+						<label className="builder-field builder-template-search"><span>جست‌وجوی قالب و بخش</span><input type="search" value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} /></label>
 						<div className="builder-template-list">
-							{templateLoading ? <p className="builder-template-empty">در حال بارگیری قالب‌ها…</p> : templateItems.length ? templateItems.map((item) => (
+							{templateLoading ? <p className="builder-template-empty">در حال بارگیری قالب‌ها…</p> : templateItems.filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).length ? templateItems.filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).map((item) => (
 								<article className="builder-template-card" key={`${item.source}-${item.id}`}>
 									<div><span className="builder-template-card__tag">{item.source === 'starter' ? 'قالب آماده' : 'قالب ذخیره‌شده'}</span><h3>{item.name}</h3><p>{item.description}</p></div>
 									<div className="builder-template-card__actions">
+										<button type="button" onClick={() => void previewTemplate(item)}>پیش‌نمایش</button>
+										<button type="button" onClick={() => void insertTemplate(item)}>افزودن رونوشت</button>
 										<button type="button" onClick={() => void downloadTemplate(item)}>خروجی JSON</button>
 										<button type="button" onClick={() => void duplicateTemplate(item)}>رونوشت</button>
 										<button type="button" onClick={() => void useTemplate(item)}>استفاده</button>
@@ -905,14 +1093,23 @@ async function refreshRevisionHistory(): Promise<void> {
 								</article>
 							)) : <p className="builder-template-empty">قالبی پیدا نشد.</p>}
 						</div>
-						<footer className="builder-modal__footer"><button type="button" onClick={() => { setTemplateDialogOpen(false); setTemplateSaveOpen(true); }}>ذخیرهٔ صفحهٔ فعلی به‌عنوان قالب</button><button type="button" onClick={() => setTemplateDialogOpen(false)}>بستن</button></footer>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => { setTemplateDialogOpen(false); setSaveSelectedSection(false); setTemplateSaveOpen(true); }}>ذخیرهٔ صفحهٔ فعلی به‌عنوان قالب</button><button type="button" onClick={() => setTemplateDialogOpen(false)}>بستن</button></footer>
+					</section>
+				</div>
+			) : null}
+			{templatePreview ? (
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplatePreview(null); }}>
+					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="builder-template-preview-title">
+						<header className="builder-modal__header"><h2 id="builder-template-preview-title">پیش‌نمایش {templatePreview.name}</h2><button type="button" aria-label="بستن" onClick={() => setTemplatePreview(null)}>×</button></header>
+						<div className="builder-elementor-report builder-elementor-preview" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) event.preventDefault(); }}><DocumentPreview document={templatePreview.document} viewport={viewport} /></div>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => setTemplatePreview(null)}>بستن</button></footer>
 					</section>
 				</div>
 			) : null}
 			{templateSaveOpen ? (
 				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplateSaveOpen(false); }}>
 					<form className="builder-modal builder-modal--small" role="dialog" aria-modal="true" aria-labelledby="builder-save-template-title" onSubmit={(event) => { event.preventDefault(); void saveAsTemplate(); }}>
-						<header className="builder-modal__header"><div><h2 id="builder-save-template-title">ذخیرهٔ قالب</h2><p>محتوا و تم فعلی برای استفاده در صفحه‌های دیگر نگهداری می‌شود.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateSaveOpen(false)}>×</button></header>
+						<header className="builder-modal__header"><div><h2 id="builder-save-template-title">{saveSelectedSection ? 'ذخیرهٔ بخش انتخاب‌شده' : 'ذخیرهٔ قالب'}</h2><p>یک رونوشت مستقل برای استفاده در صفحه‌های دیگر نگهداری می‌شود.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateSaveOpen(false)}>×</button></header>
 						<label className="builder-field"><span>نام قالب</span><input autoFocus required maxLength={60} value={templateName} onChange={(event) => setTemplateName(event.target.value)} /></label>
 						<footer className="builder-modal__footer"><button type="button" onClick={() => setTemplateSaveOpen(false)}>انصراف</button><button className="builder-toolbar-button--publish" type="submit" disabled={templateSaving || !templateName.trim()}>{templateSaving ? 'در حال ذخیره…' : 'ذخیرهٔ قالب'}</button></footer>
 					</form>
@@ -947,10 +1144,10 @@ async function refreshRevisionHistory(): Promise<void> {
 			) : null}
 			{previewOpen ? (
 				<div className="builder-preview-backdrop" onClick={() => setPreviewOpen(false)}>
-					<div className="builder-preview-modal" onClick={(event) => event.stopPropagation()}>
+					<div className="builder-preview-modal" role="dialog" aria-modal="true" aria-labelledby="builder-preview-title" onClick={(event) => event.stopPropagation()}>
 						<div className="builder-preview-modal__header">
-							<h2>پیشنویس صفحه</h2>
-							<button type="button" onClick={() => setPreviewOpen(false)} aria-label="بستن پیشننویس">×</button>
+							<h2 id="builder-preview-title">پیش‌نمایش تغییرات فعلی</h2><p>این پیش‌نمایش سند فعلی، از جمله تغییرات ذخیره‌نشده را نشان می‌دهد؛ انتشار انجام نمی‌شود.</p>
+							<button type="button" onClick={() => setPreviewOpen(false)} aria-label="بستن پیش‌نمایش">×</button>
 						</div>
 						<div className="builder-preview-modal__frame">
 							<DocumentPreview document={document} viewport={viewport} />
@@ -983,6 +1180,10 @@ function componentIcon(type: BuilderComponentType): string {
 }
 
 function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragOver, onDragOut, onDrop }: TreeNodeProps) {
+	const [expanded, setExpanded] = useState(true);
+	useEffect(() => {
+		if (selectedId && node.type === 'Container' && findNode(node.children, selectedId)) setExpanded(true);
+	}, [selectedId, node]);
 	const label = getComponentDefinition(node.type).label;
 	const details = node.type === 'Heading' ? node.props.text
 		: node.type === 'Text' ? node.props.text
@@ -993,6 +1194,8 @@ function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragO
 	const isDropTarget = dragOverId === node.id;
 	return (
 		<div className="builder-tree-node" role="listitem">
+			<div className="builder-tree-node__line">
+			{node.type === 'Container' && node.children.length ? <button className="builder-tree-node__expand" type="button" aria-expanded={expanded} aria-label={expanded ? `بستن ${label}` : `باز کردن ${label}`} onClick={() => setExpanded(!expanded)}>{expanded ? '⌄' : '‹'}</button> : <span className="builder-tree-node__expand-spacer" />}
 			<button
 				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}${isDropTarget ? ' is-drag-over' : ''}`}
 				data-testid="tree-node"
@@ -1009,7 +1212,8 @@ function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragO
 				<span className="builder-tree-node__type">{componentIcon(node.type)}</span>
 				<span className="builder-tree-node__label"><strong>{label}</strong><small>{details || 'بدون متن'}</small></span>
 			</button>
-			{node.type === 'Container' && node.children.length ? (
+			</div>
+			{node.type === 'Container' && node.children.length && expanded ? (
 				<div className="builder-tree-node__children" role="list">
 					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} dragOverId={dragOverId} onSelect={onSelect} onDragStart={onDragStart} onDragOver={onDragOver} onDragOut={onDragOut} onDrop={onDrop} />)}
 				</div>
@@ -1333,6 +1537,7 @@ function InlineEditableText({ as, className, value, align, style, label, onActiv
 }
 
 interface InspectorProps {
+	mode: 'simple' | 'pro';
 	node: BuilderNode;
 	viewport: Breakpoint;
 	canMoveUp: boolean;
@@ -1347,7 +1552,7 @@ interface InspectorProps {
 	onPickMedia: () => void;
 }
 
-function Inspector({ node, viewport, canMoveUp, canMoveDown, onField, onHidden, onMove, onDuplicate, onDelete, onDeselect, canReadMedia, onPickMedia }: InspectorProps) {
+function Inspector({ node, mode, viewport, canMoveUp, canMoveDown, onField, onHidden, onMove, onDuplicate, onDelete, onDeselect, canReadMedia, onPickMedia }: InspectorProps) {
 	const definition = getComponentDefinition(node.type);
 	const groups: Array<{ key: InspectorField['group']; label: string }> = [
 		{ key: 'content', label: 'محتوا' },
@@ -1364,22 +1569,24 @@ function Inspector({ node, viewport, canMoveUp, canMoveDown, onField, onHidden, 
 				{groups.map((group) => {
 					const fields = definition.fields.filter((field) =>
 						field.group === group.key &&
+						fieldVisibleInMode(field, mode) &&
 						!(node.type === 'ProductGrid' && field.key === 'binding.category' && node.props.binding.selection !== 'category'),
 					);
 					if (!fields.length) return null;
 					return <section className="builder-field-group" key={group.key}><h3>{group.label}</h3>{fields.map((field) => (
 						<div className={node.type === 'Image' && field.key === 'src' ? 'builder-field-with-action' : undefined} key={field.key}>
 							<InspectorControl field={field} value={fieldValue(node, field, viewport)} onChange={(value) => onField(field, value)} />
+							{field.key.startsWith('styles.') && viewport !== 'desktop' && explicitNodeStyle(node, viewport, field.key.slice('styles.'.length) as keyof NodeStyles) === undefined ? <p className="builder-field-hint">ارث‌بری: {String(resolveNodeStyle(node, viewport, field.key.slice('styles.'.length) as keyof NodeStyles) ?? 'پیش‌فرض')}</p> : null}
 							{node.type === 'Image' && field.key === 'src' ? <button className="builder-media-picker-trigger" type="button" data-testid="open-media-picker" disabled={!canReadMedia} title={canReadMedia ? 'انتخاب از کتابخانهٔ رسانه' : 'نقش شما اجازهٔ خواندن رسانه را ندارد'} onClick={onPickMedia}>انتخاب از کتابخانهٔ رسانه</button> : null}
 						</div>
 					))}</section>;
 				})}
-				<section className="builder-field-group builder-responsive-group">
+				{mode === 'pro' ? <section className="builder-field-group builder-responsive-group">
 					<h3>واکنش‌گرا</h3>
 					<label className="builder-toggle-row"><span><strong>پنهان در {BREAKPOINT_LABELS[viewport]}</strong><small>فقط در پیش‌نمایش این اندازه</small></span><input type="checkbox" checked={Boolean(node.responsiveStyles?.[viewport]?.hidden)} onChange={(event) => onHidden(event.target.checked)} /></label>
 					<p>تغییرات عرض و فاصله در اندازهٔ انتخاب‌شده به‌صورت مقدار واکنش‌گرا ذخیره می‌شوند.</p>
-				</section>
-				<section className="builder-component-help"><strong>{definition.documentation}</strong><span>نمونه: {definition.example}</span></section>
+				</section> : null}
+				{mode === 'pro' ? <section className="builder-component-help"><strong>{definition.documentation}</strong><span>نمونه: {definition.example}</span></section> : null}
 			</div>
 			<div className="builder-inspector__actions">
 				<button type="button" title="انتقال به بالا" aria-label="انتقال به بالا" disabled={!canMoveUp} onClick={() => onMove(-1)}>↑</button>
@@ -1456,12 +1663,9 @@ function PageInspector({ document, onDescription, onTheme }: PageInspectorProps)
 }
 
 function DocumentPreview({ document, viewport }: { document: PageDocument; viewport: Breakpoint }) {
-	const responsiveCss = buildResponsiveCss(document);
-	const themeCss = themeStyleText(document.themeId);
-	const containerStyle: CSSProperties = themeCss ? { ...(themeCss as unknown as Record<string, string>) } : {};
+	const containerStyle = themeVariables(document.themeId) as unknown as CSSProperties;
 	return (
-		<div className="builder-document-preview" style={containerStyle}>
-			{responsiveCss ? <style dangerouslySetInnerHTML={{ __html: responsiveCss }} /> : null}
+		<div className={`builder-document-preview builder-canvas-paper--${viewport}`} style={containerStyle}>
 			{document.title || document.description ? (
 				<header className="builder-document-preview__intro">
 					{document.title ? <h1 className="builder-document-preview__title">{document.title}</h1> : null}
@@ -1496,14 +1700,14 @@ function ReadOnlyNode({ node, viewport }: { node: BuilderNode; viewport: Breakpo
 		const Tag = `h${node.props.level}` as 'h1' | 'h2' | 'h3' | 'h4';
 		return (
 			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
-				<Tag className={`nvx-builder-node nvx-builder-heading nvx-builder-heading--${node.props.size} nvx-builder-color--${node.props.color}`}>{node.props.text}</Tag>
+				<Tag className={`nvx-builder-node nvx-builder-heading nvx-builder-heading--${node.props.size} nvx-builder-color--${node.props.color}`} data-align={node.props.align}>{node.props.text}</Tag>
 			</div>
 		);
 	}
 	if (node.type === 'Text') {
 		return (
 			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
-				<p className={`nvx-builder-node nvx-builder-text nvx-builder-text--${node.props.size} nvx-builder-color--${node.props.color}`}>{node.props.text}</p>
+				<p className={`nvx-builder-node nvx-builder-text nvx-builder-text--${node.props.size} nvx-builder-color--${node.props.color}`} data-align={node.props.align}>{node.props.text}</p>
 			</div>
 		);
 	}
@@ -1545,12 +1749,7 @@ function hasResponsiveOverrides(node: BuilderNode): boolean {
 }
 
 function previewStyle(node: BuilderNode, viewport: Breakpoint): CSSProperties {
-	const styles: ResponsiveNodeStyles = {
-		...node.styles,
-		...(node.responsiveStyles?.desktop ?? {}),
-		...(viewport !== 'desktop' ? node.responsiveStyles?.tablet ?? {} : {}),
-		...(viewport === 'mobile' ? node.responsiveStyles?.mobile ?? {} : {}),
-	};
+	const styles = resolveNodeStyles(node, viewport);
 	const widthStyles: CSSProperties = styles.width ? {
 		width: styles.width === 'content' ? 'max-content' : styles.width === 'narrow' ? 'min(100%, 40rem)' : styles.width === 'wide' ? 'min(100%, 72rem)' : '100%',
 		maxWidth: styles.width === 'full' ? 'none' : '100%',
@@ -1574,14 +1773,7 @@ function fieldValue(node: BuilderNode, field: InspectorField, viewport: Breakpoi
 	}
 	if (!field.key.startsWith('styles.')) return node.props[field.key as keyof typeof node.props];
 	const key = field.key.slice('styles.'.length) as keyof NodeStyles;
-	if (viewport === 'desktop') return node.styles?.[key] ?? '';
-	const active = node.responsiveStyles?.[viewport]?.[key];
-	if (active !== undefined) return active;
-	if (viewport === 'mobile') {
-		const tablet = node.responsiveStyles?.tablet?.[key];
-		if (tablet !== undefined) return tablet;
-	}
-	return node.styles?.[key] ?? '';
+	return explicitNodeStyle(node, viewport, key) ?? '';
 }
 
 function canMoveDown(nodes: BuilderNode[], id: string): boolean {

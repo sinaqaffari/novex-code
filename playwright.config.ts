@@ -40,6 +40,7 @@ export default defineConfig({
 		env: {
 			...process.env,
 			BUILDER_DATA_FILE: path.join(dataDirectory, 'builder-pages.json'),
+			PLUGIN_STATE_FILE: path.join(dataDirectory, 'plugins.json'),
 			CMS_SETTINGS_FILE: path.join(dataDirectory, 'cms-settings.json'),
 			CMS_USERS_FILE: path.join(dataDirectory, 'users.json'),
 			COMMERCE_DB_FILE: path.join(dataDirectory, 'commerce.json'),

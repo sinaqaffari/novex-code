@@ -1,0 +1,16 @@
+{
+  "version": "0.4",
+  "title": "نمونه",
+  "type": "page",
+  "content": [{
+    "id": "section1", "elType": "section", "settings": {}, "elements": [{
+      "id": "column1", "elType": "column", "settings": {}, "elements": [
+        { "id": "heading1", "elType": "widget", "widgetType": "heading", "settings": { "title": "سلام Novex", "header_size": "h2", "align": "right", "_margin": {"unit":"px", "top":"16", "bottom":"8"}, "_margin_mobile": {"unit":"px", "top":"4"} }, "elements": [] },
+        { "id": "text1", "elType": "widget", "widgetType": "text-editor", "settings": { "editor": "<p>متن <strong>فارسی</strong></p><script>alert(1)</script>" }, "elements": [] },
+        { "id": "button1", "elType": "widget", "widgetType": "button", "settings": { "text": "تماس", "link": {"url":"/contact"} }, "elements": [] },
+        { "id": "image1", "elType": "widget", "widgetType": "image", "settings": { "image": {"url":"https://example.com/image.jpg", "id": 123} }, "elements": [] },
+        { "id": "other1", "elType": "widget", "widgetType": "form", "settings": {"custom_css":"body { color:red }"}, "elements": [] }
+      ]
+    }]
+  }]
+}

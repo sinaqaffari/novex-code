@@ -83,6 +83,31 @@ export function addNode(
 	return validatePageDocument({ ...document, nodes: updated }, document.slug);
 }
 
+/** Insert independent copies of validated fragment nodes at the current selection. */
+export function insertDocumentFragment(
+	document: PageDocument,
+	fragment: PageDocument,
+	selectedId: string | null,
+	idFactory: () => string = createNodeId,
+): { document: PageDocument; firstId: string | null } {
+	const source = validatePageDocument(fragment);
+	const target = validatePageDocument(document);
+	const selected = selectedId ? findNode(target.nodes, selectedId) : null;
+	if (selectedId && !selected) throw new Error('Selected component was not found.');
+	const location = selected ? findNodeLocation(target.nodes, selected.id) : null;
+	const parentId = selected?.type === 'Container' ? selected.id : location?.parentId ?? null;
+	let index = selected?.type === 'Container' ? selected.children.length : location ? location.index + 1 : target.nodes.length;
+	function copy(node: BuilderNode): BuilderNode {
+		const id = idFactory();
+		if (node.type === 'Container') return { ...node, id, children: node.children.map(copy) };
+		return { ...node, id };
+	}
+	const copies = source.nodes.map(copy);
+	let nodes = target.nodes;
+	for (const node of copies) nodes = insertAtParent(nodes, parentId, node, index++);
+	return { document: validatePageDocument({ ...target, nodes }, target.slug), firstId: copies[0]?.id ?? null };
+}
+
 function insertAtParent(
 	nodes: readonly BuilderNode[],
 	parentId: string | null,

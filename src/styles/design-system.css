@@ -9,7 +9,7 @@
    Base tokens (shared across themes)
    ============================================================================ */
 
-:root {
+.builder-shell {
 	/* --- Typography families --- */
 	--ds-font-family: var(--font-fa, 'Vazirmatn Variable', 'Vazirmatn', sans-serif);
 	--ds-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -89,7 +89,7 @@
 
 /* Reduce motion when user prefers it */
 @media (prefers-reduced-motion: reduce) {
-	:root {
+	.builder-shell {
 		--ds-motion-fast: 0ms;
 		--ds-motion-base: 0ms;
 		--ds-motion-slow: 0ms;
@@ -101,8 +101,7 @@
    Light theme (default)
    ============================================================================ */
 
-[data-theme='light'],
-:root:not([data-theme='dark']) {
+.builder-shell[data-theme='light'] {
 	/* --- Backgrounds --- */
 	--ds-bg-body: #f3f5f8;
 	--ds-bg-surface: #ffffff;
@@ -172,7 +171,7 @@
    Dark theme
    ============================================================================ */
 
-[data-theme='dark'] {
+.builder-shell[data-theme='dark'] {
 	/* --- Backgrounds --- */
 	--ds-bg-body: #111419;
 	--ds-bg-surface: #191c22;

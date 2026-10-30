@@ -178,6 +178,22 @@ export async function saveDraftPage(input: {
 	});
 }
 
+/** All-or-nothing within this process and the file-backed store; never replaces pages. */
+export async function installDraftPages(documents: PageDocument[]): Promise<BuilderPageRecord[]> {
+	if (!Array.isArray(documents) || !documents.length || documents.length > 20) throw new BuilderStoreError('تعداد صفحه‌ها معتبر نیست.', 422, 'invalid_kit');
+	const normalized = documents.map((document) => validateDocument(document, document.slug));
+	if (new Set(normalized.map((document) => document.slug)).size !== normalized.length) throw new BuilderStoreError('نامک تکراری است.', 422, 'duplicate_slug');
+	return serializeWrite(async () => {
+		const database = await readDatabase();
+		const collision = normalized.find((document) => database.pages[document.slug]);
+		if (collision) throw new BuilderStoreError(`صفحهٔ ${collision.slug} از قبل وجود دارد؛ پیشوند دیگری انتخاب کنید.`, 409, 'page_exists');
+		const now = new Date().toISOString();
+		const records = normalized.map((document): BuilderPageRecord => ({ slug: document.slug, revision: 1, updatedAt: now, draft: document, revisions: [{ revision: 1, savedAt: now, document }] }));
+		await writeDatabase({ ...database, pages: { ...database.pages, ...Object.fromEntries(records.map((record) => [record.slug, record])) } });
+		return records;
+	});
+}
+
 export async function publishPage(input: {
 	slug: string;
 	expectedRevision: number;

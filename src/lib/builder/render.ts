@@ -1,3 +1,4 @@
+import { BREAKPOINT_MAX_WIDTH } from './responsive.ts';
 import type { BuilderNode, NodeStyles, PageDocument, ResponsiveNodeStyles } from './types.ts';
 
 export function publicPagePath(slug: string): string {
@@ -39,10 +40,11 @@ export function buildResponsiveCss(document: PageDocument): string {
 				: desktopHidden || tabletHidden || mobileHidden;
 			if (shouldResetVisibility) {
 				const hidden = breakpoint === 'tablet' ? tabletHidden : mobileHidden;
-				declarations.unshift(`display:${hidden ? 'none' : 'block'}!important`);
+				const display = node.type === 'Container' ? (node.props.layout === 'grid' ? 'grid' : 'flex') : 'block';
+				declarations.unshift(`display:${hidden ? 'none' : display}!important`);
 			}
 			if (!declarations.length) continue;
-			const maxWidth = breakpoint === 'tablet' ? '1023px' : '767px';
+			const maxWidth = `${BREAKPOINT_MAX_WIDTH[breakpoint]}px`;
 			rules.push(`@media (max-width:${maxWidth}){${selector}{${declarations.join(';')}}}`);
 		}
 	}
@@ -55,7 +57,6 @@ function flattenNodes(nodes: BuilderNode[]): BuilderNode[] {
 
 function responsiveDeclarations(styles: ResponsiveNodeStyles): string[] {
 	const declarations: string[] = [];
-	if (styles.hidden) declarations.push('display:none!important');
 	if (styles.width) declarations.push(...widthDeclarations(styles.width));
 	for (const key of [
 		'marginBlockStart',
@@ -69,7 +70,8 @@ function responsiveDeclarations(styles: ResponsiveNodeStyles): string[] {
 		if (value !== undefined) declarations.push(`${kebab(key)}:${value}px`);
 	}
 	if (styles.borderRadius) declarations.push(`border-radius:${borderRadius(styles.borderRadius)}`);
-	return declarations;
+	// Published base styles are inline; breakpoint overrides must win over them.
+	return declarations.map((declaration) => `${declaration}!important`);
 }
 
 function widthDeclarations(width: NonNullable<NodeStyles['width']>): string[] {

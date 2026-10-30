@@ -3,6 +3,8 @@ import BuilderLayout from '../../../layouts/BuilderLayout.astro';
 import BuilderEditor from '../../../components/builder/BuilderEditor.tsx';
 import { can } from '../../../lib/cms/rbac';
 import { getDraftPage } from '../../../lib/builder/store';
+import { applyFilters } from '../../../lib/plugins/hooks';
+import { collectBuilderPresets, type BuilderPluginPreset } from '../../../lib/builder/plugin-presets';
 import { isValidPageSlug } from '../../../lib/builder/document';
 
 export const prerender = false;
@@ -14,8 +16,14 @@ if (!isValidPageSlug(slug)) {
 const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 if (!can(role, 'cms.pages:write')) return Astro.redirect('/cms/pages');
 const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
+let pluginPresets: BuilderPluginPreset[] = [];
+try {
+	const result = collectBuilderPresets(await applyFilters('builder.presets', []));
+	pluginPresets = result.presets;
+	if (result.rejected) console.warn(`[builder] rejected ${result.rejected} invalid or duplicate plugin presets`);
+} catch { console.error('[builder] plugin preset collection failed'); }
 ---
 
 <BuilderLayout title={record?.draft.title ?? 'صفحه'}>
-	{record ? <BuilderEditor client:load initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+	{record ? <BuilderEditor client:load pluginPresets={pluginPresets} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
 </BuilderLayout>

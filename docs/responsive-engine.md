@@ -1,0 +1,5 @@
+# Responsive document contract
+
+The existing schema is unchanged. Controlled styles cascade from base (`styles`, desktop) to tablet and then mobile. An absent override inherits; explicitly clearing a style removes that override. In the Inspector, the default option represents no explicit value and the inherited value is shown separately. Visibility is deliberately per-breakpoint, as in the existing document contract; it does not inherit like style properties.
+
+The shared responsive resolver drives the editor preview and Inspector. Published CSS uses the same 1023px and 767px maximums and adds `!important` to validated breakpoint declarations so that they override the base inline style. Container visibility restores its flex or grid display rather than replacing its layout with block. Values remain limited to the existing validated token set; this is not an arbitrary CSS or configurable-breakpoint engine. Preview layout and published Astro layout still have differences and require browser verification.

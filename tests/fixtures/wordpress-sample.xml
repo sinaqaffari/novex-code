@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel><title>نمونه</title><wp:wxr_version>1.2</wp:wxr_version>
+<item><title>درباره ما</title><wp:post_id>42</wp:post_id><wp:post_name>about</wp:post_name><wp:post_type>page</wp:post_type><wp:status>publish</wp:status><content:encoded><![CDATA[<p>سلام Novex</p><script>alert(1)</script><img src="https://example.com/a.jpg">]]></content:encoded><excerpt:encoded><![CDATA[خلاصه]]></excerpt:encoded><category>نمونه</category></item>
+<item><title>نوشته</title><wp:post_id>43</wp:post_id><wp:post_name>article</wp:post_name><wp:post_type>post</wp:post_type><wp:status>draft</wp:status><content:encoded><![CDATA[<p>متن نوشته</p>]]></content:encoded></item>
+<item><title>رسانه</title><wp:post_type>attachment</wp:post_type></item>
+</channel></rss>

@@ -1,0 +1,12 @@
+{
+  "id": "announcement-preset",
+  "apiVersion": 1,
+  "name": "بخش اطلاع‌رسانی",
+  "version": "1.0.0",
+  "description": "پیش‌تنظیم بومی اطلاع‌رسانی برای صفحه‌ساز؛ محتوای درج‌شده مستقل باقی می‌ماند.",
+  "author": "Novex-Code",
+  "license": "MIT",
+  "requires": "2.0.0",
+  "hooks": ["builder.presets"],
+  "capabilities": ["builder:presets"]
+}

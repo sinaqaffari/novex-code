@@ -387,3 +387,125 @@ test('shows a product-grid error state for a failed data request and recovers on
 	expect(issues.failedRequests).toEqual([]);
 	expect(issues.serverErrors.filter((message) => !message.includes('/api/products?selection=featured'))).toEqual([]);
 });
+
+test('inspects an Elementor export before replacing the draft without publishing', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('elementor');
+	await createPage(page, slug);
+	let publishRequests = 0;
+	page.on('request', (req) => {
+		if (req.method() === 'POST' && new URL(req.url()).pathname === `/cms/api/builder/pages/${slug}`) publishRequests++;
+	});
+	await page.getByTestId('elementor-import-file').setInputFiles('tests/fixtures/elementor-basic.json');
+	const dialog = page.getByRole('dialog', { name: 'بررسی ورود Elementor' });
+	await expect(dialog).toBeVisible();
+	await expect(dialog).toContainText('form');
+	await expect(dialog).toContainText('تصویر منتقل نشد');
+	await expect(page.getByTestId('builder-canvas')).not.toContainText('سلام Novex');
+	page.once('dialog', (confirmation) => confirmation.accept());
+	await dialog.getByRole('button', { name: 'جایگزینی پیش‌نویس' }).click();
+	await expect(page.getByTestId('builder-canvas')).toContainText('سلام Novex');
+	await page.getByTestId('save-page').click();
+	await expect.poll(async () => (await (await page.request.get(`/cms/api/builder/pages/${slug}`)).json()).document.nodes.length).toBeGreaterThan(0);
+	expect(publishRequests).toBe(0);
+	assertNoBrowserIssues(issues);
+});
+
+test('searches and inserts a copied section without replacing the existing page', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('section');
+	await createPage(page, slug);
+	await page.getByTestId('add-component-text').click();
+	await page.getByRole('button', { name: 'قالب‌ها', exact: true }).click();
+	const library = page.getByRole('dialog', { name: 'کتابخانهٔ قالب‌ها' });
+	await library.getByLabel('جست‌وجوی قالب و بخش').fill('معرفی ساده');
+	const card = library.locator('article').filter({ hasText: 'معرفی ساده' });
+	await expect(card).toBeVisible();
+	await card.getByRole('button', { name: 'پیش‌نمایش' }).click();
+	await expect(page.getByRole('dialog', { name: 'پیش‌نمایش معرفی ساده' })).toBeVisible();
+	await page.getByRole('dialog', { name: 'پیش‌نمایش معرفی ساده' }).getByRole('button', { name: 'بستن' }).first().click();
+	await card.getByRole('button', { name: 'افزودن رونوشت' }).click();
+	await expect(page.getByTestId('builder-canvas')).toContainText('راهکار ساده برای شروع بزرگ');
+	await expect(page.getByRole('list', { name: 'ساختار صفحه' }).getByTestId('tree-node')).not.toHaveCount(1);
+	assertNoBrowserIssues(issues);
+});
+
+test('inspects a local WXR export before replacing draft content', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('wxr');
+	await createPage(page, slug);
+	await page.getByTestId('wxr-import-file').setInputFiles('tests/fixtures/wordpress-sample.xml');
+	const dialog = page.getByRole('dialog', { name: 'بررسی خروجی WordPress WXR' });
+	await expect(dialog).toBeVisible();
+	await expect(dialog).toContainText('رسانه منتقل نمی‌شود');
+	await expect(page.getByTestId('builder-canvas')).not.toContainText('سلام Novex');
+	page.once('dialog', (confirmation) => confirmation.accept());
+	await dialog.getByRole('button', { name: 'جایگزینی پیش‌نویس' }).click();
+	await expect(page.getByTestId('builder-canvas')).toContainText('سلام Novex');
+	assertNoBrowserIssues(issues);
+});
+
+test('keeps mobile responsive values independent and can restore inheritance', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('responsive-inherit');
+	await createPage(page, slug);
+	await page.getByTestId('add-component-heading').click();
+	const width = page.locator('#builder-field-styles-width');
+	await width.selectOption('wide');
+	await page.getByRole('button', { name: 'موبایل' }).click();
+	await expect(width).toHaveValue('');
+	await width.selectOption('narrow');
+	await width.selectOption('');
+	await page.getByTestId('save-page').click();
+	await expect(page.locator('.builder-save-state--saved')).toBeVisible();
+	const response = await page.request.get(`/cms/api/builder/pages/${slug}`);
+	const { document } = await response.json();
+	expect(document.nodes[0].styles.width).toBe('wide');
+	expect(document.nodes[0].responsiveStyles?.mobile?.width).toBeUndefined();
+	assertNoBrowserIssues(issues);
+});
+
+test('inserts a parameterized bundled plugin composition and retains it after deactivation', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const changePlugin = (action: string) => page.request.post('/cms/api/plugins', {
+		headers: { accept: 'application/json' },
+		data: { pluginId: 'announcement-preset', action },
+	});
+	const activated = await changePlugin('activate');
+	expect(activated.ok()).toBeTruthy();
+	try {
+		const slug = slugFor('plugin-component');
+		await createPage(page, slug);
+		await page.getByRole('button', { name: /نوار اطلاع‌رسانی/ }).click();
+		const dialog = page.getByRole('dialog', { name: 'نوار اطلاع‌رسانی' });
+		await dialog.getByLabel('متن اطلاع‌رسانی').fill('پیام سفارشی آزمایشی');
+		await dialog.getByRole('button', { name: 'افزودن به صفحه' }).click();
+		await expect(page.getByTestId('builder-canvas')).toContainText('پیام سفارشی آزمایشی');
+		await page.getByTestId('save-page').click();
+		await expect(page.locator('.builder-save-state--saved')).toBeVisible();
+		const disabled = await changePlugin('deactivate');
+		expect(disabled.ok()).toBeTruthy();
+		await page.reload();
+		await expect(page.getByTestId('builder-canvas')).toContainText('پیام سفارشی آزمایشی');
+		await expect(page.getByRole('button', { name: /نوار اطلاع‌رسانی/ })).toHaveCount(0);
+		assertNoBrowserIssues(issues);
+	} finally {
+		await changePlugin('deactivate').catch(() => undefined);
+	}
+});
+
+test('reviews actionable diagnostics without publishing the current draft', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const slug = slugFor('diagnostics');
+	await createPage(page, slug);
+	await page.getByTestId('add-component-image').click();
+	await page.getByTestId('diagnose-page').click();
+	const report = page.getByRole('dialog', { name: 'بررسی پیش از انتشار' });
+	await expect(report).toContainText('برای این تصویر فایلی انتخاب نشده است.');
+	await report.getByRole('button', { name: 'انتخاب مؤلفه' }).click();
+	await expect(report).toBeHidden();
+	await expect(page.locator('#builder-field-alt')).toBeVisible();
+	const published = await page.request.get(`/pages/${slug}`);
+	expect(published.status()).toBe(404);
+	assertNoBrowserIssues(issues);
+});

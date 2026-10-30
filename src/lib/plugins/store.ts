@@ -8,7 +8,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
-const STATE_FILE = path.join(DATA_DIR, 'plugins.json');
+const STATE_FILE = path.resolve(process.env.PLUGIN_STATE_FILE ?? path.join(DATA_DIR, 'plugins.json'));
 const PLUGIN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const OPTION_KEY = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 
@@ -98,7 +98,7 @@ export function updatePluginState(
 		const draft = structuredClone(current);
 		const normalized = validatePluginState(mutate(draft) ?? draft);
 
-		await mkdir(DATA_DIR, { recursive: true });
+		await mkdir(path.dirname(STATE_FILE), { recursive: true });
 		const temporary = `${STATE_FILE}.${process.pid}.${randomUUID()}.tmp`;
 		try {
 			await writeFile(temporary, `${JSON.stringify(normalized, null, '\t')}\n`, { encoding: 'utf8', mode: 0o600 });

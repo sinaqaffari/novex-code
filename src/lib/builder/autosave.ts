@@ -41,14 +41,16 @@ export class AutosaveController {
 	schedule(document: PageDocument): void {
 		if (this.disposed) return;
 		this.latest = document;
-		if (!this.isDirty()) {
+		// A conflict means the server baseline is unknown even if the user undoes
+		// back to the old local baseline. Only a reload can clear it.
+		if (this.blockedError instanceof AutosaveConflictError) {
+			this.onStatus('conflict', this.blockedError);
+			return;
+		}
+		if (!this.inFlight && !this.isDirty()) {
 			this.blockedError = undefined;
 			this.clearTimer();
 			this.onStatus('saved');
-			return;
-		}
-		if (this.blockedError instanceof AutosaveConflictError) {
-			this.onStatus('conflict', this.blockedError);
 			return;
 		}
 		if (this.blockedError) this.blockedError = undefined;
@@ -62,13 +64,14 @@ export class AutosaveController {
 
 	async flush(): Promise<void> {
 		this.clearTimer();
-		if (this.disposed || !this.latest || !this.isDirty()) return;
+		if (this.disposed || !this.latest) return;
 		if (this.blockedError instanceof AutosaveConflictError) throw this.blockedError;
 		if (this.inFlight) {
 			await this.inFlight;
 			if (this.isDirty()) return this.flush();
 			return;
 		}
+		if (!this.isDirty()) return;
 
 		const snapshot = this.latest;
 		const snapshotJson = serializePageDocument(snapshot);
@@ -104,7 +107,7 @@ export class AutosaveController {
 	}
 
 	isDirty(): boolean {
-		return Boolean(this.latest && serializePageDocument(this.latest) !== this.baseline);
+		return Boolean(this.inFlight || this.blockedError instanceof AutosaveConflictError || (this.latest && serializePageDocument(this.latest) !== this.baseline));
 	}
 
 	get error(): unknown {
