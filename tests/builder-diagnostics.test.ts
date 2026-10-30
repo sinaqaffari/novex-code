@@ -58,3 +58,22 @@ describe('builder pre-publication diagnostics', () => {
 		assert.equal(response.status, 413);
 	});
 });
+
+describe('plugin component diagnostics', () => {
+	it('reports empty fields and placeholder links within plugin snapshots', async () => {
+		let doc = addNode(createEmptyPageDocument('plugin-diagnostics'), 'PluginBlock', { id: 'node_pluginblock1' });
+		doc = updateNodeProps(doc, 'node_pluginblock1', {
+			pluginId: 'test-plugin', componentId: 'notice', pluginVersion: '1.0.0', label: 'اعلان',
+			fields: [
+				{ key: 'title', label: 'عنوان', kind: 'text', value: '', maxLength: 100 },
+				{ key: 'button', label: 'دکمه', kind: 'text', value: '', maxLength: 80 },
+				{ key: 'url', label: 'نشانی', kind: 'url', value: '#', maxLength: 500 },
+			],
+			parts: [{ type: 'heading', textKey: 'title' }, { type: 'button', textKey: 'button', hrefKey: 'url' }],
+		});
+		const issues = await diagnosePageDocument(doc, doc.slug, async () => false);
+		for (const code of ['empty-heading', 'empty-button-label', 'placeholder-link']) {
+			assert.ok(issues.some((issue) => issue.code === code && issue.nodeId === 'node_pluginblock1'));
+		}
+	});
+});

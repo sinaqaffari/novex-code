@@ -3,8 +3,11 @@ import BuilderLayout from '../../../layouts/BuilderLayout.astro';
 import BuilderEditor from '../../../components/builder/BuilderEditor.tsx';
 import { can } from '../../../lib/cms/rbac';
 import { getDraftPage } from '../../../lib/builder/store';
-import { applyFilters } from '../../../lib/plugins/hooks';
+import { applyFilters, collectOwnedBuilderComponents } from '../../../lib/plugins/hooks';
 import { collectBuilderPresets, type BuilderPluginPreset } from '../../../lib/builder/plugin-presets';
+import { collectOwnedPluginComponents } from '../../../lib/builder/plugin-components';
+import { findPlugin } from '../../../lib/plugins/registry';
+import type { PluginBlockProps } from '../../../lib/builder/types';
 import { isValidPageSlug } from '../../../lib/builder/document';
 
 export const prerender = false;
@@ -17,6 +20,14 @@ const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 if (!can(role, 'cms.pages:write')) return Astro.redirect('/cms/pages');
 const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
 let pluginPresets: BuilderPluginPreset[] = [];
+let pluginComponents: PluginBlockProps[] = [];
+try {
+	const collected = await collectOwnedBuilderComponents();
+	const result = collectOwnedPluginComponents(collected.contributions, (owner) => { const plugin = findPlugin(owner); return plugin?.active && !plugin.error ? plugin.manifest.version : undefined; });
+	pluginComponents = result.components;
+	const rejected = collected.rejected + result.rejected;
+	if (rejected) console.warn(`[builder] rejected ${rejected} invalid plugin components`);
+} catch { console.error('[builder] plugin component collection failed'); }
 try {
 	const result = collectBuilderPresets(await applyFilters('builder.presets', []));
 	pluginPresets = result.presets;
@@ -25,5 +36,5 @@ try {
 ---
 
 <BuilderLayout title={record?.draft.title ?? 'صفحه'}>
-	{record ? <BuilderEditor client:load pluginPresets={pluginPresets} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+	{record ? <BuilderEditor client:load pluginComponents={pluginComponents} pluginPresets={pluginPresets} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
 </BuilderLayout>

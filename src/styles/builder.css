@@ -266,3 +266,6 @@
 	color: var(--muted, #697077);
 	line-height: 1.75;
 }
+
+/* Declarative plugin blocks use only host-owned primitives and theme tokens. */
+.nvx-builder-plugin { display: flex; flex-direction: column; gap: .75rem; padding: 1rem; border-radius: .7rem; background: var(--surface-2, #f7f8f9); }

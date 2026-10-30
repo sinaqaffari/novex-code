@@ -1,0 +1,12 @@
+{
+  "id": "notice-component",
+  "apiVersion": 1,
+  "name": "مؤلفهٔ اعلان",
+  "version": "1.0.0",
+  "description": "مؤلفهٔ اعلان داده‌محور با فیلدهای قابل ویرایش و نمایش امن.",
+  "author": "Novex-Code",
+  "license": "MIT",
+  "requires": "2.0.0",
+  "hooks": ["builder.components"],
+  "capabilities": ["builder:components"]
+}

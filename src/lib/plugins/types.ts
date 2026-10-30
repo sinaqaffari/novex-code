@@ -10,6 +10,7 @@
  */
 export type PluginCapability =
 	| 'builder:presets'
+	| 'builder:components'
 	| 'site:render'
 	| 'cms:widgets'
 	| 'content:read'
@@ -23,6 +24,7 @@ export type PluginCapability =
 
 /** The host-owned extension points available to plugins. Unknown hooks fail closed. */
 export const PLUGIN_HOOKS = {
+	'builder.components': { kind: 'filter', capability: 'builder:components', failureMode: 'isolate' },
 	'builder.presets': { kind: 'filter', capability: 'builder:presets', failureMode: 'isolate' },
 	'site.head': { kind: 'filter', capability: 'site:render', failureMode: 'isolate' },
 	'site.footer': { kind: 'filter', capability: 'site:render', failureMode: 'isolate' },
@@ -40,6 +42,7 @@ export const SUPPORTED_PLUGIN_API_VERSION = 1;
 
 /** فهرست کامل توانایی‌ها — برای اعتبارسنجی مانیفست و نمایش در پنل. */
 export const PLUGIN_CAPABILITIES: readonly PluginCapability[] = [
+	'builder:components',
 	'builder:presets',
 	'site:render',
 	'cms:widgets',
@@ -55,6 +58,7 @@ export const PLUGIN_CAPABILITIES: readonly PluginCapability[] = [
 
 /** توضیح کوتاه هر توانایی — در صفحهٔ افزونه‌ها نشان داده می‌شود. */
 export const PLUGIN_CAPABILITY_LABELS: Record<PluginCapability, string> = {
+	'builder:components': 'افزودن مؤلفهٔ داده‌محور محدود به صفحه‌ساز',
 	'builder:presets': 'افزودن رونوشت‌های مؤلفهٔ بومی به صفحه‌ساز',
 	'site:render': 'افزودن تگ به head و پاورقی سایت',
 	'cms:widgets': 'ساخت ویجت برای داشبورد',

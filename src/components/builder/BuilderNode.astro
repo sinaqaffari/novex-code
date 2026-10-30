@@ -1,5 +1,6 @@
 ---
 import type { BuilderNode } from '../../lib/builder/types.ts';
+import { resolvePluginParts } from '../../lib/builder/plugin-components.ts';
 import { controlledNodeStyle } from '../../lib/builder/render.ts';
 import ProductGrid from './ProductGrid.astro';
 import { parseBuilderMediaReference, resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
@@ -28,6 +29,10 @@ const imageSource = node.type === 'Image' ? resolveBuilderImageSource(node.props
 		style={`gap:${node.props.gap}px;padding:${node.props.padding}px${style ? `;${style}` : ''}`}
 	>
 		{node.children.map((child) => <Astro.self node={child} />)}
+	</div>
+) : node.type === 'PluginBlock' ? (
+	<div class:list={[baseClass, 'nvx-builder-plugin']} data-builder-id={id} style={style}>
+		{resolvePluginParts(node.props).map((part) => part.type === 'heading' ? <h2 class="nvx-builder-node nvx-builder-heading nvx-builder-heading--md nvx-builder-color--ink">{part.text}</h2> : part.type === 'text' ? <p class="nvx-builder-node nvx-builder-text nvx-builder-text--md nvx-builder-color--ink">{part.text}</p> : <div class="nvx-builder-button-wrap"><a class="nvx-builder-button nvx-builder-button--outline" href={part.href}>{part.text}</a></div>)}
 	</div>
 ) : node.type === 'Heading' ? (
 	node.props.level === 1 ? (

@@ -8,6 +8,7 @@ import type {
 	ThemeColor,
 } from './types.ts';
 import { BUILDER_COMPONENT_TYPES, BREAKPOINTS, SPACING_STEPS, type Breakpoint } from './types.ts';
+import { isSemVer } from '../plugins/validation.ts';
 import { normalizeProductGridBinding } from '../commerce/product-binding.ts';
 import { parseBuilderMediaReference } from './media-reference.ts';
 
@@ -111,7 +112,7 @@ const definitions = {
 			},
 			...commonStyleFields,
 		],
-		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid'],
+		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid', 'PluginBlock'],
 		supportsChildren: true,
 		previewRenderer: 'container',
 		productionRenderer: 'BuilderNode.astro',
@@ -300,10 +301,20 @@ const definitions = {
 		previewRenderer: 'productGrid',
 		productionRenderer: 'BuilderNode.astro',
 	} satisfies ComponentDefinition<'ProductGrid'>,
+	PluginBlock: {
+		type: 'PluginBlock', version: 1, label: 'مؤلفهٔ افزونه', category: 'content',
+		description: 'مؤلفهٔ داده‌محور با نمایش کنترل‌شده و نسخهٔ مستقل.',
+		documentation: 'فیلدها و نمایش در سند ذخیره می‌شوند؛ هیچ کد افزونه‌ای برای رندر اجرا نمی‌شود.',
+		example: 'اعلان سفارشی افزونه.',
+		defaultProps: { pluginId: 'core', componentId: 'notice', pluginVersion: '1.0.0', label: 'اعلان', fields: [{ key: 'message', label: 'پیام', kind: 'text', value: 'متن اعلان', maxLength: 240 }], parts: [{ type: 'text', textKey: 'message' }] },
+		fields: [...commonStyleFields], allowedChildren: [], supportsChildren: false,
+		previewRenderer: 'pluginBlock', productionRenderer: 'BuilderNode.astro',
+	} satisfies ComponentDefinition<'PluginBlock'>,
+
 } satisfies { [K in BuilderComponentType]: ComponentDefinition<K> };
 
 export const COMPONENT_REGISTRY = definitions;
-export const COMPONENT_LIST = BUILDER_COMPONENT_TYPES.map((type) => definitions[type]);
+export const COMPONENT_LIST = BUILDER_COMPONENT_TYPES.filter((type) => type !== 'PluginBlock').map((type) => definitions[type]);
 
 export function getComponentDefinition(type: BuilderComponentType): ComponentDefinition {
 	return COMPONENT_REGISTRY[type];
@@ -375,9 +386,11 @@ export function normalizeProps<T extends BuilderComponentType>(
 	input: unknown,
 ): ComponentPropsByType[T] {
 	const definition = COMPONENT_REGISTRY[type] as unknown as ComponentDefinition<T>;
+	if (input === undefined && type === 'PluginBlock') throw new Error('Plugin snapshot is required.');
 	if (input === undefined) return structuredClone(definition.defaultProps);
 	if (!isRecord(input)) throw new Error(`Properties for ${type} must be an object.`);
 	const allowed = Object.keys(definition.defaultProps);
+	if (type === 'PluginBlock' && allowed.some((key) => !Object.hasOwn(input, key))) throw new Error('Plugin snapshot is incomplete.');
 	assertOnlyKeys(input, allowed, `${type} properties`);
 	const merged = { ...definition.defaultProps, ...input } as Record<string, unknown>;
 
@@ -420,6 +433,10 @@ export function normalizeProps<T extends BuilderComponentType>(
 			aspectRatio: enumValue(merged.aspectRatio, 'aspectRatio', ['auto', 'wide', 'square', 'portrait']),
 			fit: enumValue(merged.fit, 'fit', ['cover', 'contain']),
 		} as ComponentPropsByType[T];
+	}
+
+	if (type === 'PluginBlock') {
+		return normalizePluginBlockProps(merged) as ComponentPropsByType[T];
 	}
 
 	if (type === 'ProductGrid') {
@@ -486,4 +503,51 @@ export function normalizeResponsiveStyles(input: unknown): Partial<Record<Breakp
 		output[breakpoint] = { ...normalizedStyles, ...(hidden === undefined ? {} : { hidden }) };
 	}
 	return Object.keys(output).length ? output : undefined;
+}
+
+/** Validate declarative plugin snapshots independently of plugin availability. */
+function normalizePluginBlockProps(raw: Record<string, unknown>): import('./types.ts').PluginBlockProps {
+	const slug = (value: unknown, key: string) => {
+		if (typeof value !== 'string' || value.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) throw new Error(`Invalid ${key}.`);
+		return value;
+	};
+	const pluginId = slug(raw.pluginId, 'pluginId');
+	const componentId = slug(raw.componentId, 'componentId');
+	const pluginVersion = text(raw.pluginVersion, 'pluginVersion', 80);
+	if (!isSemVer(pluginVersion)) throw new Error('Invalid plugin version.');
+	const label = text(raw.label, 'label', 100).trim();
+	if (!label) throw new Error('Plugin label is required.');
+	if (!Array.isArray(raw.fields) || raw.fields.length < 1 || raw.fields.length > 12 || !Array.isArray(raw.parts) || raw.parts.length < 1 || raw.parts.length > 12) throw new Error('Invalid plugin fields or parts.');
+	const keys = new Set<string>();
+	const fields: import('./types.ts').PluginBlockField[] = raw.fields.map((field: unknown) => {
+		if (!isRecord(field)) throw new Error('Invalid plugin field.');
+		assertOnlyKeys(field, ['key', 'label', 'kind', 'value', 'maxLength'], 'Plugin field');
+		const key = slug(field.key, 'field key');
+		if (keys.has(key)) throw new Error('Duplicate plugin field.');
+		keys.add(key);
+		const label = text(field.label, 'field label', 100).trim();
+		if (!label) throw new Error('Field label is required.');
+		const kind = enumValue(field.kind, 'field kind', ['text', 'textarea', 'url'] as const);
+		if (typeof field.maxLength !== 'number' || !Number.isInteger(field.maxLength) || field.maxLength < 1 || field.maxLength > (kind === 'url' ? 500 : 5000)) throw new Error('Invalid field length.');
+		const value = text(field.value, 'field value', field.maxLength);
+		if (kind === 'url' && !safeHref(value)) throw new Error('Unsafe plugin link.');
+		return { key, label, kind, value, maxLength: field.maxLength };
+	});
+	const parts: import('./types.ts').PluginBlockPart[] = raw.parts.map((part: unknown) => {
+		if (!isRecord(part)) throw new Error('Invalid plugin part.');
+		assertOnlyKeys(part, ['type', 'textKey', 'hrefKey'], 'Plugin part');
+		const type = enumValue(part.type, 'part type', ['heading', 'text', 'button'] as const);
+		const textKey = slug(part.textKey, 'part text');
+		const field = fields.find((item) => item.key === textKey);
+		const limit = type === 'heading' ? 240 : type === 'button' ? 80 : 5000;
+		if (!field || field.kind === 'url' || field.maxLength > limit) throw new Error('Invalid plugin text binding.');
+		if (type === 'button') {
+			const hrefKey = slug(part.hrefKey, 'part link');
+			if (fields.find((item) => item.key === hrefKey)?.kind !== 'url') throw new Error('Invalid plugin link binding.');
+			return { type, textKey, hrefKey };
+		}
+		if (part.hrefKey !== undefined) throw new Error('Unexpected plugin link binding.');
+		return { type, textKey };
+	});
+	return { pluginId, componentId, pluginVersion, label, fields, parts };
 }

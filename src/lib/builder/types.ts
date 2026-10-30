@@ -1,9 +1,9 @@
-export const PAGE_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const PAGE_DOCUMENT_SCHEMA_VERSION = 2 as const;
 export const COMPONENT_VERSION = 1 as const;
 
 import type { ProductGridBinding } from '../commerce/types.ts';
 
-export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid'] as const;
+export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button', 'ProductGrid', 'PluginBlock'] as const;
 export type BuilderComponentType = (typeof BUILDER_COMPONENT_TYPES)[number];
 
 export const BREAKPOINTS = ['desktop', 'tablet', 'mobile'] as const;
@@ -62,6 +62,18 @@ export interface ProductGridProps {
 	binding: ProductGridBinding;
 }
 
+/** Persisted declarative component snapshot; contains data, never executable code. */
+export interface PluginBlockField { key: string; label: string; kind: 'text' | 'textarea' | 'url'; value: string; maxLength: number }
+export interface PluginBlockPart { type: 'heading' | 'text' | 'button'; textKey: string; hrefKey?: string }
+export interface PluginBlockProps {
+	pluginId: string;
+	componentId: string;
+	pluginVersion: string;
+	label: string;
+	fields: PluginBlockField[];
+	parts: PluginBlockPart[];
+}
+
 export interface ComponentPropsByType {
 	Container: ContainerProps;
 	Heading: HeadingProps;
@@ -69,6 +81,7 @@ export interface ComponentPropsByType {
 	Image: ImageProps;
 	Button: ButtonProps;
 	ProductGrid: ProductGridProps;
+	PluginBlock: PluginBlockProps;
 }
 
 /** A controlled, token-based style surface. No raw CSS is accepted. */
@@ -120,7 +133,9 @@ export interface ProductGridNode extends NodeBase<'ProductGrid'> {
 	children?: never;
 }
 
-export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode | ProductGridNode;
+export interface PluginBlockNode extends NodeBase<'PluginBlock'> { children?: never }
+
+export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode | ProductGridNode | PluginBlockNode;
 
 export interface PageDocument {
 	schemaVersion: typeof PAGE_DOCUMENT_SCHEMA_VERSION;
@@ -157,6 +172,6 @@ export interface ComponentDefinition<T extends BuilderComponentType = BuilderCom
 	fields: readonly InspectorField[];
 	allowedChildren: readonly BuilderComponentType[];
 	supportsChildren: boolean;
-	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button' | 'productGrid';
+	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button' | 'productGrid' | 'pluginBlock';
 	productionRenderer: 'BuilderNode.astro';
 }

@@ -569,3 +569,27 @@ test('converts WXR headings and standalone links into editable native components
 	expect(saved[1]).toMatchObject({ type: 'Button', props: { href: '/contact' } });
 	assertNoBrowserIssues(issues);
 });
+
+test('edits and publishes a declarative plugin block that survives plugin deactivation', async ({ page }) => {
+	const issues = issuesByPage.get(page)!;
+	const plugin = (action: string) => page.request.post('/cms/api/plugins', { headers: { accept: 'application/json' }, data: { pluginId: 'notice-component', action } });
+	expect((await plugin('activate')).ok()).toBeTruthy();
+	try {
+		const slug = slugFor('plugin-block');
+		await createPage(page, slug);
+		await page.getByTestId('plugin-component-notice-card').click();
+		await page.getByLabel('متن اعلان').fill('اعلان سفارشی و پایدار');
+		await expect(page.getByTestId('builder-canvas')).toContainText('اعلان سفارشی و پایدار');
+		await page.getByTestId('save-page').click();
+		await expect(page.locator('.builder-save-state--saved')).toBeVisible();
+		await page.getByTestId('publish-page').click();
+		await expect.poll(async () => (await page.request.get(`/pages/${slug}`)).status()).toBe(200);
+		expect((await plugin('deactivate')).ok()).toBeTruthy();
+		await page.reload();
+		await expect(page.getByTestId('builder-canvas')).toContainText('اعلان سفارشی و پایدار');
+		await expect(page.getByTestId('plugin-component-notice-card')).toHaveCount(0);
+		const publicPage = await page.request.get(`/pages/${slug}`);
+		expect(await publicPage.text()).toContain('اعلان سفارشی و پایدار');
+		assertNoBrowserIssues(issues);
+	} finally { await plugin('deactivate').catch(() => undefined); }
+});

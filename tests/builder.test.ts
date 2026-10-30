@@ -150,7 +150,7 @@ describe('Builder registry and document contract', () => {
 				{ id: 'node_image0001', type: 'image', props: { src: '/media/old.webp', alt: 'تصویر قدیمی' } },
 			],
 		});
-		assert.equal(migrated.schemaVersion, 1);
+		assert.equal(migrated.schemaVersion, 2);
 		assert.deepEqual(migrated.nodes.map((node) => node.type), ['Heading', 'Text', 'Image']);
 	});
 

@@ -10,12 +10,13 @@ import {
 	AutosaveController,
 	type AutosaveStatus,
 } from '../../lib/builder/autosave.ts';
-import { exportPageDocument, hiddenAtBreakpoint, importPageDocument, validatePageDocument } from '../../lib/builder/document.ts';
+import { createEmptyPageDocument, exportPageDocument, hiddenAtBreakpoint, importPageDocument, validatePageDocument } from '../../lib/builder/document.ts';
 import { resolveBuilderImageSource } from '../../lib/builder/media-reference.ts';
 import type { BuilderDiagnostic } from '../../lib/builder/diagnostics.ts';
 import {
 	addNode,
 	createNodeId,
+	createBuilderNode,
 	deleteNode,
 	duplicateNode,
 	findNode,
@@ -33,6 +34,7 @@ import { BUILDER_THEME_LIST, themeVariables } from '../../lib/builder/themes.ts'
 import { applyTemplate, listStarterTemplates } from '../../lib/builder/templates.ts';
 import { listSiteKits } from '../../lib/builder/site-kits.ts';
 import { materializeBuilderPreset, type BuilderPluginPreset } from '../../lib/builder/plugin-presets.ts';
+import { resolvePluginParts } from '../../lib/builder/plugin-components.ts';
 import { productGridApiPath } from '../../lib/commerce/product-binding.ts';
 import { faMoney } from '../../lib/cms/fa.ts';
 import type { ProductGridBinding, PublicProductCard } from '../../lib/commerce/types.ts';
@@ -44,6 +46,7 @@ import type {
 	InspectorField,
 	NodeStyles,
 	PageDocument,
+	PluginBlockProps,
 } from '../../lib/builder/types.ts';
 import '../../styles/builder.css';
 import '../../styles/builder-editor.css';
@@ -51,6 +54,7 @@ import '../../styles/design-system.css';
 
 interface Props {
 	pluginPresets: BuilderPluginPreset[];
+	pluginComponents: PluginBlockProps[];
 	initialDocument: PageDocument;
 	initialRevision: number;
 	publishedAt: string | null;
@@ -99,7 +103,7 @@ const STATUS_LABELS: Record<AutosaveStatus, string> = {
 	conflict: 'تعارض نسخه',
 };
 
-export default function BuilderEditor({ pluginPresets, initialDocument, initialRevision, publishedAt, slug, canPublish, canReadMedia, canUploadMedia }: Props) {
+export default function BuilderEditor({ pluginComponents, pluginPresets, initialDocument, initialRevision, publishedAt, slug, canPublish, canReadMedia, canUploadMedia }: Props) {
 	const [history, setHistory] = useState(() => createDocumentHistory(initialDocument));
 	const historyRef = useRef(history);
 	const [revision, setRevision] = useState(initialRevision);
@@ -488,6 +492,12 @@ async function refreshRevisionHistory(): Promise<void> {
 				applyDocument(updateNodeStyles(historyRef.current.present, node.id, patch, viewport));
 				return;
 			}
+			if (field.key.startsWith('plugin.') && node.type === 'PluginBlock') {
+				const key = field.key.slice('plugin.'.length);
+				const fields = node.props.fields.map((item) => item.key === key ? { ...item, value: rawValue } : item);
+				applyDocument(updateNodeProps(historyRef.current.present, node.id, { fields }));
+				return;
+			}
 			if (field.key.startsWith('binding.') && node.type === 'ProductGrid') {
 				const key = field.key.slice('binding.'.length) as keyof ProductGridBinding;
 				const binding: Record<string, unknown> = { ...node.props.binding, [key]: rawValue };
@@ -711,6 +721,17 @@ async function refreshRevisionHistory(): Promise<void> {
 			setWxrBulkStatus(`پیش‌نویس‌ها ساخته شدند: ${result.pages.map((page: { slug: string }) => page.slug).join('، ')}. هیچ صفحه‌ای منتشر نشد.`);
 		} catch (error) { setWxrBulkStatus(error instanceof Error ? error.message : 'ساخت پیش‌نویس‌ها ممکن نشد.'); }
 		finally { setWxrBulkBusy(false); }
+	}
+
+	function insertPluginComponent(component: PluginBlockProps): void {
+		try {
+			const node = { ...createBuilderNode('PluginBlock'), props: component };
+			const fragment = validatePageDocument({ ...createEmptyPageDocument('plugin-component'), nodes: [node] });
+			const result = insertDocumentFragment(historyRef.current.present, fragment, selectedId);
+			applyDocument(result.document);
+			setSelectedId(result.firstId);
+			setMessage('مؤلفهٔ افزونه اضافه شد؛ فیلدهای آن در بازرس قابل ویرایش هستند.');
+		} catch (error) { setMessage(error instanceof Error ? error.message : 'افزودن مؤلفهٔ افزونه ممکن نشد.'); }
 	}
 
 	function insertPluginPreset(preset: BuilderPluginPreset, values: Record<string, string>): void {
@@ -951,6 +972,7 @@ async function refreshRevisionHistory(): Promise<void> {
 							<span><strong>شبکه</strong><small>بخش Grid با ستون‌های واکنش‌گرا</small></span>
 							<span className="builder-component-card__add">+</span>
 						</button>
+						{pluginComponents.map((component) => <button className="builder-component-card" type="button" key={`${component.pluginId}/${component.componentId}`} data-testid={`plugin-component-${component.componentId}`} onClick={() => insertPluginComponent(component)}><span className="builder-component-card__icon">◇</span><span><strong>{component.label}</strong><small>مؤلفهٔ افزونه · داده‌محور</small></span><span className="builder-component-card__add">+</span></button>)}
 						{pluginPresets.map((preset) => <button className="builder-component-card" type="button" key={preset.id} onClick={() => choosePluginPreset(preset)} title={preset.description}><span className="builder-component-card__icon">▦</span><span><strong>{preset.label}</strong><small>{preset.description}</small></span><span className="builder-component-card__add">+</span></button>)}
 					</div>
 					{selectedId ? (
@@ -1211,6 +1233,7 @@ function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragO
 			: node.type === 'Button' ? node.props.label
 				: node.type === 'Image' ? node.props.alt || node.props.src || 'بدون تصویر'
 				: node.type === 'ProductGrid' ? `محصولات ${node.props.binding.selection}`
+				: node.type === 'PluginBlock' ? node.props.label
 					: `${node.children.length} فرزند`;
 	const isDropTarget = dragOverId === node.id;
 	return (
@@ -1370,6 +1393,9 @@ if (node.type === 'Image') {
 			</div>
 		);
 	}
+if (node.type === 'PluginBlock') {
+	return <div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>{responsiveBadge}<PluginBlockPreview props={node.props} /></div>;
+}
 if (node.type === 'ProductGrid') {
 	return (
 		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
@@ -1386,6 +1412,10 @@ if (node.type === 'ProductGrid') {
 			</div>
 		</div>
 	);
+}
+
+function PluginBlockPreview({ props }: { props: PluginBlockProps }) {
+	return <div className="nvx-builder-plugin">{resolvePluginParts(props).map((part, index) => part.type === 'heading' ? <h2 className="nvx-builder-node nvx-builder-heading nvx-builder-heading--md nvx-builder-color--ink" key={index}>{part.text}</h2> : part.type === 'text' ? <p className="nvx-builder-node nvx-builder-text nvx-builder-text--md nvx-builder-color--ink" key={index}>{part.text}</p> : <div className="nvx-builder-button-wrap" key={index}><a className="nvx-builder-button nvx-builder-button--outline" href={part.href} onClick={(event) => event.preventDefault()}>{part.text}</a></div>)}</div>;
 }
 
 interface ProductGridPreviewState {
@@ -1575,6 +1605,7 @@ interface InspectorProps {
 
 function Inspector({ node, mode, viewport, canMoveUp, canMoveDown, onField, onHidden, onMove, onDuplicate, onDelete, onDeselect, canReadMedia, onPickMedia }: InspectorProps) {
 	const definition = getComponentDefinition(node.type);
+	const pluginFields: InspectorField[] = node.type === 'PluginBlock' ? node.props.fields.map((field) => ({ key: `plugin.${field.key}`, label: field.label, kind: field.kind, maxLength: field.maxLength, group: 'content' })) : [];
 	const groups: Array<{ key: InspectorField['group']; label: string }> = [
 		{ key: 'content', label: 'محتوا' },
 		{ key: 'layout', label: 'چیدمان' },
@@ -1583,12 +1614,12 @@ function Inspector({ node, mode, viewport, canMoveUp, canMoveDown, onField, onHi
 	return (
 		<div className="builder-inspector">
 			<div className="builder-panel__heading builder-panel__heading--inspector">
-				<div><span className="builder-inspector__eyebrow">تنظیمات {BREAKPOINT_LABELS[viewport]}</span><h2>{definition.label}</h2></div>
+				<div><span className="builder-inspector__eyebrow">تنظیمات {BREAKPOINT_LABELS[viewport]}</span><h2>{node.type === 'PluginBlock' ? node.props.label : definition.label}</h2></div>
 				<div className="builder-inspector__heading-actions"><span className="builder-inspector__type">{node.type}</span><button className="builder-icon-button" type="button" aria-label="پاک‌کردن انتخاب" title="پاک‌کردن انتخاب" onClick={onDeselect}>×</button></div>
 			</div>
 			<div className="builder-inspector__body">
 				{groups.map((group) => {
-					const fields = definition.fields.filter((field) =>
+					const fields = [...pluginFields, ...definition.fields].filter((field) =>
 						field.group === group.key &&
 						fieldVisibleInMode(field, mode) &&
 						!(node.type === 'ProductGrid' && field.key === 'binding.category' && node.props.binding.selection !== 'category'),
@@ -1744,6 +1775,9 @@ function ReadOnlyNode({ node, viewport }: { node: BuilderNode; viewport: Breakpo
 			</div>
 		);
 	}
+	if (node.type === 'PluginBlock') {
+		return <div data-builder-id={node.id} className="builder-read-only-node" style={style}><PluginBlockPreview props={node.props} /></div>;
+	}
 	if (node.type === 'ProductGrid') {
 		return (
 			<div data-builder-id={node.id} className="builder-read-only-node" style={style}>
@@ -1789,6 +1823,7 @@ function previewStyle(node: BuilderNode, viewport: Breakpoint): CSSProperties {
 }
 
 function fieldValue(node: BuilderNode, field: InspectorField, viewport: Breakpoint): unknown {
+	if (field.key.startsWith('plugin.') && node.type === 'PluginBlock') return node.props.fields.find((item) => item.key === field.key.slice('plugin.'.length))?.value ?? '';
 	if (field.key.startsWith('binding.') && node.type === 'ProductGrid') {
 		return node.props.binding[field.key.slice('binding.'.length) as keyof ProductGridBinding] ?? '';
 	}

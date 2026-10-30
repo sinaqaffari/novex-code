@@ -70,6 +70,7 @@ export function createEmptyPageDocument(slug: string, title = 'صفحهٔ تاز
 export function migratePageDocument(input: unknown): unknown {
 	if (!isRecord(input)) throw new DocumentValidationError('Page document must be an object.');
 	if (input.schemaVersion === PAGE_DOCUMENT_SCHEMA_VERSION) return input;
+	if (input.schemaVersion === 1) return { ...input, schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION };
 	if (input.schemaVersion !== 0) {
 		throw new DocumentValidationError(`Unsupported page schema version: ${String(input.schemaVersion)}.`, 'schemaVersion');
 	}

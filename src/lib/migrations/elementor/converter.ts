@@ -53,7 +53,7 @@ export function convertElementorJson(json: string, target: PageDocument): Elemen
 			node = container;
 		} else if (raw.elType === 'widget') {
 			const widget = typeof raw.widgetType === 'string' ? raw.widgetType : 'unknown';
-			const supported = ['heading', 'text-editor', 'button', 'image', 'image-box', 'icon-list'].includes(widget);
+			const supported = ['heading', 'text-editor', 'button', 'image', 'image-box', 'icon-list', 'accordion', 'toggle', 'tabs'].includes(widget);
 			const counts = supported ? supportedWidgets : unsupportedWidgets;
 			counts[widget] = (counts[widget] ?? 0) + 1;
 			if (Array.isArray(raw.elements) && raw.elements.length) warn(id, 'widget-children', 'فرزندان ویجت منتقل نشدند.');
@@ -85,6 +85,25 @@ export function convertElementorJson(json: string, target: PageDocument): Elemen
 				else if (href) warn(id, 'unsafe-link', 'نشانی ناامن دکمه حذف شد.');
 				if (record(link) && Object.keys(link).some((key) => key !== 'url' && link[key])) warn(id, 'link-options', 'تنظیمات اضافی پیوند منتقل نشد.');
 				node = button;
+			} else if (widget === 'accordion' || widget === 'toggle' || widget === 'tabs') {
+				const group = createBuilderNode('Container');
+				group.props.padding = 0;
+				const entries = use('tabs');
+				if (!Array.isArray(entries)) throw new Error('موارد تب یا آکاردئون Elementor معتبر نیستند.');
+				if (entries.length > 50) throw new Error('تب یا آکاردئون Elementor بیش از ۵۰ مورد دارد.');
+				for (const entry of entries) {
+					if (!record(entry)) throw new Error('یکی از موارد تب یا آکاردئون Elementor معتبر نیست.');
+					const heading = createBuilderNode('Heading');
+					const text = createBuilderNode('Text');
+					const title = plainText(entry.tab_title);
+					const content = plainText(entry.tab_content);
+					if (title.length > 240 || content.length > 5000) warn(id, 'truncated', 'متن تب یا آکاردئون به محدودیت سند کوتاه شد.');
+					heading.props.text = title.slice(0, 240);
+					text.props.text = content.slice(0, 5000);
+					group.children.push(heading, text);
+				}
+				warn(id, 'accordion-layout', 'محتوای تب یا آکاردئون به تیتر و متن باز تبدیل شد؛ تعامل، قالب‌بندی و پیوندهای درون متن منتقل نشدند.');
+				node = group;
 			} else if (widget === 'icon-list') {
 				const list = createBuilderNode('Container');
 				list.props.gap = 8;

@@ -140,3 +140,36 @@ describe('Elementor icon list conversion', () => {
 		assert.throws(() => convertElementorJson(JSON.stringify({ version: '0.4', content: Array(4).fill(list) }), page()), /200/);
 	});
 });
+
+describe('Elementor accordion and toggle conversion', () => {
+	it('preserves items as editable text without executing markup, and warns about lost interaction', () => {
+		const widgets = ['accordion', 'toggle', 'tabs'].map((widgetType) => ({ id: widgetType, elType: 'widget', widgetType, settings: { tabs: [
+			{ tab_title: 'پرسش <b>یک</b>', tab_content: '<p>پاسخ</p><script>alert(1)</script>' },
+			{ tab_title: 'دوم', tab_content: '<a href="javascript:alert(1)">متن پیوند</a>' },
+		] }, elements: [] }));
+		const result = convertElementorJson(JSON.stringify({ version: '0.4', content: widgets }), page());
+		assert.equal(result.supportedWidgets.accordion, 1);
+		assert.equal(result.supportedWidgets.toggle, 1);
+		assert.equal(result.supportedWidgets.tabs, 1);
+		for (const node of result.document.nodes) {
+			assert.equal(node.type, 'Container');
+			if (node.type !== 'Container') throw new Error('container');
+			assert.equal(node.children[0].type === 'Heading' && node.children[0].props.text, 'پرسش یک');
+			assert.equal(node.children[1].type === 'Text' && node.children[1].props.text, 'پاسخ');
+			assert.equal(node.children[3].type === 'Text' && node.children[3].props.text, 'متن پیوند');
+		}
+		assert.equal(result.warnings.filter((w) => w.code === 'accordion-layout').length, 3);
+		assert.doesNotMatch(JSON.stringify(result.document), /javascript:|<script>|alert\(1\)/);
+		assert.deepEqual(importPageDocument(exportPageDocument(result.document), 'import-test'), result.document);
+	});
+	it('rejects malformed or oversized lists and expanded documents exceeding the node limit', () => {
+		const widget = { id: 'a', elType: 'widget', widgetType: 'accordion', settings: { tabs: [] as unknown[] }, elements: [] };
+		const convert = () => convertElementorJson(JSON.stringify({ version: '0.4', content: [widget] }), page());
+		widget.settings.tabs = [null];
+		assert.throws(convert, /آکاردئون/);
+		widget.settings.tabs = Array(51).fill({ tab_title: 'x' });
+		assert.throws(convert, /۵۰/);
+		widget.settings.tabs = Array(50).fill({ tab_title: 'x' });
+		assert.throws(() => convertElementorJson(JSON.stringify({ version: '0.4', content: [widget, widget] }), page()), /200/);
+	});
+});

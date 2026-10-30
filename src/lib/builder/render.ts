@@ -40,7 +40,7 @@ export function buildResponsiveCss(document: PageDocument): string {
 				: desktopHidden || tabletHidden || mobileHidden;
 			if (shouldResetVisibility) {
 				const hidden = breakpoint === 'tablet' ? tabletHidden : mobileHidden;
-				const display = node.type === 'Container' ? (node.props.layout === 'grid' ? 'grid' : 'flex') : 'block';
+				const display = node.type === 'Container' ? (node.props.layout === 'grid' ? 'grid' : 'flex') : node.type === 'PluginBlock' ? 'flex' : 'block';
 				declarations.unshift(`display:${hidden ? 'none' : display}!important`);
 			}
 			if (!declarations.length) continue;
