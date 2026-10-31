@@ -1,0 +1,68 @@
+---
+import ShopLayout from '../../layouts/ShopLayout.astro';
+import TemplateCard from '../../components/store/TemplateCard.astro';
+import '../../styles/marketplace.css';
+import { faNumber } from '../../lib/cms/fa';
+import { filterCatalogSections, filterCatalogTemplates, listCatalogSections, listCatalogTemplates, SECTION_CATEGORIES, TEMPLATE_CATEGORIES, type CatalogDesign } from '../../lib/builder/template-catalog';
+
+export const prerender = false;
+
+const query = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 120);
+const category = (Astro.url.searchParams.get('category') ?? '').trim().slice(0, 60);
+const kind = Astro.url.searchParams.get('kind') === 'section' ? 'section' : 'page';
+const allPages = listCatalogTemplates();
+const allSections = listCatalogSections();
+const allTemplates: CatalogDesign[] = kind === 'section' ? allSections : allPages;
+const templates: CatalogDesign[] = kind === 'section' ? filterCatalogSections(query, category) : filterCatalogTemplates(query, category);
+const categories = kind === 'section' ? SECTION_CATEGORIES : TEMPLATE_CATEGORIES;
+const countFor = (id: string) => allTemplates.filter((template) => template.category === id).length;
+function catalogUrl(nextKind: 'page' | 'section', nextCategory = ''): string {
+	const params = new URLSearchParams();
+	if (query) params.set('q', query);
+	if (nextKind === 'section') params.set('kind', 'section');
+	if (nextCategory) params.set('category', nextCategory);
+	const search = params.toString();
+	return `/marketplace${search ? `?${search}` : ''}#templates`;
+}
+const categoryUrl = (nextCategory: string) => catalogUrl(kind, nextCategory);
+---
+
+<ShopLayout title="بازار قالب‌ها" description="طرح‌های فارسی و قابل ویرایش برای صفحه‌ساز نووکس را مرور، پیش‌نمایش و استفاده کنید.">
+	<section class="market-hero" aria-labelledby="market-title">
+		<div class="market-hero__copy">
+			<span class="market-kicker">کتابخانهٔ طراحی نووکس</span>
+			<h1 id="market-title">سایت بعدی شما، از یک <em>ایدهٔ خوب</em> شروع می‌شود.</h1>
+			<p>طرح‌های آمادهٔ فارسی را ببینید، پیش‌نمایش واقعی را بررسی کنید و با صفحه‌ساز، آن را برای خودتان تغییر دهید.</p>
+			<form class="market-search" method="get" action="/marketplace" role="search">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16.5 16.5 4 4" /></svg>
+				<label class="sr-only" for="market-search">جست‌وجوی قالب‌ها</label><input id="market-search" name="q" type="search" value={query} placeholder="مثلاً فروشگاهی، آموزشی، رستوران…" />
+				{category && <input type="hidden" name="category" value={category} />}
+				{kind === 'section' && <input type="hidden" name="kind" value="section" />}
+				<button type="submit">جست‌وجو</button>
+			</form>
+			<div class="market-hero__caption"><span>مؤلفه‌های قابل ویرایش</span><span>پیش‌نمایش واقعی</span><span>فارسی و راست‌به‌چپ</span></div>
+		</div>
+		<div class="market-hero__art" aria-hidden="true"><div class="market-hero__window"><img src="/media/builder-studio.jpg" alt="" /></div><div class="market-hero__float market-hero__float--top"><img src="/media/builder-restaurant.jpg" alt="" /></div><div class="market-hero__float market-hero__float--bottom"><img src="/media/builder-learning.jpg" alt="" /></div></div>
+	</section>
+
+	<div class="market-benefits" aria-label="دربارهٔ طرح‌ها">
+		<div class="market-benefit"><span class="market-benefit__icon" aria-hidden="true">▦</span><span><strong>{faNumber(allPages.length)} صفحه و {faNumber(allSections.length)} بخش آماده</strong><small>همراه صفحه‌ساز نووکس</small></span></div>
+		<div class="market-benefit"><span class="market-benefit__icon" aria-hidden="true">✎</span><span><strong>ویرایش به سبک خودتان</strong><small>متن، تصویر و چیدمان قابل تغییرند</small></span></div>
+		<div class="market-benefit"><span class="market-benefit__icon" aria-hidden="true">▣</span><span><strong>نمایش واکنش‌گرا</strong><small>بررسی طرح در موبایل و دسکتاپ</small></span></div>
+	</div>
+
+	<section class="market-section" id="templates" aria-labelledby="templates-title">
+		<div class="market-section__head"><div><h2 id="templates-title">{kind === 'section' ? 'بخش‌های آماده برای صفحهٔ شما' : 'طرح مناسب کارتان را پیدا کنید'}</h2><p>{query ? `نتیجهٔ جست‌وجو برای «${query}» · ` : ''}{faNumber(templates.length)} {kind === 'section' ? 'بخش' : 'طرح'} قابل مشاهده</p></div><a href="/cms/pages/new">ساخت صفحهٔ خالی یا آماده ←</a></div>
+		<nav class="market-types" aria-label="نوع طرح">
+			<a href={catalogUrl('page')} aria-current={kind === 'page' ? 'page' : undefined}>صفحه‌های کامل <small>{faNumber(allPages.length)}</small></a>
+			<a href={catalogUrl('section')} aria-current={kind === 'section' ? 'page' : undefined}>بخش‌های آماده <small>{faNumber(allSections.length)}</small></a>
+		</nav>
+		<nav class="market-categories" aria-label="دسته‌بندی طرح‌ها">
+			<a href={categoryUrl('')} aria-current={!category ? 'page' : undefined}>همه <small>{faNumber(allTemplates.length)}</small></a>
+			{categories.filter((item) => countFor(item.id) > 0).map((item) => <a href={categoryUrl(item.id)} aria-current={category === item.id ? 'page' : undefined}>{item.label} <small>{faNumber(countFor(item.id))}</small></a>)}
+		</nav>
+		{templates.length ? <div class="market-grid">{templates.map((template, index) => <TemplateCard template={template} eager={index < 4} />)}</div> : <div class="market-empty" role="status"><h3>طرحی با این جست‌وجو پیدا نشد</h3><p>عبارت یا دسته‌بندی دیگری را امتحان کنید.</p><a href={kind === 'section' ? '/marketplace?kind=section#templates' : '/marketplace#templates'}>دیدن همهٔ طرح‌ها</a></div>}
+	</section>
+
+	<aside class="market-note"><div><strong>این‌ها قالب وردپرس نیستند.</strong><span>طرح‌ها برای صفحه‌ساز بومی نووکس ساخته شده‌اند؛ پیش از انتشار، محتوا و تصاویر نمونه را با اطلاعات خودتان جایگزین کنید.</span></div><a href="/cms/pages/new">شروع ساخت صفحه ←</a></aside>
+</ShopLayout>

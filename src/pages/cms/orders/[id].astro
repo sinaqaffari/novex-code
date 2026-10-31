@@ -2,18 +2,18 @@
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import { faDate, faDateTime, faMoney, faNumber } from '../../../lib/cms/fa';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { getOrder } from '../../../lib/commerce/orders';
 import { ORDER_STATUSES, orderStatusLabel, orderStatusTone, isRevenue } from '../../../lib/commerce/types';
 
 export const prerender = false;
 
 const id = decodeURIComponent(Astro.params.id ?? '');
-const order = await getOrder(id);
+const order = await getOrder(id, await requestCommerce(Astro.locals));
 
 if (!order) Astro.response.status = 404;
 
-const settings = await readSettings();
+const settings = await requestSettings(Astro.locals);
 
 const steps = [
 	{ key: 'pending', label: 'ثبت سفارش' },

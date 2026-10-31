@@ -3,11 +3,11 @@ import '@fontsource-variable/vazirmatn';
 import '../../styles/cms.css';
 import Icon from './Icon.astro';
 import { faNumber } from '../../lib/cms/fa';
-import { ADMIN_NAME } from '../../lib/cms/auth';
-import { readSettings, TIMEZONES } from '../../lib/cms/settings';
-import { readDatabase } from '../../lib/commerce/db';
+import { TIMEZONES } from '../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../lib/cms/request-data';
 import { listPluginPages } from '../../lib/plugins/registry';
-import { can, type Permission, type Role } from '../../lib/cms/rbac';
+import { can, ROLE_LABELS, type Permission, type Role } from '../../lib/cms/rbac';
+import { cmsLandingPage } from '../../lib/cms/access';
 
 export interface Crumb {
 	label: string;
@@ -48,14 +48,14 @@ interface Props {
 
 const { title, subtitle, variant = 'panel', breadcrumbs = [], wide = false } = Astro.props;
 
-const settings = await readSettings();
+const settings = await requestSettings(Astro.locals);
 const pathname = Astro.url.pathname;
 const currentRole: Role = Astro.locals.cmsUser?.role ?? 'subscriber';
-const pluginPages = listPluginPages();
+const pluginPages = variant === 'panel' ? listPluginPages() : [];
 const commerceReady = settings.commerceEnabled;
 
-const pendingOrders = commerceReady
-	? (await readDatabase()).orders.filter((order) => order.status === 'pending').length
+const pendingOrders = variant === 'panel' && commerceReady && can(currentRole, 'commerce.orders:read')
+	? (await requestCommerce(Astro.locals)).orders.filter((order) => order.status === 'pending').length
 	: 0;
 
 const flashMap: Record<string, { tone: 'success' | 'error' | 'info'; text: string }> = {
@@ -208,7 +208,8 @@ const visibleNavGroups = navGroups
 const isActive = (pattern: RegExp) => pattern.test(pathname);
 const timezoneLabel =
 	TIMEZONES.find((zone) => zone.value === settings.timezone)?.label ?? settings.timezone;
-const authorInitial = (settings.authorName || ADMIN_NAME || 'ن').trim().charAt(0);
+const accountName = Astro.locals.cmsUser?.username ?? 'حساب کاربری';
+const authorInitial = accountName.trim().charAt(0);
 const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchParams.get('q') ?? '') : '';
 ---
 
@@ -234,7 +235,7 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 			) : (
 				<div class="shell">
 					<aside class="sidebar" id="cms-sidebar" aria-label="ناوبری پنل مدیریت">
-						<a class="brand" href="/cms" aria-label="{settings.siteTitle}">
+						<a class="brand" href={cmsLandingPage(currentRole)} aria-label={settings.siteTitle}>
 							<span class="brand__mark" aria-hidden="true">ن</span>
 							<span class="brand__text">
 								<span class="brand__title">{settings.siteTitle}</span>
@@ -276,9 +277,8 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 							<div class="user-card">
 								<span class="avatar" aria-hidden="true">{authorInitial}</span>
 								<span class="grow">
-									<span class="user-card__name">{settings.authorName || 'مدیر سایت'}</span>
-									<br />
-									<span class="user-card__role">مدیر ارشد محتوا</span>
+									<span class="user-card__name" dir="auto">{accountName}</span>
+									<span class="user-card__role">{ROLE_LABELS[currentRole]}</span>
 								</span>
 							</div>
 							<form class="logout-form" method="post" action="/cms/api/logout">
@@ -305,9 +305,13 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 								>
 									<Icon name="menu" size={18} />
 								</button>
+
+							</div>
+
+							<div class="topbar__center">
 								{breadcrumbs.length > 0 && (
 									<nav class="breadcrumbs" aria-label="مسیر صفحه">
-										<a href="/cms">پنل</a>
+										<a href={cmsLandingPage(currentRole)}>پنل</a>
 										{breadcrumbs.map((crumb) => (
 											<>
 												<Icon name="arrow" size={12} />
@@ -320,14 +324,12 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 										))}
 									</nav>
 								)}
-							</div>
-
-							<div class="topbar__center">
 								<h1 class="topbar__title">{title}</h1>
 								{subtitle && <p class="topbar__subtitle">{subtitle}</p>}
 							</div>
 
 							<div class="topbar__end">
+								{can(currentRole, 'commerce.orders:read') && (
 								<form class="topbar-search" method="get" action="/cms/search" role="search">
 									<Icon name="search" size={15} />
 									<input
@@ -339,6 +341,7 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 									/>
 									<kbd>⌘K</kbd>
 								</form>
+								)}
 								<slot name="actions" />
 								<a
 									class="btn btn--icon btn--ghost"
@@ -390,11 +393,17 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 
 			const setSidebar = (open: boolean) => {
 				if (!sidebar) return;
+				const returnFocus = !open && sidebar.classList.contains('is-open') && sidebar.contains(document.activeElement);
 				sidebar.classList.toggle('is-open', open);
 				scrim?.classList.toggle('is-visible', open);
 				if (scrim) scrim.hidden = !open;
 				toggle?.setAttribute('aria-expanded', String(open));
+				toggle?.setAttribute('aria-label', open ? 'بستن منو' : 'نمایش منو');
+				if (returnFocus) toggle?.focus();
 			};
+			window.matchMedia('(min-width: 1025px)').addEventListener('change', (event) => {
+				if (event.matches) setSidebar(false);
+			});
 
 			toggle?.addEventListener('click', () => {
 				setSidebar(!sidebar?.classList.contains('is-open'));
@@ -406,7 +415,9 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 			document.addEventListener('keydown', (event) => {
 				if (event.key === 'Escape') setSidebar(false);
 				// ⌘K / Ctrl+K focuses the global search from anywhere in the panel.
-				if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+				const target = event.target instanceof HTMLElement ? event.target : null;
+				const isWriting = target?.matches('textarea, [contenteditable="true"]');
+				if (!event.defaultPrevented && !isWriting && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
 					const search = document.querySelector<HTMLInputElement>('.topbar-search input');
 					if (search) {
 						event.preventDefault();

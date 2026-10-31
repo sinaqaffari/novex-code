@@ -95,6 +95,11 @@ test('provides RTL contact and policy routes and a working mobile navigation men
 	await page.goto('/');
 	await expect(page.locator('html')).toHaveAttribute('lang', 'fa');
 	await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+	const skipLink = page.getByRole('link', { name: 'پرش به محتوای اصلی' });
+	await expect(skipLink).toHaveCSS('clip', 'rect(0px, 0px, 0px, 0px)');
+	await page.keyboard.press('Tab');
+	await expect(skipLink).toBeFocused();
+	await expect(skipLink).toHaveCSS('clip', 'auto');
 	await page.getByRole('button', { name: 'نمایش منو' }).click();
 	const menu = page.locator('#mobile-menu');
 	await expect(menu).toBeVisible();

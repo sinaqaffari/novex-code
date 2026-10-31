@@ -10,6 +10,7 @@ import { findPlugin } from '../../../lib/plugins/registry';
 import { processorSummary, type WasmProcessorSummary } from '../../../lib/builder/plugin-wasm';
 import type { PluginBlockProps } from '../../../lib/builder/types';
 import { isValidPageSlug } from '../../../lib/builder/document';
+import { getCatalogSection } from '../../../lib/builder/template-catalog';
 
 export const prerender = false;
 
@@ -20,6 +21,7 @@ if (!isValidPageSlug(slug)) {
 const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 if (!can(role, 'cms.pages:write')) return Astro.redirect('/cms/pages');
 const record = isValidPageSlug(slug) ? await getDraftPage(slug) : null;
+const initialSectionId = getCatalogSection((Astro.url.searchParams.get('section') ?? '').slice(0, 60))?.id;
 let pluginPresets: BuilderPluginPreset[] = [];
 let pluginComponents: PluginBlockProps[] = [];
 const pluginProcessors: WasmProcessorSummary[] = [];
@@ -56,5 +58,5 @@ if (combinedPresets.rejected) packageWarnings.push('برخی پیش‌تنظیم
 
 <BuilderLayout title={record?.draft.title ?? 'صفحه'}>
 	{packageWarnings.map((warning) => <p role="alert">{warning}</p>)}
-	{record ? <BuilderEditor client:load pluginComponents={pluginComponents} pluginPresets={pluginPresets} pluginProcessors={pluginProcessors} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} canPublish={can(role, 'cms.pages:publish')} canPublishCode={can(role, 'cms.pages:publishCode')} canWritePosts={can(role, 'cms.posts:write')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
+	{record ? <BuilderEditor client:load pluginComponents={pluginComponents} pluginPresets={pluginPresets} pluginProcessors={pluginProcessors} initialDocument={record.draft} initialRevision={record.revision} publishedAt={record.publishedAt ?? null} slug={slug} initialSectionId={initialSectionId} canPublish={can(role, 'cms.pages:publish')} canPublishCode={can(role, 'cms.pages:publishCode')} canWritePosts={can(role, 'cms.posts:write')} canReadMedia={can(role, 'cms.media:read')} canUploadMedia={can(role, 'cms.media:write')} /> : <main><h1>نامک صفحه معتبر نیست.</h1><a href="/cms/pages">بازگشت به صفحه‌ها</a></main>}
 </BuilderLayout>

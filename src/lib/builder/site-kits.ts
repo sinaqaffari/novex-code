@@ -1,5 +1,5 @@
 import { createEmptyPageDocument, isValidPageSlug, validatePageDocument } from './document.ts';
-import { listStarterTemplates } from './templates.ts';
+import { getStarterTemplate } from './templates.ts';
 import { parseBuilderMediaReference } from './media-reference.ts';
 import { nodeImageReferences } from './assets.ts';
 import { addNode, findNode, updateNodeProps } from './operations.ts';
@@ -83,8 +83,7 @@ export function validateSiteKit(input: unknown): SiteKit {
 }
 
 export function listSiteKits(): SiteKit[] {
-	const starters = listStarterTemplates();
-	const get = (id: string) => { const item = starters.find((entry) => entry.id === id); if (!item) throw new Error('قالب پایه پیدا نشد.'); return item.document; };
+	const get = (id: string) => { const item = getStarterTemplate(id); if (!item) throw new Error('قالب پایه پیدا نشد.'); return item.document; };
 	const pages = [
 		{ suffix: 'home', title: 'خانه', document: get('business-page') },
 		{ suffix: 'services', title: 'خدمات', document: get('feature-grid') },

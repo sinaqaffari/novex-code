@@ -108,6 +108,15 @@ describe('named responsive breakpoints', () => {
 		assert.equal(target.breakpoints, undefined);
 		const conflicting = validatePageDocument({ ...target, breakpoints: { tablet: 1023, mobile: 767, custom: [{ id: 'bp_wide', label: 'Other', maxWidth: 1300 }] } });
 		assert.throws(() => insertDocumentFragment(conflicting, fragment, null), /conflicting width/);
+		const anchored = addNode(target, 'Container', { id: 'node_anchor_range' });
+		const positioned = executeDocumentCommand(anchored, { type: 'insert-fragment', fragment, targetId: 'node_anchor_range', placement: 'before' });
+		assert.ok(positioned.ok);
+		assert.deepEqual(positioned.document.breakpoints?.custom?.map((item) => item.id), ['bp_wide', 'bp_compact']);
+		assert.equal(positioned.document.nodes[1].id, 'node_anchor_range');
+		const anchoredConflict = addNode(conflicting, 'Container', { id: 'node_anchor_range' });
+		const rejected = executeDocumentCommand(anchoredConflict, { type: 'insert-fragment', fragment, targetId: 'node_anchor_range', placement: 'after' });
+		assert.equal(rejected.ok, false);
+		assert.equal(anchoredConflict.nodes.length, 1);
 	});
 	it('retains custom-range semantics in shared sections and syncs safely', async () => isolated(async () => {
 		const source = customPage('source');

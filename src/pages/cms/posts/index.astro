@@ -1,8 +1,10 @@
 ---
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
+import Pagination from '../../../components/cms/Pagination.astro';
 import { faDate, faNumber, faReadingTime, faRelative } from '../../../lib/cms/fa';
 import { listPosts } from '../../../lib/cms/posts';
+import { filterPosts, paginate, type PostStatusFilter } from '../../../lib/cms/listing';
 import { can } from '../../../lib/cms/rbac';
 
 export const prerender = false;
@@ -14,12 +16,19 @@ const canDeletePosts = can(role, 'cms.posts:delete');
 const allPosts = await listPosts();
 const posts = canWritePosts ? allPosts : allPosts.filter((post) => !post.draft);
 const tagFilter = Astro.url.searchParams.get('tag') ?? '';
-const filtered = tagFilter
-	? posts.filter((post) => post.tags.some((tag) => tag === tagFilter))
-	: posts;
-
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const rawStatus = Astro.url.searchParams.get('status');
+const status: PostStatusFilter = canWritePosts && (rawStatus === 'draft' || rawStatus === 'published') ? rawStatus : 'all';
+const result = paginate(filterPosts(posts, { tag: tagFilter, query, status }), Number(Astro.url.searchParams.get('page') ?? 1), 20);
 const published = posts.filter((post) => !post.draft).length;
 const drafts = posts.length - published;
+const statusHref = (value: PostStatusFilter, includeTag = true) => {
+	const params = new URLSearchParams();
+	if (query) params.set('q', query);
+	if (includeTag && tagFilter) params.set('tag', tagFilter);
+	if (value !== 'all') params.set('status', value);
+	return params.size ? `/cms/posts?${params}` : '/cms/posts';
+};
 ---
 
 <CmsLayout
@@ -32,45 +41,31 @@ const drafts = posts.length - published;
 
 	<section class="card">
 		<div class="card__head">
-			<div class="row grow" style="flex:1 1 320px">
-				<label class="search">
-					<span class="sr-only">جست‌وجو در نوشته‌ها</span>
-					<Icon name="search" size={16} />
-					<input
-						class="input"
-						type="search"
-						placeholder="جست‌وجو بر اساس عنوان، نامک یا برچسب…"
-						data-post-search
-						autocomplete="off"
-					/>
-				</label>
-
+			<div class="filterbar">
 				{canWritePosts && (
-					<div class="row" role="group" aria-label="پالایش بر اساس وضعیت">
-						<button class="btn btn--primary btn--sm" type="button" data-status-filter="all" aria-pressed="true">
-							همه
-						</button>
-						<button class="btn btn--outline btn--sm" type="button" data-status-filter="published" aria-pressed="false">
-							منتشرشده
-						</button>
-						<button class="btn btn--outline btn--sm" type="button" data-status-filter="draft" aria-pressed="false">
-							پیش‌نویس
-						</button>
-					</div>
+					<nav class="segmented" aria-label="پالایش بر اساس وضعیت">
+						<a href={statusHref('all')} aria-current={status === 'all' ? 'page' : undefined}>همه <span class="segmented__count num">{faNumber(posts.length)}</span></a>
+						<a href={statusHref('published')} aria-current={status === 'published' ? 'page' : undefined}>منتشرشده <span class="segmented__count num">{faNumber(published)}</span></a>
+						<a href={statusHref('draft')} aria-current={status === 'draft' ? 'page' : undefined}>پیش‌نویس <span class="segmented__count num">{faNumber(drafts)}</span></a>
+					</nav>
 				)}
-
-				{tagFilter && (
-					<a class="badge badge--brand" href="/cms/posts">
-						برچسب: {tagFilter} ✕
-					</a>
-				)}
+				<form class="toolbar posts-search" method="get" action="/cms/posts" role="search">
+					{status !== 'all' && <input type="hidden" name="status" value={status} />}
+					{tagFilter && <input type="hidden" name="tag" value={tagFilter} />}
+					<label class="search">
+						<span class="sr-only">جست‌وجو در نوشته‌ها</span>
+						<Icon name="search" size={16} />
+						<input class="input" type="search" name="q" value={query} placeholder="عنوان، نامک یا برچسب…" autocomplete="off" />
+					</label>
+					<button class="btn btn--outline btn--sm" type="submit">جست‌وجو</button>
+				</form>
+				{tagFilter && <a class="badge badge--brand" href={statusHref(status, false)}>برچسب: {tagFilter} ✕</a>}
 			</div>
 		</div>
-
-		{filtered.length ? (
+		{result.total ? (
 			<div class="card__body card__body--flush">
 				<div class="table-wrap">
-					<table class="table">
+					<table class="table posts-table">
 						<thead>
 							<tr>
 								<th scope="col">عنوان</th>
@@ -83,7 +78,7 @@ const drafts = posts.length - published;
 							</tr>
 						</thead>
 						<tbody data-post-rows>
-							{filtered.map((post) => (
+							{result.items.map((post) => (
 								<tr
 									data-post-row
 									data-status={post.draft ? 'draft' : 'published'}
@@ -148,20 +143,14 @@ const drafts = posts.length - published;
 					</table>
 				</div>
 
-				<div class="empty" data-no-results hidden>
-					<span class="empty__icon"><Icon name="search" size={22} /></span>
-					<span class="empty__title">نتیجه‌ای پیدا نشد</span>
-					<span>عبارت دیگری را جست‌وجو کنید یا پالایهٔ وضعیت را بردارید.</span>
-				</div>
+				<Pagination page={result.page} pages={result.pages} total={result.total} perPage={result.perPage} baseUrl="/cms/posts" params={{ q: query, status: status === 'all' ? '' : status, tag: tagFilter }} label="نوشته" />
 			</div>
 		) : (
 			<div class="empty">
 				<span class="empty__icon"><Icon name="posts" size={22} /></span>
-				<span class="empty__title">
-					{tagFilter ? `نوشته‌ای با برچسب «${tagFilter}» نیست` : 'هنوز نوشته‌ای ندارید'}
-				</span>
-				<span>{canWritePosts ? 'اولین مقاله را بسازید؛ همه‌چیز از همین‌جا شروع می‌شود.' : 'در حال حاضر نوشتهٔ منتشرشده‌ای برای نمایش نیست.'}</span>
-				{canWritePosts ? <a class="btn btn--primary" href="/cms/posts/new" style="margin-top:.6rem"><Icon name="plus" size={15} /><span>نوشتهٔ تازه</span></a> : null}
+				<span class="empty__title">{query || tagFilter || status !== 'all' ? 'نتیجه‌ای پیدا نشد' : 'هنوز نوشته‌ای ندارید'}</span>
+				<span>{query || tagFilter || status !== 'all' ? 'عبارت یا پالایهٔ دیگری را امتحان کنید.' : canWritePosts ? 'اولین مقاله را بسازید؛ همه‌چیز از همین‌جا شروع می‌شود.' : 'در حال حاضر نوشتهٔ منتشرشده‌ای برای نمایش نیست.'}</span>
+				{query || tagFilter || status !== 'all' ? <a class="btn btn--outline" href="/cms/posts">پاک‌کردن پالایه‌ها</a> : canWritePosts ? <a class="btn btn--primary" href="/cms/posts/new"><Icon name="plus" size={15} /><span>نوشتهٔ تازه</span></a> : null}
 			</div>
 		)}
 	</section>
@@ -171,55 +160,3 @@ const drafts = posts.length - published;
 		نشانی صفحه را عوض می‌کند؛ پس از تغییر، پیوندهای قدیمی را به‌روزرسانی کنید.
 	</p>
 </CmsLayout>
-
-<script>
-	const search = document.querySelector<HTMLInputElement>('[data-post-search]');
-	const rows = [...document.querySelectorAll<HTMLTableRowElement>('[data-post-row]')];
-	const noResults = document.querySelector<HTMLElement>('[data-no-results]');
-	const filters = [...document.querySelectorAll<HTMLButtonElement>('[data-status-filter]')];
-
-	let status: 'all' | 'published' | 'draft' = 'all';
-	let query = '';
-
-	const normalize = (value: string) =>
-		value
-			.toLowerCase()
-			.replace(/[يى]/g, 'ی')
-			.replace(/ك/g, 'ک')
-			.replace(/[\u064B-\u065F\u0670]/g, '');
-
-	const applyFilters = () => {
-		const needle = normalize(query.trim());
-		let visible = 0;
-
-		for (const row of rows) {
-			const haystack = normalize(row.dataset.search ?? '');
-			const matchesQuery = needle === '' || haystack.includes(needle);
-			const matchesStatus = status === 'all' || row.dataset.status === status;
-			const show = matchesQuery && matchesStatus;
-			row.hidden = !show;
-			if (show) visible += 1;
-		}
-
-		if (noResults) noResults.hidden = visible > 0;
-	};
-
-	search?.addEventListener('input', () => {
-		query = search.value;
-		applyFilters();
-	});
-
-	for (const button of filters) {
-		button.addEventListener('click', () => {
-			status = (button.dataset.statusFilter as typeof status) ?? 'all';
-			for (const other of filters) {
-				other.setAttribute('aria-pressed', String(other === button));
-				other.classList.toggle('btn--primary', other === button);
-				other.classList.toggle('btn--outline', other !== button);
-			}
-			applyFilters();
-		});
-	}
-
-	applyFilters();
-</script>

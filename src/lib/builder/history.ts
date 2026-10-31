@@ -34,6 +34,25 @@ export function commitDocument(
 	options: HistoryCommitOptions = {},
 ): DocumentHistoryState {
 	if (serializePageDocument(state.present) === serializePageDocument(document)) return state;
+	return commitChangedDocument(state, document, limit, options);
+}
+
+/**
+ * Fast history path for immutable, already-normalized documents returned by
+ * executeDocumentCommand. The editor's initial document is validated on load;
+ * untrusted input must use commitDocument or the validated command boundary.
+ */
+export function commitValidatedDocument(
+	state: DocumentHistoryState,
+	document: PageDocument,
+	limit = DEFAULT_HISTORY_LIMIT,
+	options: HistoryCommitOptions = {},
+): DocumentHistoryState {
+	if (JSON.stringify(state.present) === JSON.stringify(document)) return state;
+	return commitChangedDocument(state, document, limit, options);
+}
+
+function commitChangedDocument(state: DocumentHistoryState, document: PageDocument, limit: number, options: HistoryCommitOptions): DocumentHistoryState {
 	const now = options.now ?? Date.now();
 	const coalesce = Boolean(options.group && state.lastGroup?.key === options.group && now >= state.lastGroup.at && now - state.lastGroup.at <= COALESCE_MS && !state.future.length && state.past.length);
 	const past = coalesce ? state.past : [...state.past, state.present];

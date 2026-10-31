@@ -44,8 +44,8 @@ export function toDiscountInput(payload: Record<string, unknown>): DiscountInput
 	};
 }
 
-export async function listDiscounts(): Promise<Discount[]> {
-	const db = await readDatabase();
+export async function listDiscounts(snapshot?: Database): Promise<Discount[]> {
+	const db = snapshot ?? await readDatabase();
 	return [...db.discounts].sort(
 		(a, b) => new Date(b.createdAt).valueOf() - new Date(a.createdAt).valueOf(),
 	);

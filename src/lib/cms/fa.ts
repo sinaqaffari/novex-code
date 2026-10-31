@@ -9,6 +9,7 @@ export const FA_LOCALE = 'fa-IR';
 export const JALALI_LOCALE = 'fa-IR-u-ca-persian';
 
 const numberFormatter = new Intl.NumberFormat(FA_LOCALE);
+const relativeFormatter = new Intl.RelativeTimeFormat(FA_LOCALE, { numeric: 'auto' });
 const decimalFormatter = new Intl.NumberFormat(FA_LOCALE, {
 	maximumFractionDigits: 1,
 });
@@ -93,10 +94,9 @@ export function faRelative(value: unknown, now = new Date()): string {
 
 	if (absolute > 2_592_000) return faDate(date);
 
-	const formatter = new Intl.RelativeTimeFormat(FA_LOCALE, { numeric: 'auto' });
 	for (const [unit, unitSeconds] of units) {
 		if (absolute >= unitSeconds || unit === 'second') {
-			return formatter.format(Math.round(seconds / unitSeconds), unit);
+			return relativeFormatter.format(Math.round(seconds / unitSeconds), unit);
 		}
 	}
 	return faDate(date);

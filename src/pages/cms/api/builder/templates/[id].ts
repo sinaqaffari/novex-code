@@ -2,12 +2,15 @@ import type { APIRoute } from 'astro';
 import { failure, json } from '../../../../../lib/cms/http.ts';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { BuilderStoreError, deleteBuilderTemplate, getBuilderTemplate } from '../../../../../lib/builder/store.ts';
+import { getStarterTemplate } from '../../../../../lib/builder/templates.ts';
 
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, locals }) => {
 	if (!can(locals.cmsUser?.role ?? 'subscriber', 'cms.pages:read')) return failure('اجازهٔ مشاهدهٔ قالب را ندارید.', 403);
 	try {
+		const starter = getStarterTemplate(params.id ?? '');
+		if (starter) return json({ ok: true, template: { ...starter, name: starter.label, source: 'starter' } });
 		const template = await getBuilderTemplate(params.id ?? '');
 		if (!template) return failure('قالب پیدا نشد.', 404);
 		return json({ ok: true, template });

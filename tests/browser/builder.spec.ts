@@ -465,7 +465,7 @@ test('searches and inserts a copied section without replacing the existing page'
 	await card.getByRole('button', { name: 'پیش‌نمایش' }).click();
 	await expect(page.getByRole('dialog', { name: 'پیش‌نمایش معرفی ساده' })).toBeVisible();
 	await page.getByRole('dialog', { name: 'پیش‌نمایش معرفی ساده' }).getByRole('button', { name: 'بستن' }).first().click();
-	await card.getByRole('button', { name: 'افزودن رونوشت' }).click();
+	await card.getByRole('button', { name: 'افزودن بخش' }).click();
 	await expect(page.getByTestId('builder-canvas')).toContainText('راهکار ساده برای شروع بزرگ');
 	await expect(page.getByRole('list', { name: 'ساختار صفحه' }).getByTestId('tree-node')).not.toHaveCount(1);
 	assertNoBrowserIssues(issues);
@@ -1072,6 +1072,8 @@ test('configures breakpoint thresholds with undo, reload and published boundary 
 	await createPage(page, slug);
 	const tablet = page.getByLabel('حداکثر عرض تبلت (px)');
 	const mobile = page.getByLabel('حداکثر عرض موبایل (px)');
+	await expect(page.getByTestId('add-breakpoint')).toHaveCSS('min-height', '32px');
+	await expect(page.getByRole('button', { name: 'بازگردانی عرض‌های پیش‌فرض' })).toHaveClass(/builder-inline-action/);
 	await tablet.fill('900');
 	await tablet.blur();
 	await mobile.fill('500');

@@ -6,14 +6,16 @@ import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
 import { computeDiscount } from '../../lib/commerce/discounts';
 import { SHIPPING } from '../../lib/commerce/orders';
-import { readDatabase } from '../../lib/commerce/db';
+import { requestCommerce } from '../../lib/cms/request-data';
 import { AppError } from '../../lib/errors';
 
 export const prerender = false;
 
 const settings = await readSettings();
-const cart = await hydrateCart(readCart(Astro.cookies));
+const cartLines = readCart(Astro.cookies);
 const code = readDiscountCode(Astro.cookies);
+const snapshot = cartLines.length || code ? await requestCommerce(Astro.locals) : undefined;
+const cart = await hydrateCart(cartLines, snapshot);
 const cartError = Astro.url.searchParams.get('error') ?? '';
 
 let discount = 0;
@@ -21,9 +23,8 @@ let discountCode = '';
 let discountError = '';
 
 if (code) {
-	const db = await readDatabase();
 	try {
-		const applied = cart.subtotal ? computeDiscount(db, code, cart.subtotal) : null;
+		const applied = cart.subtotal && snapshot ? computeDiscount(snapshot, code, cart.subtotal) : null;
 		if (applied) {
 			discount = applied.amount;
 			discountCode = applied.discount.code;

@@ -2,37 +2,66 @@
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import { can } from '../../../lib/cms/rbac';
+import { catalogCategoryLabel, getCatalogSection, getCatalogTemplate, listCatalogTemplates } from '../../../lib/builder/template-catalog';
 
 export const prerender = false;
 
 if (!can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages:write')) return Astro.redirect('/cms/pages');
+const templateId = (Astro.url.searchParams.get('template') ?? '').slice(0, 60);
+const sectionId = (Astro.url.searchParams.get('section') ?? '').slice(0, 60);
+const selected = templateId && sectionId ? undefined : sectionId ? getCatalogSection(sectionId) : getCatalogTemplate(templateId);
+const templates = listCatalogTemplates();
+const title = (Astro.url.searchParams.get('title') ?? (selected?.kind === 'page' ? selected.label : 'صفحهٔ تازه')).slice(0, 100);
+const slug = (Astro.url.searchParams.get('slug') ?? '').slice(0, 60);
 ---
 
-<CmsLayout title="ساخت صفحه" subtitle="بعد از ساخت، از طرح آماده یا صفحهٔ خالی شروع کنید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
-	<section class="card">
-		<div class="card__head">
-			<div>
-				<h2 class="card__title">مشخصات اولیه</h2>
-				<p class="hint">نامک بخشی از نشانی عمومی صفحه است و پس از ساخت قابل تغییر نیست.</p>
+<CmsLayout title="ساخت صفحه" subtitle="از یک طرح واقعی شروع کنید یا صفحهٔ خالی بسازید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
+	{(templateId || sectionId) && !selected && <p class="alert alert--warning" role="alert">طرح انتخاب‌شده معتبر نیست. یک طرح دیگر انتخاب کنید یا صفحهٔ خالی بسازید.</p>}
+
+	{selected ? (
+		<section class="new-page-selection" aria-label="طرح انتخاب‌شده">
+			<img src={selected.image} alt="" width="280" height="160" />
+			<div><span class="new-page-selection__eyebrow">{selected.kind === 'section' ? 'بخش انتخاب‌شده' : 'طرح انتخاب‌شده'} · {catalogCategoryLabel(selected)}</span><h2>{selected.label}</h2><p>{selected.description}</p><div class="new-page-selection__links"><a href={`/marketplace/${selected.id}/preview`} target="_blank" rel="noreferrer">دیدن پیش‌نمایش کامل ↗</a><a href="/cms/pages/new">تغییر طرح</a></div></div>
+		</section>
+	) : (
+		<section class="new-page-designs" aria-labelledby="choose-design-title">
+			<div class="new-page-designs__head"><div><span>کتابخانهٔ صفحه‌ساز</span><h2 id="choose-design-title">یک طرح برای شروع انتخاب کنید</h2><p>یا بدون انتخاب طرح، فرم صفحهٔ خالی را در پایین تکمیل کنید.</p></div><a href="/marketplace" target="_blank" rel="noreferrer">مرور همهٔ طرح‌ها ↗</a></div>
+			<div class="new-page-designs__grid">
+				{templates.map((template) => <a class="new-page-design" href={`/cms/pages/new?template=${encodeURIComponent(template.id)}#page-details`}><img src={template.image} alt="" loading="lazy" /><span><strong>{template.label}</strong><small>{catalogCategoryLabel(template)}</small></span></a>)}
 			</div>
-		</div>
+		</section>
+	)}
+
+	<section class="card new-page-form" id="page-details">
+		<div class="card__head"><div><h2 class="card__title">{selected ? 'ساخت پیش‌نویس از این طرح' : 'مشخصات صفحهٔ خالی'}</h2><p class="hint">نامک بخشی از نشانی عمومی صفحه است و پس از ساخت قابل تغییر نیست.</p></div></div>
 		<form class="card__body stack" method="post" action="/cms/api/builder/pages">
-			<label class="field">
-				<span class="field__label">عنوان صفحه</span>
-				<input class="input" name="title" type="text" required maxlength="100" value="صفحهٔ تازه" autocomplete="off" />
-			</label>
-			<label class="field">
-				<span class="field__label">نامک لاتین</span>
-				<div class="input-group" dir="ltr">
-					<span class="input-group__prefix">/pages/</span>
-					<input class="input" name="slug" type="text" required minlength="1" maxlength="60" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="landing-page" autocomplete="off" />
-				</div>
-				<span class="field__hint">فقط حروف کوچک انگلیسی، عدد و خط تیره؛ بدون فاصله یا خط تیره در ابتدا و انتها.</span>
-			</label>
-			<div class="row" style="justify-content:flex-end">
-				<a class="btn btn--outline" href="/cms/pages">انصراف</a>
-				<button class="btn btn--primary" type="submit"><Icon name="plus" size={15} /><span>ساخت و ویرایش</span></button>
-			</div>
+			{selected && <input type="hidden" name={selected.kind === 'section' ? 'sectionId' : 'templateId'} value={selected.id} />}
+			<label class="field"><span class="field__label">عنوان صفحه</span><input class="input" name="title" type="text" required maxlength="100" value={title} autocomplete="off" /></label>
+			<label class="field"><span class="field__label">نامک لاتین</span><div class="input-group" dir="ltr"><span class="input-group__prefix">/pages/</span><input class="input" name="slug" type="text" required minlength="1" maxlength="60" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder={selected?.id ?? 'landing-page'} value={slug} autocomplete="off" /></div><span class="field__hint">فقط حروف کوچک انگلیسی، عدد و خط تیره؛ برای هر صفحه نامکی یکتا انتخاب کنید.</span></label>
+			{selected && <p class="hint">یک رونوشت مستقل و قابل ویرایش به‌صورت پیش‌نویس ساخته می‌شود؛ متن و تصویرهای نمونه را پیش از انتشار بررسی کنید.</p>}
+			<div class="row" style="justify-content:flex-end"><a class="btn btn--outline" href="/cms/pages">انصراف</a><button class="btn btn--primary" type="submit"><Icon name="plus" size={15} /><span>ساخت و ویرایش</span></button></div>
 		</form>
 	</section>
 </CmsLayout>
+
+<style>
+	.new-page-designs, .new-page-selection { margin-block-end: 1.25rem; padding: 1.25rem; border: 1px solid #dfe5ef; border-radius: 16px; background: #fff; }
+	.new-page-designs__head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin-block-end: 1rem; }
+	.new-page-designs__head span, .new-page-selection__eyebrow { color: #4263d6; font-size: .75rem; font-weight: 700; }
+	.new-page-designs__head h2, .new-page-selection h2 { margin: .25rem 0; font-size: 1.1rem; }
+	.new-page-designs__head p, .new-page-selection p { margin: .35rem 0; color: #647087; font-size: .82rem; line-height: 1.8; }
+	.new-page-designs__head a, .new-page-selection__links a { color: #3857c8; font-size: .8rem; font-weight: 700; }
+	.new-page-designs__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+	.new-page-design { overflow: hidden; min-width: 0; border: 1px solid #e5e9f0; border-radius: 10px; color: inherit; text-decoration: none; transition: border-color .15s, transform .15s; }
+	.new-page-design:hover, .new-page-design:focus-visible { border-color: #6b7ee3; transform: translateY(-2px); }
+	.new-page-design img { display: block; width: 100%; aspect-ratio: 1.8; object-fit: cover; }
+	.new-page-design span { display: grid; gap: .2rem; padding: .7rem; }
+	.new-page-design strong { font-size: .82rem; }
+	.new-page-design small { color: #718096; font-size: .7rem; }
+	.new-page-selection { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; align-items: center; gap: 1rem; }
+	.new-page-selection img { width: 100%; aspect-ratio: 1.65; object-fit: cover; border-radius: 10px; }
+	.new-page-selection__links { display: flex; flex-wrap: wrap; gap: 1rem; margin-block-start: .5rem; }
+	.new-page-form { max-width: 52rem; }
+	@media (max-width: 800px) { .new-page-designs__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+	@media (max-width: 480px) { .new-page-selection { grid-template-columns: 1fr; } .new-page-selection img { max-height: 180px; } }
+</style>

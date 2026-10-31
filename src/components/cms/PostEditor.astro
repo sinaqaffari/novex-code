@@ -409,11 +409,17 @@ const toolbar = [
 		const option = heroSelect.selectedOptions[0];
 		const url = option?.dataset.preview ?? '';
 		if (!option?.value || !url) {
-			preview.innerHTML =
-				'<span class="hero-preview__empty">تصویری انتخاب نشده است — نسبت پیشنهادی ۱۶:۹</span>';
+			const empty = document.createElement('span');
+			empty.className = 'hero-preview__empty';
+			empty.textContent = 'تصویری انتخاب نشده است — نسبت پیشنهادی ۱۶:۹';
+			preview.replaceChildren(empty);
 			return;
 		}
-		preview.innerHTML = `<img src="${url}" alt="پیش‌نمایش تصویر" loading="lazy" />`;
+		const image = document.createElement('img');
+		image.src = url;
+		image.alt = 'پیش‌نمایش تصویر';
+		image.loading = 'lazy';
+		preview.replaceChildren(image);
 	});
 
 	/* ---- markdown toolbar ------------------------------------------------- */
@@ -425,7 +431,7 @@ const toolbar = [
 		body.value = next;
 		body.focus();
 		body.setSelectionRange(start + before.length, start + before.length + selected.length);
-		refreshCounters();
+		body.dispatchEvent(new Event('input', { bubbles: true }));
 	};
 
 	const prefixLine = (prefix: string) => {
@@ -436,7 +442,7 @@ const toolbar = [
 		body.value = `${value.slice(0, start)}${prefix}${rest}`;
 		body.focus();
 		body.setSelectionRange(start + prefix.length, start + prefix.length);
-		refreshCounters();
+		body.dispatchEvent(new Event('input', { bubbles: true }));
 	};
 
 	const actions: Record<string, () => void> = {
@@ -586,7 +592,7 @@ const toolbar = [
 			void save();
 			return;
 		}
-		if (!meta) return;
+		if (!meta || document.activeElement !== body) return;
 		if (event.key.toLowerCase() === 'b') {
 			event.preventDefault();
 			actions.bold();

@@ -1,0 +1,13 @@
+{
+  "id": "design-blocks",
+  "apiVersion": 1,
+  "name": "بخش‌های آمادهٔ صفحه‌ساز",
+  "version": "1.0.0",
+  "description": "چهار بخش بومی و قابل ویرایش برای معرفی، خدمات، دعوت به اقدام و پرسش‌های متداول.",
+  "author": "Novex-Code",
+  "license": "MIT",
+  "requires": "2.0.0",
+  "hooks": ["builder.presets"],
+  "capabilities": ["builder:presets"],
+  "tags": ["صفحه‌ساز", "بخش آماده", "طراحی"]
+}

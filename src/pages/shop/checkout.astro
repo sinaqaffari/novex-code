@@ -7,18 +7,16 @@ import { readSettings } from '../../lib/cms/settings';
 import { hydrateCart, readCart, readDiscountCode } from '../../lib/commerce/cart';
 import { computeDiscount } from '../../lib/commerce/discounts';
 import { SHIPPING } from '../../lib/commerce/orders';
-import { readDatabase } from '../../lib/commerce/db';
+import { requestCommerce } from '../../lib/cms/request-data';
 
 export const prerender = false;
 
 const settings = await readSettings();
+if (!settings.commerceEnabled) return Astro.redirect('/shop');
 const cartLines = readCart(Astro.cookies);
-const cart = await hydrateCart(cartLines);
 const code = readDiscountCode(Astro.cookies);
-
-if (!settings.commerceEnabled) {
-	return Astro.redirect('/shop');
-}
+const snapshot = cartLines.length ? await requestCommerce(Astro.locals) : undefined;
+const cart = await hydrateCart(cartLines, snapshot);
 
 if (cart.lines.length === 0) {
 	return Astro.redirect('/shop/cart');
@@ -26,10 +24,9 @@ if (cart.lines.length === 0) {
 
 let discount = 0;
 let discountCode = '';
-if (code) {
-	const db = await readDatabase();
+if (code && snapshot) {
 	try {
-		const applied = computeDiscount(db, code, cart.subtotal);
+		const applied = computeDiscount(snapshot, code, cart.subtotal);
 		if (applied) {
 			discount = applied.amount;
 			discountCode = applied.discount.code;

@@ -31,7 +31,7 @@ if (post && !post.draft && !canPublish) {
 	Astro.response.status = 403;
 }
 
-const media = post ? await listMedia() : [];
+const media = post ? await listMedia({ dimensions: false }) : [];
 ---
 
 {

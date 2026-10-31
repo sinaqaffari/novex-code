@@ -13,7 +13,7 @@ import type { PageDocument } from '../src/lib/builder/types.ts';
 describe('Reusable sections and templates', () => {
 	it('returns the existing starters and editable visual page designs', () => {
 		const templates = listStarterTemplates();
-		assert.equal(templates.length, 9);
+		assert.equal(templates.length, 21);
 		const ids = templates.map((t) => t.id);
 		assert.ok(ids.includes('hero-intro'));
 		assert.ok(ids.includes('feature-grid'));

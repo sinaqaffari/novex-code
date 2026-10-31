@@ -1,9 +1,9 @@
 ---
 import CmsLayout from '../../components/cms/CmsLayout.astro';
 import Icon from '../../components/cms/Icon.astro';
-import { readSettings } from '../../lib/cms/settings';
+import { requestSettings } from '../../lib/cms/request-data';
 
-const settings = await readSettings();
+const settings = await requestSettings(Astro.locals);
 const nextParam = Astro.url.searchParams.get('next') ?? '/cms';
 const safeNext = nextParam.startsWith('/cms') ? nextParam : '/cms';
 const isDev = import.meta.env.DEV;

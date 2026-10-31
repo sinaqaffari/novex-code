@@ -3,16 +3,17 @@ import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import ProductForm from '../../../components/cms/ProductForm.astro';
 import { listMedia } from '../../../lib/cms/media';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { listProducts } from '../../../lib/commerce/products';
 
 export const prerender = false;
 
-const [media, settings, catalog] = await Promise.all([
-	listMedia(),
-	readSettings(),
-	listProducts({ perPage: 1 }),
+const [media, settings, snapshot] = await Promise.all([
+	listMedia({ dimensions: false }),
+	requestSettings(Astro.locals),
+	requestCommerce(Astro.locals),
 ]);
+const catalog = await listProducts({ perPage: 1 }, snapshot);
 ---
 
 <CmsLayout

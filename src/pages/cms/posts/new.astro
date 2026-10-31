@@ -7,7 +7,7 @@ import { can } from '../../../lib/cms/rbac';
 
 export const prerender = false;
 
-const media = await listMedia();
+const media = await listMedia({ dimensions: false });
 const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 const canPublish = can(role, 'cms.posts:publish');
 const canManageMedia = can(role, 'cms.media:write');

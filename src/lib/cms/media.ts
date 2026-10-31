@@ -11,7 +11,16 @@ import sharp from 'sharp';
 import { AppError as CmsError } from '../errors.ts';
 
 const BUNDLED_ASSETS_DIR = path.resolve(process.cwd(), 'src/assets');
-const BUNDLED_STARTER_IMAGES = new Set(['builder-studio.jpg', 'builder-journey.jpg', 'builder-portfolio.jpg', 'builder-shop.jpg']);
+const BUNDLED_STARTER_IMAGES = new Set([
+	'builder-studio.jpg', 'builder-journey.jpg', 'builder-portfolio.jpg', 'builder-shop.jpg',
+	'builder-restaurant.jpg', 'builder-clinic.jpg', 'builder-learning.jpg', 'builder-beauty.jpg',
+]);
+// Catalog screenshots are UI assets, not user media or images inserted into pages.
+const BUNDLED_SECTION_PREVIEWS = new Set([
+	'section-studio-hero', 'section-restaurant-hero', 'section-creative-services', 'section-clinic-faq',
+	'section-education-faq', 'section-shop-products', 'section-restaurant-cta', 'section-education-cta',
+	'hero-intro', 'feature-grid', 'contact-cta',
+].map((id) => `builder-previews/${id}.jpg`));
 export const ASSETS_DIR = path.resolve(process.env.CMS_ASSETS_DIR || BUNDLED_ASSETS_DIR);
 export const UPLOAD_DIR = path.join(ASSETS_DIR, 'uploads');
 export const BLOG_DIR = path.resolve(process.env.CMS_BLOG_DIR || path.join(process.cwd(), 'src/content/blog'));
@@ -80,7 +89,7 @@ export function resolveAssetPath(reference: string): string | null {
 	// An isolated or customized media directory need not contain the immutable
 	// artwork shipped with the application. Never mask a user-owned file,
 	// symlink, permission error, or an upload with a bundled fallback.
-	if (ASSETS_DIR !== BUNDLED_ASSETS_DIR && BUNDLED_STARTER_IMAGES.has(normalized)) {
+	if (ASSETS_DIR !== BUNDLED_ASSETS_DIR && (BUNDLED_STARTER_IMAGES.has(normalized) || BUNDLED_SECTION_PREVIEWS.has(normalized))) {
 		try { lstatSync(candidate); }
 		catch (error) {
 			if ((error as NodeJS.ErrnoException).code === 'ENOENT') return path.join(BUNDLED_ASSETS_DIR, normalized);
@@ -103,7 +112,7 @@ export function publicUrlFor(absolutePath: string): string {
 	return `/media/${relative}`;
 }
 
-async function collect(directory: string, builtin: boolean): Promise<MediaItem[]> {
+async function collect(directory: string, builtin: boolean, includeDimensions: boolean, names?: ReadonlySet<string>): Promise<MediaItem[]> {
 	let entries;
 	try {
 		entries = await readdir(directory, { withFileTypes: true });
@@ -111,39 +120,42 @@ async function collect(directory: string, builtin: boolean): Promise<MediaItem[]
 		return [];
 	}
 
-	const items = await Promise.all(
-		entries
-			.filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
-			.filter((entry) => ALLOWED_EXTENSIONS.includes(extensionOf(entry.name) as never))
-			.map(async (entry) => {
-				const absolute = path.join(directory, entry.name);
-				const info = await stat(absolute);
-				const dimensions = await imageDimensions(absolute).catch(() => ({}));
-				return {
-					name: entry.name,
-					reference: toReference(absolute),
-					previewUrl: previewUrlFor(absolute),
-					publicUrl: publicUrlFor(absolute),
-					bytes: info.size,
-					modifiedAt: info.mtime.toISOString(),
-					extension: extensionOf(entry.name),
-					mimeType: MIME_BY_EXTENSION[extensionOf(entry.name)] ?? 'application/octet-stream',
-					...dimensions,
-					builtin,
-				} satisfies MediaItem;
-			}),
-	);
-
+	const files = entries.filter((entry) => entry.isFile() && !entry.name.startsWith('.') &&
+		(!names || names.has(entry.name)) && ALLOWED_EXTENSIONS.includes(extensionOf(entry.name) as never));
+	const items: MediaItem[] = new Array(files.length);
+	let next = 0;
+	await Promise.all(Array.from({ length: Math.min(files.length, 16) }, async () => {
+		while (next < files.length) {
+			const index = next++;
+			const entry = files[index];
+			const absolute = path.join(directory, entry.name);
+			const info = await stat(absolute);
+			const dimensions = includeDimensions ? await imageDimensions(absolute).catch(() => ({})) : {};
+			items[index] = {
+				name: entry.name,
+				reference: toReference(absolute),
+				previewUrl: previewUrlFor(absolute),
+				publicUrl: publicUrlFor(absolute),
+				bytes: info.size,
+				modifiedAt: info.mtime.toISOString(),
+				extension: extensionOf(entry.name),
+				mimeType: MIME_BY_EXTENSION[extensionOf(entry.name)] ?? 'application/octet-stream',
+				...dimensions,
+				builtin,
+			};
+		}
+	}));
 	return items;
 }
 
 /** Newest uploads first, then the bundled theme artwork. */
-export async function listMedia(): Promise<MediaItem[]> {
+export async function listMedia(options: { dimensions?: boolean } = {}): Promise<MediaItem[]> {
 	await mkdir(UPLOAD_DIR, { recursive: true });
+	const includeDimensions = options.dimensions !== false;
 	const [uploads, builtin, bundled] = await Promise.all([
-		collect(UPLOAD_DIR, false),
-		collect(ASSETS_DIR, true),
-		ASSETS_DIR === BUNDLED_ASSETS_DIR ? Promise.resolve([]) : collect(BUNDLED_ASSETS_DIR, true),
+		collect(UPLOAD_DIR, false, includeDimensions),
+		collect(ASSETS_DIR, true, includeDimensions),
+		ASSETS_DIR === BUNDLED_ASSETS_DIR ? Promise.resolve([]) : collect(BUNDLED_ASSETS_DIR, true, includeDimensions, BUNDLED_STARTER_IMAGES),
 	]);
 	for (const item of bundled) {
 		if (!BUNDLED_STARTER_IMAGES.has(item.name) || resolveAssetPath(item.name) !== path.join(BUNDLED_ASSETS_DIR, item.name)) continue;

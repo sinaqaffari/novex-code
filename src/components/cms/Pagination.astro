@@ -7,13 +7,15 @@ interface Props {
 	baseUrl: string;
 	params?: Record<string, string | number | undefined>;
 	label?: string;
+	pageParam?: string;
+	navigationLabel?: string;
 }
 
-const { page, pages, total, perPage, baseUrl, params = {}, label = 'مورد' } = Astro.props;
+const { page, pages, total, perPage, baseUrl, params = {}, label = 'مورد', pageParam = 'page', navigationLabel = 'صفحه‌بندی' } = Astro.props;
 
 const hrefFor = (target: number) => {
 	const search = new URLSearchParams();
-	for (const [key, value] of Object.entries({ ...params, page: String(target) })) {
+	for (const [key, value] of Object.entries({ ...params, [pageParam]: String(target) })) {
 		if (value !== undefined && value !== '' && value !== null) search.set(key, String(value));
 	}
 	const query = search.toString();
@@ -30,7 +32,7 @@ const numbers = Array.from({ length: Math.min(windowSize, pages) }, (_, index) =
 );
 ---
 
-<nav class="pagination" aria-label="صفحه‌بندی">
+<nav class="pagination" aria-label={navigationLabel}>
 	<span class="num">
 		نمایش {from.toLocaleString('fa-IR')} تا {to.toLocaleString('fa-IR')} از {total.toLocaleString('fa-IR')}
 		{label}
@@ -41,11 +43,11 @@ const numbers = Array.from({ length: Math.min(windowSize, pages) }, (_, index) =
 			<div class="pagination__pages">
 				<a
 					class="pagination__page"
-					href={hrefFor(page - 1)}
+					href={page > 1 ? hrefFor(page - 1) : undefined}
 					aria-disabled={page <= 1 ? 'true' : undefined}
 					aria-label="صفحهٔ قبل"
 				>
-					‹
+					›
 				</a>
 				{numbers.map((number) => (
 					<a
@@ -58,11 +60,11 @@ const numbers = Array.from({ length: Math.min(windowSize, pages) }, (_, index) =
 				))}
 				<a
 					class="pagination__page"
-					href={hrefFor(page + 1)}
+					href={page < pages ? hrefFor(page + 1) : undefined}
 					aria-disabled={page >= pages ? 'true' : undefined}
 					aria-label="صفحهٔ بعد"
 				>
-					›
+					‹
 				</a>
 			</div>
 		)

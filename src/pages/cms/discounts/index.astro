@@ -2,12 +2,13 @@
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import { faDate, faMoney, faNumber, faPercent } from '../../../lib/cms/fa';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { listDiscounts } from '../../../lib/commerce/discounts';
 
 export const prerender = false;
 
-const [discounts, settings] = await Promise.all([listDiscounts(), readSettings()]);
+const [snapshot, settings] = await Promise.all([requestCommerce(Astro.locals), requestSettings(Astro.locals)]);
+const discounts = await listDiscounts(snapshot);
 const active = discounts.filter((discount) => discount.active).length;
 const totalUses = discounts.reduce((sum, discount) => sum + discount.usedCount, 0);
 ---

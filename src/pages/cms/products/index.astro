@@ -3,7 +3,7 @@ import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import Pagination from '../../../components/cms/Pagination.astro';
 import { faDate, faMoney, faNumber } from '../../../lib/cms/fa';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { listProducts, parseProductSort } from '../../../lib/commerce/products';
 import { productStatusLabel, productStatusTone, type ProductStatus } from '../../../lib/commerce/types';
 import { can } from '../../../lib/cms/rbac';
@@ -19,10 +19,8 @@ const page = Number(url.searchParams.get('page') ?? 1) || 1;
 const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 const canWriteProducts = can(role, 'commerce.products:write');
 
-const [result, settings] = await Promise.all([
-	listProducts({ query, status: canWriteProducts ? status : 'active', category, sort, page, perPage: 10 }),
-	readSettings(),
-]);
+const [snapshot, settings] = await Promise.all([requestCommerce(Astro.locals), requestSettings(Astro.locals)]);
+const result = await listProducts({ query, status: canWriteProducts ? status : 'active', category, sort, page, perPage: 10 }, snapshot);
 
 const statusTabs: Array<{ value: ProductStatus | 'all'; label: string; count: number }> = [
 	{ value: 'all', label: 'همه', count: result.counts.all },

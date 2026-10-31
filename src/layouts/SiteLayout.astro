@@ -90,6 +90,7 @@ const pluginFooter = await applyFilters('site.footer', '', {
 
 				<nav class="shop-nav" aria-label="ناوبری اصلی">
 					<a href="/" aria-current={isActive('/') ? 'page' : undefined}>خانه</a>
+					<a href="/marketplace" aria-current={isActive('/marketplace') ? 'page' : undefined}>بازار قالب‌ها</a>
 					<a href="/blog" aria-current={isActive('/blog') ? 'page' : undefined}>مجله</a>
 					{settings.commerceEnabled && (
 						<a href="/shop" aria-current={isActive('/shop') ? 'page' : undefined}>فروشگاه</a>

@@ -1,7 +1,10 @@
 ---
 import ShopLayout from '../layouts/ShopLayout.astro';
 import ProductCard from '../components/store/ProductCard.astro';
-import { readSettings } from '../lib/cms/settings';
+import TemplateCard from '../components/store/TemplateCard.astro';
+import '../styles/marketplace.css';
+import { listCatalogTemplates } from '../lib/builder/template-catalog';
+import { requestCommerce, requestSettings } from '../lib/cms/request-data';
 import { hydrateCart, readCart } from '../lib/commerce/cart';
 import { listProducts } from '../lib/commerce/products';
 import { faDate, faNumber, faReadingTime } from '../lib/cms/fa';
@@ -9,12 +12,15 @@ import { listPosts } from '../lib/cms/posts';
 
 export const prerender = false;
 
-const settings = await readSettings();
+const settings = await requestSettings(Astro.locals);
+const cartLines = readCart(Astro.cookies);
+const snapshot = settings.commerceEnabled || cartLines.length ? await requestCommerce(Astro.locals) : undefined;
 const [currentCart, publishedPosts, products] = await Promise.all([
-	hydrateCart(readCart(Astro.cookies)),
+	hydrateCart(cartLines, snapshot),
 	listPosts(),
-	settings.commerceEnabled ? listProducts({ status: 'active', perPage: 8 }) : Promise.resolve({ items: [], counts: { active: 0 } }),
+	settings.commerceEnabled ? listProducts({ status: 'active', perPage: 8 }, snapshot) : Promise.resolve({ items: [], counts: { active: 0 } }),
 ]);
+const featuredTemplates = listCatalogTemplates().slice(0, 4);
 const posts = publishedPosts.filter((post) => !post.draft && post.id.endsWith('.md'));
 const featuredProducts = products.items.filter((product) => product.featured);
 const visibleProducts = (featuredProducts.length ? featuredProducts : products.items).slice(0, 4);
@@ -38,10 +44,8 @@ const hasCommerce = settings.commerceEnabled && products.counts.active > 0;
 					{settings.heroSubtitle || settings.siteDescription}
 				</p>
 				<div class="hero__actions">
-					{visibleProducts.length > 0 && <a class="btn btn--primary btn--lg" href="/shop">دیدن محصولات</a>}
-					<a class:list={['btn btn--lg', visibleProducts.length > 0 ? 'btn--outline' : 'btn--primary']} href="/blog">
-						خواندن راهنماها
-					</a>
+					<a class="btn btn--primary btn--lg" href="/marketplace">دیدن طرح‌های آماده</a>
+					{visibleProducts.length > 0 ? <a class="btn btn--outline btn--lg" href="/shop">دیدن محصولات</a> : <a class="btn btn--outline btn--lg" href="/blog">خواندن راهنماها</a>}
 				</div>
 			</div>
 
@@ -64,6 +68,11 @@ const hasCommerce = settings.commerceEnabled && products.counts.active > 0;
 				</aside>
 			)}
 		</div>
+	</section>
+
+	<section class="market-section home-templates" aria-labelledby="home-templates-title">
+		<div class="market-section__head"><div><span class="home-templates__eyebrow">برای شروع ساختن</span><h2 id="home-templates-title">طرحی پیدا کنید که به کارتان می‌آید</h2><p>صفحه‌های فارسی و قابل ویرایش؛ آماده برای شخصی‌سازی در صفحه‌ساز.</p></div><a href="/marketplace">همهٔ طرح‌ها ←</a></div>
+		<div class="market-grid">{featuredTemplates.map((template) => <TemplateCard template={template} />)}</div>
 	</section>
 
 	{hasCommerce && (
@@ -119,6 +128,7 @@ const hasCommerce = settings.commerceEnabled && products.counts.active > 0;
 </ShopLayout>
 
 <style>
+	.home-templates__eyebrow { display: block; margin-block-end: .35rem; color: #5274cc; font-size: .72rem; font-weight: 700; }
 	@media (min-width: 960px) {
 		.hero__inner:not(.hero__inner--with-feature) {
 			grid-template-columns: minmax(0, 1fr);

@@ -3,7 +3,7 @@ import CmsLayout from '../../components/cms/CmsLayout.astro';
 import Icon from '../../components/cms/Icon.astro';
 import { faCompactMoney, faDate, faMoney, faNumber, faRelative } from '../../lib/cms/fa';
 import { buildStats, listPosts } from '../../lib/cms/posts';
-import { readSettings } from '../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../lib/cms/request-data';
 import { buildDashboardMetrics } from '../../lib/commerce/stats';
 import { orderStatusLabel, orderStatusTone } from '../../lib/commerce/types';
 import { can } from '../../lib/cms/rbac';
@@ -15,10 +15,10 @@ export const prerender = false;
 
 const canEditSettings = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.settings:write');
 const canBuildPages = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages:write');
-const [posts, settings] = await Promise.all([listPosts(), readSettings()]);
+const [posts, settings] = await Promise.all([listPosts(), requestSettings(Astro.locals)]);
 const stats = buildStats(posts);
 const commerce = settings.commerceEnabled;
-const metrics = commerce ? await buildDashboardMetrics(14) : null;
+const metrics = commerce ? await buildDashboardMetrics(14, await requestCommerce(Astro.locals)) : null;
 
 const currency = settings.currency;
 const maxBar = metrics ? Math.max(...metrics.series.map((point) => point.total), 1) : 1;
@@ -62,7 +62,7 @@ const trend = (change: number | null) =>
 			<>
 				<section class="metric-strip" aria-label="شاخص‌های فروش">
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">درآمد ۳۰ روز گذشته</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">درآمد ۳۰ روز گذشته</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="chart" size={19} /></span></div>
 						<strong class="metric-strip__value num">
 							{faCompactMoney(metrics.revenue.current, currency)}
 						</strong>
@@ -75,7 +75,7 @@ const trend = (change: number | null) =>
 					</div>
 
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">سفارش‌ها</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">سفارش‌ها</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="receipt" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(metrics.orders.current)}</strong>
 						<span class="metric-strip__foot">
 							<span class={trend(metrics.orders.change)}>
@@ -87,7 +87,7 @@ const trend = (change: number | null) =>
 					</div>
 
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">میانگین سبد خرید</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">میانگین سبد خرید</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="cart" size={19} /></span></div>
 						<strong class="metric-strip__value num">
 							{metrics.paidOrderCount > 0 ? faCompactMoney(metrics.averageOrder, currency) : '—'}
 						</strong>
@@ -101,7 +101,7 @@ const trend = (change: number | null) =>
 					</div>
 
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">محصولات فعال</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">محصولات فعال</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="box" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(metrics.activeProducts)}</strong>
 						<span class="metric-strip__foot">
 							{metrics.activeProducts === 0 ? (
@@ -336,17 +336,17 @@ const trend = (change: number | null) =>
 			<>
 				<section class="metric-strip" aria-label="شاخص‌های محتوا">
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">نوشته‌ها</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">نوشته‌ها</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="posts" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(stats.total)}</strong>
 						<span class="metric-strip__foot">{faNumber(stats.published)} منتشرشده</span>
 					</div>
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">پیش‌نویس</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">پیش‌نویس</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="edit" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(stats.drafts)}</strong>
 						<span class="metric-strip__foot">در انتظار بازبینی</span>
 					</div>
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">واژه‌های نوشته‌شده</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">واژه‌های نوشته‌شده</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="word" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(stats.words)}</strong>
 						<span class="metric-strip__foot">
 							{stats.total
@@ -355,7 +355,7 @@ const trend = (change: number | null) =>
 						</span>
 					</div>
 					<div class="metric-strip__item">
-						<span class="metric-strip__label">برچسب‌ها</span>
+						<div class="metric-strip__head"><span class="metric-strip__label">برچسب‌ها</span><span class="metric-strip__icon" aria-hidden="true"><Icon name="tag" size={19} /></span></div>
 						<strong class="metric-strip__value num">{faNumber(stats.tags.length)}</strong>
 						<span class="metric-strip__foot">
 							{stats.tags.length ? `پرکاربردترین: ${stats.tags[0].name}` : 'بدون برچسب'}

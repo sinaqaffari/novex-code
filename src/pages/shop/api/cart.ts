@@ -90,7 +90,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 				return redirect(back, 303);
 			}
 			const db = await readDatabase();
-			const cart = await hydrateCart(lines);
+			const cart = await hydrateCart(lines, db);
 			computeDiscount(db, code, cart.subtotal);
 			writeDiscountCode(cookies, code);
 			return wantsJson

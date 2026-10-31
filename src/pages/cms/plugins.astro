@@ -11,6 +11,7 @@ import { hasPluginSecret, pluginSecretEnvironmentName } from '../../lib/plugins/
 import { PLUGIN_CAPABILITY_LABELS, type PluginCapability } from '../../lib/plugins/types';
 import { listDeclarativePluginPackages } from '../../lib/builder/store';
 import type { DeclarativePluginRecord } from '../../lib/builder/declarative-plugin-package';
+import { can } from '../../lib/cms/rbac';
 
 export const prerender = false;
 
@@ -26,6 +27,8 @@ let dataPackagesError = '';
 try { dataPackages = await listDeclarativePluginPackages(); } catch { dataPackagesError = 'خواندن بسته‌های داده‌محور ممکن نشد؛ داده‌ها تغییر نکردند.'; }
 const installed = listInstalledPlugins();
 const activeCount = installed.filter((plugin) => plugin.active).length;
+const canManage = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.plugins:write');
+const builderExtensions = installed.filter((plugin) => plugin.manifest.hooks?.some((hook) => hook === 'builder.presets' || hook === 'builder.components'));
 
 const matchesQuery = (haystack: string[]) =>
 	!query || haystack.join(' ').toLowerCase().includes(query.toLowerCase());
@@ -64,6 +67,8 @@ const tabs = [
 ];
 
 const hookLabels: Record<string, string> = {
+	'builder.presets': 'بخش‌های آمادهٔ صفحه‌ساز',
+	'builder.components': 'مؤلفهٔ صفحه‌ساز',
 	'site.head': 'فرادادهٔ سایت',
 	'site.footer': 'پاورقی سایت',
 	'cms.dashboard.widgets': 'داشبورد پنل',
@@ -79,6 +84,16 @@ const hookLabels: Record<string, string> = {
 	<Fragment slot="actions">
 		<a class="btn btn--sm" href="#plugin-docs">ساخت افزونه</a>
 	</Fragment>
+
+	<section class="plugin-builder-library" aria-labelledby="builder-extensions-title">
+		<div class="plugin-builder-library__head"><div><span>کتابخانهٔ امکانات بومی</span><h2 id="builder-extensions-title">ابزارهای بیشتر برای صفحه‌ساز</h2><p>افزونه‌های همراه نووکس را فعال کنید؛ بخش‌های درج‌شده پس از غیرفعال‌سازی هم در صفحه باقی می‌مانند.</p></div><a href="/cms/pages">بازکردن صفحه‌ساز ←</a></div>
+		<div class="plugin-builder-library__grid">{builderExtensions.map((plugin) => <article class="plugin-builder-card" data-builder-extension={plugin.id}>
+			<div class="plugin-builder-card__top"><span class="plugin-builder-card__icon" aria-hidden="true"><Icon name="layers" size={18} /></span><span class:list={['badge', plugin.active ? 'badge--success' : 'badge--neutral']}>{plugin.active ? 'فعال' : 'غیرفعال'}</span></div>
+			<h3>{plugin.manifest.name}</h3><p>{plugin.manifest.description}</p>
+			{plugin.error && <p class="error-text" role="alert">{plugin.error}</p>}
+			<div class="plugin-builder-card__actions"><a href={detailHref(plugin.id, 'readme')}>جزئیات</a>{canManage && <form method="post" action="/cms/api/plugins"><input type="hidden" name="pluginId" value={plugin.id} /><input type="hidden" name="action" value={plugin.active ? 'deactivate' : 'activate'} /><button class:list={['btn', 'btn--sm', !plugin.active && 'btn--primary']} type="submit">{plugin.active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button></form>}</div>
+		</article>)}</div>
+	</section>
 
 	<section class="card" id="data-plugin-packages">
 		<div class="card__head"><div><h2 class="card__title">بسته‌های مؤلفهٔ داده‌محور</h2><p class="card__hint">JSON یا ZIP با مؤلفه‌های میزبان و پردازشگر عددی WebAssembly ایزوله؛ JavaScript، قلاب و افزونهٔ PHP بارگذاری نمی‌شود. محیط ایزوله باید روی سرور پشتیبانی شود.</p></div></div>
@@ -674,3 +689,22 @@ export function register(api: PluginApi) {
 		} else void send('PATCH', { ...base, active: button.dataset.active !== 'true' });
 	}));
 </script>
+
+<style>
+	.plugin-builder-library { margin-block-end: 1.25rem; padding: 1.25rem; border: 1px solid #dde6f5; border-radius: 15px; background: linear-gradient(135deg, #eef4ff, #f9fbff); }
+	.plugin-builder-library__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 1rem; margin-block-end: 1rem; }
+	.plugin-builder-library__head span { color: #5272cb; font-size: .72rem; font-weight: 700; }
+	.plugin-builder-library__head h2 { margin-block: .25rem; color: #243657; font-size: 1.1rem; }
+	.plugin-builder-library__head p { max-width: 45rem; margin: .25rem 0; color: #71819a; font-size: .78rem; line-height: 1.8; }
+	.plugin-builder-library__head > a { color: #395fca; font-size: .78rem; font-weight: 700; }
+	.plugin-builder-library__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+	.plugin-builder-card { min-width: 0; display: flex; flex-direction: column; padding: 1rem; border: 1px solid #e1e8f2; border-radius: 11px; background: #fff; }
+	.plugin-builder-card__top, .plugin-builder-card__actions { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+	.plugin-builder-card__icon { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 9px; background: #edf2ff; color: #4967ca; }
+	.plugin-builder-card h3 { margin: .8rem 0 .3rem; font-size: .9rem; }
+	.plugin-builder-card p { flex: 1; color: #78859a; font-size: .75rem; line-height: 1.8; }
+	.plugin-builder-card__actions { margin-block-start: .9rem; padding-block-start: .75rem; border-block-start: 1px solid #edf0f4; }
+	.plugin-builder-card__actions > a { color: #4362b9; font-size: .75rem; font-weight: 700; }
+	@media (max-width: 850px) { .plugin-builder-library__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+	@media (max-width: 530px) { .plugin-builder-library__grid { grid-template-columns: 1fr; } }
+</style>

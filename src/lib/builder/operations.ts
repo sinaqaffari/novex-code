@@ -145,20 +145,31 @@ export function addNode(
 	return validatePageDocument({ ...document, nodes: updated }, document.slug);
 }
 
-/** Insert independent copies of validated fragment nodes at the current selection. */
+export type FragmentPlacement = 'before' | 'after' | 'inside';
+
+/** Insert independent, validated copies. Without an explicit placement the
+ * historical selection behavior remains: append inside a container, after a
+ * leaf, or at the page root when nothing is selected. */
 export function insertDocumentFragment(
 	document: PageDocument,
 	fragment: PageDocument,
 	selectedId: string | null,
 	idFactory: () => string = createNodeId,
+	placement?: FragmentPlacement,
 ): { document: PageDocument; firstId: string | null } {
 	const source = validatePageDocument(fragment);
 	const target = validatePageDocument(document);
-	const selected = selectedId ? findNode(target.nodes, selectedId) : null;
-	if (selectedId && !selected) throw new Error('Selected component was not found.');
+	const selected = selectedId !== null ? findNode(target.nodes, selectedId) : null;
+	if (selectedId !== null && !selected) throw new Error('Selected component was not found.');
+	if (placement !== undefined && !['before', 'after', 'inside'].includes(placement)) throw new Error('Fragment placement is invalid.');
+	if (placement && !selected) throw new Error('A fragment placement needs an existing target.');
+	if (placement === 'inside' && selected?.type !== 'Container') throw new Error('Only a Container can receive child components.');
 	const location = selected ? findNodeLocation(target.nodes, selected.id) : null;
-	const parentId = selected?.type === 'Container' ? selected.id : location?.parentId ?? null;
-	let index = selected?.type === 'Container' ? selected.children.length : location ? location.index + 1 : target.nodes.length;
+	const inside = placement === 'inside' || (!placement && selected?.type === 'Container');
+	const parentId = inside && selected ? selected.id : location?.parentId ?? null;
+	let index = inside && selected?.type === 'Container'
+		? selected.children.length
+		: location ? location.index + (placement === 'before' ? 0 : 1) : target.nodes.length;
 	const allocateId = freshIdAllocator(target, idFactory);
 	function copy(node: BuilderNode): BuilderNode {
 		const id = allocateId();

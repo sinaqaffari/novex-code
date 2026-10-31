@@ -3,21 +3,22 @@ import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import ProductForm from '../../../components/cms/ProductForm.astro';
 import { listMedia } from '../../../lib/cms/media';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { getProduct, listProducts } from '../../../lib/commerce/products';
 
 export const prerender = false;
 
 const id = decodeURIComponent(Astro.params.id ?? '');
-const product = await getProduct(id);
+const snapshot = await requestCommerce(Astro.locals);
+const product = await getProduct(id, snapshot);
 
 if (!product) {
 	Astro.response.status = 404;
 }
 
 const [media, settings, catalog] = product
-	? await Promise.all([listMedia(), readSettings(), listProducts({ perPage: 1 })])
-	: [[], await readSettings(), { categories: [] as string[] }];
+	? await Promise.all([listMedia({ dimensions: false }), requestSettings(Astro.locals), listProducts({ perPage: 1 }, snapshot)])
+	: [[], await requestSettings(Astro.locals), { categories: [] as string[] }];
 ---
 
 {

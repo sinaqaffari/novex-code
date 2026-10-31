@@ -1,4 +1,4 @@
-import { serializePageDocument } from './document.ts';
+import { validatePageDocument } from './document.ts';
 import type { PageDocument } from './types.ts';
 
 export type AutosaveStatus = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
@@ -16,6 +16,7 @@ export class AutosaveConflictError extends Error {
 export class AutosaveController {
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private latest: PageDocument | null = null;
+	private latestJson = '';
 	private baseline = '';
 	private inFlight: Promise<void> | null = null;
 	private blockedError: unknown;
@@ -32,15 +33,19 @@ export class AutosaveController {
 
 	initialize(document: PageDocument): void {
 		this.clearTimer();
-		this.latest = document;
-		this.baseline = serializePageDocument(document);
+		// Validation produces an owned canonical snapshot, so callers cannot mutate
+		// the dirty baseline behind the controller's back.
+		this.latest = validatePageDocument(document, document.slug);
+		this.latestJson = JSON.stringify(this.latest);
+		this.baseline = this.latestJson;
 		this.blockedError = undefined;
 		this.onStatus('saved');
 	}
 
 	schedule(document: PageDocument): void {
 		if (this.disposed) return;
-		this.latest = document;
+		this.latest = validatePageDocument(document, document.slug);
+		this.latestJson = JSON.stringify(this.latest);
 		// A conflict means the server baseline is unknown even if the user undoes
 		// back to the old local baseline. Only a reload can clear it.
 		if (this.blockedError instanceof AutosaveConflictError) {
@@ -73,14 +78,14 @@ export class AutosaveController {
 		}
 		if (!this.isDirty()) return;
 
-		const snapshot = this.latest;
-		const snapshotJson = serializePageDocument(snapshot);
+		const snapshot = structuredClone(this.latest);
+		const snapshotJson = this.latestJson;
 		this.onStatus('saving');
 		this.inFlight = this.save(snapshot)
 			.then(() => {
 				this.baseline = snapshotJson;
 				this.blockedError = undefined;
-				if (this.latest && serializePageDocument(this.latest) === this.baseline) this.onStatus('saved');
+				if (this.latest && this.latestJson === this.baseline) this.onStatus('saved');
 				else this.onStatus('dirty');
 			})
 			.catch((error: unknown) => {
@@ -107,7 +112,7 @@ export class AutosaveController {
 	}
 
 	isDirty(): boolean {
-		return Boolean(this.inFlight || this.blockedError instanceof AutosaveConflictError || (this.latest && serializePageDocument(this.latest) !== this.baseline));
+		return Boolean(this.inFlight || this.blockedError instanceof AutosaveConflictError || (this.latest && this.latestJson !== this.baseline));
 	}
 
 	get error(): unknown {

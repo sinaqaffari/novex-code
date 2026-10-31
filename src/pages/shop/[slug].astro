@@ -3,7 +3,7 @@ import ShopLayout from '../../layouts/ShopLayout.astro';
 import '../../styles/commerce.css';
 import ProductCard from '../../components/store/ProductCard.astro';
 import ProductArtwork from '../../components/store/ProductArtwork.astro';
-import { readSettings } from '../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../lib/cms/request-data';
 import { hydrateCart, readCart } from '../../lib/commerce/cart';
 import { getProduct, listProducts } from '../../lib/commerce/products';
 import { SHIPPING } from '../../lib/commerce/orders';
@@ -12,18 +12,19 @@ import { faMoney, faNumber, faDate } from '../../lib/cms/fa';
 export const prerender = false;
 
 const { slug = '' } = Astro.params;
-const product = await getProduct(slug);
+const settings = await requestSettings(Astro.locals);
+if (!settings.commerceEnabled) return Astro.redirect('/shop');
+const snapshot = await requestCommerce(Astro.locals);
+const product = await getProduct(slug, snapshot);
 
 if (!product || product.status !== 'active') {
 	return Astro.redirect('/shop');
 }
 
-const [settings, cart, relatedResult] = await Promise.all([
-	readSettings(),
-	hydrateCart(readCart(Astro.cookies)),
-	listProducts({ status: 'active', category: product.category, sort: 'newest', perPage: 5 }),
+const [cart, relatedResult] = await Promise.all([
+	hydrateCart(readCart(Astro.cookies), snapshot),
+	listProducts({ status: 'active', category: product.category, sort: 'newest', perPage: 5 }, snapshot),
 ]);
-if (!settings.commerceEnabled) return Astro.redirect('/shop');
 const relatedProducts = relatedResult.items.filter((item) => item.id !== product.id).slice(0, 4);
 const onSale =
 	typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;

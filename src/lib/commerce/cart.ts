@@ -5,7 +5,7 @@
 
 import type { AstroCookies } from 'astro';
 import { readDatabase } from './db.ts';
-import type { Product } from './types.ts';
+import type { Database, Product } from './types.ts';
 
 export const CART_COOKIE = 'novex_cart';
 export const DISCOUNT_COOKIE = 'novex_discount';
@@ -118,8 +118,9 @@ export function removeLine(lines: CartLine[], productId: string): CartLine[] {
 }
 
 /** محصولات را از دیتابیس می‌خواند؛ خطوط نامعتبر (حذف‌شده یا غیرفعال) کنار گذاشته می‌شوند. */
-export async function hydrateCart(lines: CartLine[]): Promise<HydratedCart> {
-	const db = await readDatabase();
+export async function hydrateCart(lines: CartLine[], snapshot?: Database): Promise<HydratedCart> {
+	if (!lines.length) return { lines: [], subtotal: 0, count: 0 };
+	const db = snapshot ?? await readDatabase();
 	const hydrated: HydratedLine[] = [];
 
 	for (const line of lines) {

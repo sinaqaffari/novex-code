@@ -1,17 +1,23 @@
 ---
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
+import Pagination from '../../../components/cms/Pagination.astro';
 import { faDate, faFileSize, faNumber } from '../../../lib/cms/fa';
 import { ALLOWED_UPLOAD_EXTENSIONS, listMedia } from '../../../lib/cms/media';
 import { can } from '../../../lib/cms/rbac';
+import { paginate } from '../../../lib/cms/listing';
 
 export const prerender = false;
 
 const canDeleteMedia = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.media:delete');
-const media = await listMedia();
+const media = await listMedia({ dimensions: false });
 const uploads = media.filter((item) => !item.builtin);
 const builtin = media.filter((item) => item.builtin);
 const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const needle = query.toLowerCase();
+const uploadPage = paginate(uploads.filter((item) => !needle || item.name.toLowerCase().includes(needle)), Number(Astro.url.searchParams.get('page') ?? 1), 24);
+const builtinPage = paginate(builtin, Number(Astro.url.searchParams.get('builtinPage') ?? 1), 12);
 ---
 
 <CmsLayout
@@ -43,13 +49,15 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 				data-file-input
 			/>
 			<Icon name="image" size={20} />
-			<span data-dropzone-label>
-				تصاویر را اینجا رها کنید یا کلیک کنید — JPG، PNG، WebP، AVIF و GIF تا ۸ مگابایت
+			<span data-dropzone-label role="status" aria-live="polite">
+				تصاویر را اینجا رها کنید یا انتخاب کنید — JPG، PNG، WebP، AVIF و GIF؛ هر فایل تا ۸ مگابایت، حداکثر ۵ فایل و مجموع ۱۶ مگابایت
 			</span>
 			<label data-deduplicate-option><input type="checkbox" name="deduplicate" value="1" /> استفاده از فایل یکسان موجود به‌جای ساخت رونوشت</label>
-			<button class="btn btn--outline btn--sm" type="submit" data-upload-submit hidden>
+			<label class="btn btn--outline btn--sm" for="media-input">انتخاب تصویر</label>
+			<button class="btn btn--primary btn--sm" type="submit" data-upload-submit hidden>
 				<span>شروع بارگذاری</span>
 			</button>
+			<noscript><button class="btn btn--primary btn--sm" type="submit">شروع بارگذاری</button></noscript>
 		</form>
 
 		<div class="card">
@@ -58,17 +66,20 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 					<h2 class="card__title">بارگذاری‌های شما</h2>
 					<p class="card__hint">فایل‌های تازه در مسیر src/assets/uploads ذخیره می‌شوند.</p>
 				</div>
-				<label class="search">
-					<span class="sr-only">جست‌وجوی نام فایل</span>
-					<Icon name="search" size={16} />
-					<input class="input" type="search" placeholder="جست‌وجوی نام فایل…" data-media-search />
-				</label>
+				<form class="toolbar" method="get" action="/cms/media" role="search">
+					<label class="search">
+						<span class="sr-only">جست‌وجوی نام فایل</span>
+						<Icon name="search" size={16} />
+						<input class="input" type="search" name="q" value={query} placeholder="جست‌وجوی نام فایل…" />
+					</label>
+					<button class="btn btn--outline btn--sm" type="submit">جست‌وجو</button>
+				</form>
 			</div>
 
-			{uploads.length ? (
+			{uploadPage.total ? (
 				<div class="card__body">
 					<div class="media-grid" data-media-grid>
-						{uploads.map((item) => (
+						{uploadPage.items.map((item) => (
 							<figure class="media-tile" data-media-item data-name={item.name.toLowerCase()}>
 								<img
 									class="media-tile__thumb"
@@ -107,16 +118,14 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 							</figure>
 						))}
 					</div>
-					<div class="empty" data-media-empty hidden>
-						<span class="empty__icon"><Icon name="search" size={22} /></span>
-						<span class="empty__title">فایلی با این نام پیدا نشد</span>
-					</div>
+					<Pagination page={uploadPage.page} pages={uploadPage.pages} total={uploadPage.total} perPage={uploadPage.perPage} baseUrl="/cms/media" params={{ q: query, builtinPage: builtinPage.page > 1 ? builtinPage.page : undefined }} label="فایل" navigationLabel="صفحه‌بندی بارگذاری‌ها" />
 				</div>
 			) : (
 				<div class="empty">
 					<span class="empty__icon"><Icon name="image" size={22} /></span>
-					<span class="empty__title">هنوز فایلی بارگذاری نکرده‌اید</span>
-					<span>تصویر شاخص نوشته‌ها را از همین‌جا اضافه کنید.</span>
+					<span class="empty__title">{query ? 'فایلی با این نام پیدا نشد' : 'هنوز فایلی بارگذاری نکرده‌اید'}</span>
+					<span>{query ? 'عبارت دیگری را جست‌وجو کنید.' : 'تصویر شاخص نوشته‌ها را از همین‌جا اضافه کنید.'}</span>
+					{query && <a class="btn btn--outline btn--sm" href="/cms/media">پاک‌کردن جست‌وجو</a>}
 				</div>
 			)}
 		</div>
@@ -131,7 +140,7 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 			</div>
 			<div class="card__body">
 				<div class="media-grid">
-					{builtin.map((item) => (
+					{builtinPage.items.map((item) => (
 						<figure class="media-tile">
 							<span class="badge badge--neutral media-tile__badge">همراه قالب</span>
 							<img
@@ -153,6 +162,7 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 						</figure>
 					))}
 				</div>
+				<Pagination page={builtinPage.page} pages={builtinPage.pages} total={builtinPage.total} perPage={builtinPage.perPage} baseUrl="/cms/media" params={{ q: query, page: uploadPage.page > 1 ? uploadPage.page : undefined }} label="فایل" pageParam="builtinPage" navigationLabel="صفحه‌بندی تصاویر همراه قالب" />
 			</div>
 		</div>
 
@@ -168,9 +178,6 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 	const input = document.querySelector<HTMLInputElement>('[data-file-input]');
 	const submit = document.querySelector<HTMLButtonElement>('[data-upload-submit]');
 	const label = document.querySelector<HTMLElement>('[data-dropzone-label]');
-	const search = document.querySelector<HTMLInputElement>('[data-media-search]');
-	const items = [...document.querySelectorAll<HTMLElement>('[data-media-item]')];
-	const empty = document.querySelector<HTMLElement>('[data-media-empty]');
 	const defaultLabel = label?.textContent?.trim() ?? '';
 
 	const persianSize = (bytes: number) => {
@@ -200,7 +207,7 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 
 	form?.addEventListener('click', (event) => {
 		const target = event.target as HTMLElement;
-		if (target.closest('button, [data-deduplicate-option]') || target === input) return;
+		if (target.closest('button, [data-deduplicate-option], label[for="media-input"]') || target === input) return;
 		input?.click();
 	});
 
@@ -255,16 +262,6 @@ const totalBytes = media.reduce((sum, item) => sum + item.bytes, 0);
 		}
 	});
 
-	search?.addEventListener('input', () => {
-		const needle = search.value.trim().toLowerCase();
-		let visible = 0;
-		for (const item of items) {
-			const match = (item.dataset.name ?? '').includes(needle);
-			item.hidden = !match;
-			if (match) visible += 1;
-		}
-		if (empty) empty.hidden = visible > 0;
-	});
 
 	document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
 		button.addEventListener('click', async () => {

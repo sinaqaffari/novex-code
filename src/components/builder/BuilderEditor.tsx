@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { COMPONENT_LIST, getComponentDefinition, isBuilderComponentType } from '../../lib/builder/registry.ts';
 import { dropInsertionPoint, dropPlacement } from '../../lib/builder/drag-drop.ts';
@@ -6,10 +6,9 @@ import type { MovePlacement } from '../../lib/builder/operations.ts';
 import { BREAKPOINT_MAX_WIDTH, MAX_CUSTOM_BREAKPOINTS, breakpointRanges, breakpointWidths, explicitNodeStyle, resolveNodeStyle, resolveNodeStyles } from '../../lib/builder/responsive.ts';
 import { nodeStyleObject } from '../../lib/builder/render.ts';
 import { fieldVisibleInMode } from '../../lib/builder/editor-mode.ts';
-import { convertElementorJson, type ElementorImport } from '../../lib/migrations/elementor/converter.ts';
+import type { ElementorImport } from '../../lib/migrations/elementor/converter.ts';
 import { MAX_MIGRATION_MEDIA_MAP_BYTES, parseMigrationMediaMap, type MigrationMediaMap } from '../../lib/migrations/media-map.ts';
-import { inspectWxr, convertWxrItem, wxrToDraftPages, type WxrInspection } from '../../lib/migrations/wordpress/wxr.ts';
-import { wxrPostToBlogDraft, wxrToBlogDrafts } from '../../lib/migrations/wordpress/blog-post.ts';
+import type { WxrInspection } from '../../lib/migrations/wordpress/wxr.ts';
 import {
 	AutosaveConflictError,
 	AutosaveController,
@@ -26,12 +25,12 @@ import {
 	findNodePath,
 	traversePageNodes,
 } from '../../lib/builder/operations.ts';
-import { commitDocument, createDocumentHistory, redoDocument, undoDocument } from '../../lib/builder/history.ts';
+import { commitValidatedDocument, createDocumentHistory, redoDocument, undoDocument } from '../../lib/builder/history.ts';
 import { executeDocumentCommand, type DocumentCommand } from '../../lib/builder/commands.ts';
 import { EditorEvents, type EditorEventPayloads } from '../../lib/builder/events.ts';
 import { BUILDER_THEME_LIST, themeVariables } from '../../lib/builder/themes.ts';
-import { applyTemplate, listStarterTemplates } from '../../lib/builder/templates.ts';
-import { listSiteKits, validateSiteKit, type SiteKit } from '../../lib/builder/site-kits.ts';
+import { applyTemplate, listStarterTemplateSummaries } from '../../lib/builder/templates.ts';
+import type { SiteKit } from '../../lib/builder/site-kits.ts';
 import type { WasmProcessorSummary } from '../../lib/builder/plugin-wasm.ts';
 import { materializeBuilderPreset, type BuilderPluginPreset } from '../../lib/builder/plugin-presets.ts';
 import { resolvePluginParts } from '../../lib/builder/plugin-components.ts';
@@ -78,6 +77,7 @@ interface Props {
 	canWritePosts: boolean;
 	canReadMedia: boolean;
 	canUploadMedia: boolean;
+	initialSectionId?: string;
 }
 
 interface RevisionSummary {
@@ -93,9 +93,13 @@ interface TemplateSummary {
 	description: string;
 	source: 'starter' | 'saved';
 	kind?: 'page' | 'section';
+	image?: string;
+	category?: string;
 	document?: PageDocument;
 }
 
+interface SectionInsertionTarget { targetId: string | null; placement?: 'before' | 'after' }
+interface TemplatePreview { name: string; document: PageDocument; item?: TemplateSummary }
 interface SharedSectionSummary { id: string; name: string; revision: number; updatedAt: string }
 interface ArchiveKitSummary { id: string; name: string; version: string; assetCount: number; pages: Array<{ suffix: string; title: string }> }
 interface KitReviewField { slug: string; path: string; kind: 'field' | 'structural' | 'order' | 'formatted'; base: string; local: string; incoming: string }
@@ -128,7 +132,7 @@ const STATUS_LABELS: Record<AutosaveStatus, string> = {
 	conflict: 'تعارض نسخه',
 };
 
-export default function BuilderEditor({ pluginComponents, pluginPresets, pluginProcessors, initialDocument, initialRevision, publishedAt, slug, canPublish, canPublishCode, canWritePosts, canReadMedia, canUploadMedia }: Props) {
+export default function BuilderEditor({ pluginComponents, pluginPresets, pluginProcessors, initialDocument, initialRevision, publishedAt, slug, canPublish, canPublishCode, canWritePosts, canReadMedia, canUploadMedia, initialSectionId }: Props) {
 	const [history, setHistory] = useState(() => createDocumentHistory(initialDocument));
 	const historyRef = useRef(history);
 	const [revision, setRevision] = useState(initialRevision);
@@ -149,13 +153,24 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const revisionHistoryRequestRef = useRef(0);
 	const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 	const [templateItems, setTemplateItems] = useState<TemplateSummary[]>([]);
+	const [sectionInsertion, setSectionInsertion] = useState<SectionInsertionTarget>({ targetId: null });
+	const [templateError, setTemplateError] = useState('');
+	const [templateActionBusy, setTemplateActionBusy] = useState(false);
+	const templateGeneration = useRef(0);
+	const templateActive = useRef(false);
+	const templateListAbort = useRef<AbortController | null>(null);
+	const templateActionAbort = useRef<AbortController | null>(null);
 	const [sharedSections, setSharedSections] = useState<SharedSectionSummary[]>([]);
 	const [sharedBusy, setSharedBusy] = useState(false);
 	const [sharedCreateTarget, setSharedCreateTarget] = useState<string | null>(null);
 	const [sharedName, setSharedName] = useState('');
+	const [libraryQuery, setLibraryQuery] = useState('');
+	const [libraryGroup, setLibraryGroup] = useState<'all' | 'layout' | 'content' | 'media' | 'commerce' | 'plugins'>('all');
 	const [templateQuery, setTemplateQuery] = useState('');
 	const [templateFilter, setTemplateFilter] = useState<'all' | 'page' | 'section' | 'saved'>('all');
-	const siteKits = useMemo(() => listSiteKits(), []);
+	const [siteKits, setSiteKits] = useState<SiteKit[]>([]);
+	const [siteKitsLoading, setSiteKitsLoading] = useState(false);
+	const siteKitsLoaded = useRef(false);
 	const [kitPrefix, setKitPrefix] = useState('');
 	const [kitStatus, setKitStatus] = useState('');
 	const [kitBusy, setKitBusy] = useState(false);
@@ -166,7 +181,7 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const [archivePrefix, setArchivePrefix] = useState('');
 	const [archiveStatus, setArchiveStatus] = useState('');
 	const [kitReview, setKitReview] = useState<KitReviewState | null>(null);
-	const [templatePreview, setTemplatePreview] = useState<{ name: string; document: PageDocument } | null>(null);
+	const [templatePreview, setTemplatePreview] = useState<TemplatePreview | null>(null);
 	const [presetDialog, setPresetDialog] = useState<{ preset: BuilderPluginPreset; values: Record<string, string>; error: string } | null>(null);
 	const [processorDialog, setProcessorDialog] = useState<{ processor: WasmProcessorSummary; values: Record<string, string>; error: string } | null>(null);
 	const [processorBusy, setProcessorBusy] = useState(false);
@@ -195,6 +210,13 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const ranges = breakpointRanges(document);
 	useEffect(() => { if (!ranges.some((range) => range.id === viewport)) setViewport('desktop'); }, [document.breakpoints, viewport]);
 	const selectedNode = selectedId ? findNode(document.nodes, selectedId) : null;
+	const paletteNeedle = normalizeLibrarySearch(libraryQuery.trim());
+	const paletteMatches = (...parts: string[]) => !paletteNeedle || normalizeLibrarySearch(parts.join(' ')).includes(paletteNeedle);
+	const paletteDefinitions = COMPONENT_LIST.filter((definition) => (definition.type !== 'GlobalCode' || canPublishCode) && (libraryGroup === 'all' || (libraryGroup === 'content' ? definition.category === 'content' || definition.category === 'action' : definition.category === libraryGroup)) && paletteMatches(definition.label, definition.description));
+	const paletteGrid = (libraryGroup === 'all' || libraryGroup === 'layout') && paletteMatches('شبکه', 'بخش Grid با ستون‌های واکنش‌گرا');
+	const palettePluginComponents = libraryGroup === 'all' || libraryGroup === 'plugins' ? pluginComponents.filter((component) => paletteMatches(component.label, 'مؤلفهٔ افزونه')) : [];
+	const palettePresets = libraryGroup === 'all' || libraryGroup === 'plugins' ? pluginPresets.filter((preset) => paletteMatches(preset.label, preset.description)) : [];
+	const paletteProcessors = libraryGroup === 'all' || libraryGroup === 'plugins' ? pluginProcessors.filter((processor) => paletteMatches(processor.label, processor.description)) : [];
 	const [previewOpen, setPreviewOpen] = useState(false);
 	const [elementorImport, setElementorImport] = useState<ElementorImport | null>(null);
 	const [elementorSource, setElementorSource] = useState('');
@@ -218,27 +240,36 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const [wxrPostStatus, setWxrPostStatus] = useState('');
 	const [wxrPostId, setWxrPostId] = useState('');
 	const [wxrPostUncertain, setWxrPostUncertain] = useState(false);
+	const [migrationTools, setMigrationTools] = useState<typeof import('../../lib/migrations/browser-tools.ts') | null>(null);
+	const migrationToolsRef = useRef(migrationTools);
+	async function loadMigrationTools() {
+		if (migrationToolsRef.current) return migrationToolsRef.current;
+		const tools = await import('../../lib/migrations/browser-tools.ts');
+		migrationToolsRef.current = tools;
+		setMigrationTools(tools);
+		return tools;
+	}
 	const wxrReports = useMemo(() => {
-		if (!wxrImport) return [];
+		if (!wxrImport || !migrationTools) return [];
 		return wxrImport.inspection.items.map((item) => {
-			try { const result = convertWxrItem(item, createEmptyPageDocument('wxr-preview'), wxrImport.preferElementor, wxrImport.mediaMap); return { source: result.source, messages: result.warnings.map((warning) => `${warning.sourceId}: ${warning.message}`), error: '' }; }
+			try { const result = migrationTools.convertWxrItem(item, createEmptyPageDocument('wxr-preview'), wxrImport.preferElementor, wxrImport.mediaMap); return { source: result.source, messages: result.warnings.map((warning) => `${warning.sourceId}: ${warning.message}`), error: '' }; }
 			catch (error) { return { source: wxrImport.preferElementor && item.elementorData ? 'elementor' as const : 'html' as const, messages: [], error: error instanceof Error ? error.message : 'تبدیل محتوا انجام نشد.' }; }
 		});
-	}, [wxrImport?.inspection, wxrImport?.preferElementor, wxrImport?.mediaMap]);
+	}, [migrationTools, wxrImport?.inspection, wxrImport?.preferElementor, wxrImport?.mediaMap]);
 	const wxrPostPreview = useMemo(() => {
 		const item = wxrImport?.inspection.items[wxrImport.index];
-		if (!item || item.type !== 'post') return null;
-		try { return { draft: wxrPostToBlogDraft(item, wxrImport?.mediaMap), error: '' }; }
+		if (!item || item.type !== 'post' || !migrationTools) return null;
+		try { return { draft: migrationTools.wxrPostToBlogDraft(item, wxrImport?.mediaMap), error: '' }; }
 		catch (error) { return { draft: null, error: error instanceof Error ? error.message : 'تبدیل نوشته انجام نشد.' }; }
-	}, [wxrImport?.inspection, wxrImport?.index, wxrImport?.mediaMap]);
+	}, [migrationTools, wxrImport?.inspection, wxrImport?.index, wxrImport?.mediaMap]);
 	const wxrBlogReports = useMemo(() => {
 		const items = wxrImport?.inspection.items.filter((item) => item.type === 'post') ?? [];
-		if (items.length > 20) return [];
+		if (items.length > 20 || !migrationTools) return [];
 		return items.map((item) => {
-			try { return { title: item.blogTitle ?? item.title, warnings: wxrPostToBlogDraft(item, wxrImport?.mediaMap).warnings, error: '' }; }
+			try { return { title: item.blogTitle ?? item.title, warnings: migrationTools.wxrPostToBlogDraft(item, wxrImport?.mediaMap).warnings, error: '' }; }
 			catch (error) { return { title: item.blogTitle ?? item.title, warnings: [], error: error instanceof Error ? error.message : 'تبدیل نوشته انجام نشد.' }; }
 		});
-	}, [wxrImport?.inspection, wxrImport?.mediaMap]);
+	}, [migrationTools, wxrImport?.inspection, wxrImport?.mediaMap]);
 	const [wxrArchive, setWxrArchive] = useState<{ file: File; summary: WxrArchiveSummary } | null>(null);
 	const [wxrArchivePrefix, setWxrArchivePrefix] = useState('');
 	const [wxrArchivePreferElementor, setWxrArchivePreferElementor] = useState(false);
@@ -340,6 +371,24 @@ async function refreshRevisionHistory(): Promise<void> {
 
 	useEffect(() => events.on('document.changed', ({ document: changed }) => controllerRef.current?.schedule(changed)), [events]);
 
+	// A marketplace link opens a review state only; it never installs content.
+	useEffect(() => {
+		if (initialSectionId) {
+			void openTemplateLibrary({ sectionId: initialSectionId });
+			const url = new URL(window.location.href);
+			if (url.searchParams.get('section') === initialSectionId) {
+				url.searchParams.delete('section');
+				window.history.replaceState(window.history.state, '', url);
+			}
+		}
+		return () => {
+			templateActive.current = false;
+			templateGeneration.current += 1;
+			templateListAbort.current?.abort();
+			templateActionAbort.current?.abort();
+		};
+	}, [initialSectionId]);
+
 	function emitEditorEvent<K extends keyof EditorEventPayloads>(type: K, payload: EditorEventPayloads[K]): void {
 		const failures = events.emit(type, payload);
 		if (failures.length) setMessage(`پردازش رویداد ویرایشگر انجام نشد: ${failures[0].message}`);
@@ -391,7 +440,8 @@ async function refreshRevisionHistory(): Promise<void> {
 
 	function applyDocument(nextDocument: PageDocument, options: { selectionAfter?: string | null; group?: string } = {}): boolean {
 		const current = historyRef.current;
-		const next = commitDocument(current, nextDocument, 60, { selectionBefore: selectedId, ...options });
+		// nextDocument comes exclusively from the shared validated command boundary.
+		const next = commitValidatedDocument(current, nextDocument, 60, { selectionBefore: selectedId, ...options });
 		if (next === current) return false;
 		historyRef.current = next;
 		setHistory(next);
@@ -400,9 +450,9 @@ async function refreshRevisionHistory(): Promise<void> {
 		return true;
 	}
 
-	function runDocumentCommand(command: DocumentCommand, group?: string): boolean {
+	function runDocumentCommand(command: DocumentCommand, group?: string, onError: (message: string) => void = setMessage): boolean {
 		const result = executeDocumentCommand(historyRef.current.present, command);
-		if (!result.ok) { setMessage(result.error.message); return false; }
+		if (!result.ok) { onError(result.error.message); return false; }
 		const changed = applyDocument(result.document, { selectionAfter: result.selectedId === undefined ? selectedId : result.selectedId, group });
 		if (result.selectedId !== undefined) selectNode(result.selectedId);
 		if (changed && command.type === 'insert' && result.selectedId) emitEditorEvent('node.inserted', { nodeId: result.selectedId });
@@ -494,15 +544,12 @@ async function refreshRevisionHistory(): Promise<void> {
 	}
 
 	async function downloadTemplate(item: TemplateSummary): Promise<void> {
+		const request = beginTemplateRequest();
+		if (!request) return;
 		try {
-			let templateDocument = item.document;
-			if (!templateDocument) {
-				const response = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' } });
-				const result = await readResponse(response);
-				if (!response.ok || !result.template?.document) throw new Error(result.message || 'قالب برای خروجی آماده نشد.');
-				templateDocument = validatePageDocument(result.template.document);
-			}
-			const json = exportPageDocument(validatePageDocument(templateDocument));
+			const templateDocument = await loadTemplateDocument(item, request.controller.signal);
+			if (!isCurrentTemplateRequest(request)) return;
+			const json = exportPageDocument(templateDocument);
 			const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
 			const url = URL.createObjectURL(blob);
 			const anchor = window.document.createElement('a');
@@ -510,9 +557,8 @@ async function refreshRevisionHistory(): Promise<void> {
 			anchor.download = `novex-template-${item.id.replace(/[^a-z0-9_-]/gi, '-')}.json`;
 			anchor.click();
 			URL.revokeObjectURL(url);
-		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'خروجی قالب آماده نشد.');
-		}
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'خروجی قالب آماده نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function importDocument(file: File): Promise<void> {
@@ -535,8 +581,8 @@ async function refreshRevisionHistory(): Promise<void> {
 	async function inspectElementor(file: File): Promise<void> {
 		if (file.size > 1024 * 1024) { setMessage('حداکثر اندازهٔ فایل Elementor یک مگابایت است.'); return; }
 		try {
-			const source = await file.text();
-			const result = convertElementorJson(source, historyRef.current.present);
+			const [source, tools] = await Promise.all([file.text(), loadMigrationTools()]);
+			const result = tools.convertElementorJson(source, historyRef.current.present);
 			elementorMapRequest.current++; setElementorMapBusy(false); setElementorMediaStatus(''); setElementorSource(source);
 			setElementorImport(result);
 		} catch (error) {
@@ -613,26 +659,30 @@ async function refreshRevisionHistory(): Promise<void> {
 	async function inspectWordPress(file: File): Promise<void> {
 		if (file.size > 1024 * 1024) { setMessage('حداکثر اندازهٔ فایل WXR یک مگابایت است.'); return; }
 		try {
-			const xml = await file.text();
-			const inspection = inspectWxr(xml);
+			const [xml, tools] = await Promise.all([file.text(), loadMigrationTools()]);
+			const inspection = tools.inspectWxr(xml);
 			if (!inspection.items.length) throw new Error('صفحه یا نوشته‌ای در فایل پیدا نشد.');
 			wxrMapRequest.current++; setWxrMapBusy(false); setWxrMediaStatus('');
 			setWxrBulkStatus(''); setWxrBlogBulkStatus(''); setWxrBlogBulkIds([]); setWxrBlogBulkUncertain(false);
 			setWxrBulkPrefix('');
 			setWxrPostSlug(inspection.items[0].slug); setWxrPostStatus(''); setWxrPostId(''); setWxrPostUncertain(false);
 			let document: PageDocument | null = null; let conversionError = '';
-			try { document = convertWxrItem(inspection.items[0], historyRef.current.present).document; }
+			try { document = tools.convertWxrItem(inspection.items[0], historyRef.current.present).document; }
 			catch (error) { conversionError = error instanceof Error ? error.message : 'تبدیل مورد انتخابی انجام نشد.'; }
 			setWxrImport({ xml, inspection, index: 0, document, preferElementor: false, conversionError });
 		} catch (error) { setMessage(error instanceof Error ? error.message : 'بررسی فایل وردپرس انجام نشد.'); }
 	}
 	function selectWordPressItem(index: number, preferElementor = wxrImport?.preferElementor ?? false): void {
 		if (!wxrImport || !wxrImport.inspection.items[index] || wxrPostBusy || wxrBlogBulkBusy) return;
+		const tools = migrationToolsRef.current;
+		if (!tools) { setMessage('ابزار تبدیل هنوز بارگیری نشده است. دوباره تلاش کنید.'); return; }
 		if (index !== wxrImport.index) { setWxrPostSlug(wxrImport.inspection.items[index].slug); setWxrPostStatus(''); setWxrPostId(''); setWxrPostUncertain(false); }
-		try { setWxrImport({ ...wxrImport, index, preferElementor, document: convertWxrItem(wxrImport.inspection.items[index], historyRef.current.present, preferElementor, wxrImport.mediaMap).document, conversionError: '' }); }
+		try { setWxrImport({ ...wxrImport, index, preferElementor, document: tools.convertWxrItem(wxrImport.inspection.items[index], historyRef.current.present, preferElementor, wxrImport.mediaMap).document, conversionError: '' }); }
 		catch (error) { setWxrImport({ ...wxrImport, index, preferElementor, document: null, conversionError: error instanceof Error ? error.message : 'تبدیل مورد انتخابی انجام نشد.' }); }
 	}
 	async function inspectElementorMediaMap(file: File): Promise<void> {
+		const tools = migrationToolsRef.current;
+		if (!tools) { setElementorMediaStatus('ابزار تبدیل بارگیری نشده است.'); return; }
 		const request = ++elementorMapRequest.current;
 		setElementorMapBusy(true);
 		try {
@@ -640,15 +690,17 @@ async function refreshRevisionHistory(): Promise<void> {
 			const mapping = await readMigrationMediaMapFile(file);
 			await assertExistingMigrationMedia(mapping);
 			if (request !== elementorMapRequest.current) return;
-			const result = convertElementorJson(elementorSource, historyRef.current.present, mapping);
+			const result = tools.convertElementorJson(elementorSource, historyRef.current.present, mapping);
 			setElementorImport(result); setElementorMediaStatus(`${mapping.size.toLocaleString('fa-IR')} قانون بررسی شد؛ تطابق تصاویر را در پیش‌نمایش بازبینی کنید.`);
 		} catch (error) {
 			if (request !== elementorMapRequest.current) return;
-			try { setElementorImport(convertElementorJson(elementorSource, historyRef.current.present)); } catch { setElementorImport(null); }
+			try { setElementorImport(tools.convertElementorJson(elementorSource, historyRef.current.present)); } catch { setElementorImport(null); }
 			setElementorMediaStatus(`${error instanceof Error ? error.message : 'نگاشت معتبر نیست.'} نگاشت اعمال نشد.`);
 		} finally { if (request === elementorMapRequest.current) setElementorMapBusy(false); }
 	}
 	async function inspectWordPressMediaMap(file: File): Promise<void> {
+		const tools = migrationToolsRef.current;
+		if (!tools) { setWxrMediaStatus('ابزار تبدیل بارگیری نشده است.'); return; }
 		const request = ++wxrMapRequest.current;
 		setWxrMapBusy(true);
 		const inspection = wxrImport?.inspection;
@@ -658,13 +710,13 @@ async function refreshRevisionHistory(): Promise<void> {
 			await assertExistingMigrationMedia(mapping);
 			const current = wxrImportRef.current;
 			if (request !== wxrMapRequest.current || !current || current.inspection !== inspection) return;
-			const document = convertWxrItem(current.inspection.items[current.index], historyRef.current.present, current.preferElementor, mapping).document;
+			const document = tools.convertWxrItem(current.inspection.items[current.index], historyRef.current.present, current.preferElementor, mapping).document;
 			setWxrImport({ ...current, mediaMap: mapping, document, conversionError: '' });
 			setWxrMediaStatus(`${mapping.size.toLocaleString('fa-IR')} قانون بررسی شد؛ تطابق تصاویر را در پیش‌نمایش بازبینی کنید.`);
 		} catch (error) {
 			const current = wxrImportRef.current;
 			if (request !== wxrMapRequest.current || !current || current.inspection !== inspection) return;
-			try { setWxrImport({ ...current, mediaMap: undefined, document: convertWxrItem(current.inspection.items[current.index], historyRef.current.present, current.preferElementor).document, conversionError: '' }); }
+			try { setWxrImport({ ...current, mediaMap: undefined, document: tools.convertWxrItem(current.inspection.items[current.index], historyRef.current.present, current.preferElementor).document, conversionError: '' }); }
 			catch (conversionError) { setWxrImport({ ...current, mediaMap: undefined, document: null, conversionError: conversionError instanceof Error ? conversionError.message : 'تبدیل انجام نشد.' }); }
 			setWxrMediaStatus(`${error instanceof Error ? error.message : 'نگاشت معتبر نیست.'} نگاشت اعمال نشد.`);
 		} finally { if (request === wxrMapRequest.current) setWxrMapBusy(false); }
@@ -943,43 +995,86 @@ async function refreshRevisionHistory(): Promise<void> {
 		}
 	}
 
-	async function openTemplateLibrary(): Promise<void> {
-		const starters = listStarterTemplates().map((template) => ({
+	function closeTemplatePreview(): void {
+		templateActionAbort.current?.abort();
+		templateActionAbort.current = null;
+		setTemplateActionBusy(false);
+		setTemplateError('');
+		setTemplatePreview(null);
+	}
+
+	function closeTemplateLibrary(): void {
+		templateActive.current = false;
+		templateGeneration.current += 1;
+		templateListAbort.current?.abort();
+		templateActionAbort.current?.abort();
+		templateListAbort.current = null;
+		templateActionAbort.current = null;
+		setTemplateActionBusy(false);
+		setTemplatePreview(null);
+		setTemplateDialogOpen(false);
+	}
+
+	async function openTemplateLibrary(options: { target?: SectionInsertionTarget; sectionId?: string } = {}): Promise<void> {
+		templateListAbort.current?.abort();
+		templateActionAbort.current?.abort();
+		templateActionAbort.current = null;
+		setTemplateActionBusy(false);
+		templateActive.current = true;
+		const generation = ++templateGeneration.current;
+		const controller = new AbortController();
+		templateListAbort.current = controller;
+		const starters = listStarterTemplateSummaries().map((template) => ({
 			id: template.id,
 			name: template.label,
 			description: template.description,
 			source: 'starter' as const,
 			kind: template.kind,
-			document: template.document,
-		})).sort((a, b) => Number(b.id.endsWith('-landing')) - Number(a.id.endsWith('-landing')) || Number(b.kind === 'page') - Number(a.kind === 'page'));
+			...('image' in template && typeof template.image === 'string' ? { image: template.image } : {}),
+			...('category' in template && typeof template.category === 'string' ? { category: template.category } : {}),
+		})).sort((a, b) => {
+			const priority = (item: { kind: 'page' | 'section'; image?: string; category?: string }) => item.kind === 'page' && item.image ? 4 : item.kind === 'section' && item.category ? 3 : item.kind === 'page' ? 2 : item.image ? 1 : 0;
+			return priority(b) - priority(a);
+		});
+		const currentNodes = historyRef.current.present.nodes;
+		const selectedRoot = selectedId ? findNodePath(currentNodes, selectedId)?.[0] : undefined;
+		const anchor = selectedRoot ?? currentNodes.at(-1);
+		setSectionInsertion(options.target ?? (anchor ? { targetId: anchor.id, placement: 'after' } : { targetId: null }));
+		const requested = options.sectionId ? starters.find((item) => item.id === options.sectionId && item.kind === 'section') : undefined;
 		setTemplateItems(starters);
-		setTemplateQuery('');
-		setTemplateFilter('all');
+		setTemplateQuery(requested?.name ?? '');
+		setTemplateFilter(options.target || requested ? 'section' : 'all');
+		setTemplateError(options.sectionId && !requested ? 'بخش انتخاب‌شده پیدا نشد.' : '');
 		setTemplateDialogOpen(true);
 		setTemplateLoading(true);
-		void loadSharedSections();
+		void loadSharedSections(generation, controller.signal);
 		try {
-			const response = await fetch('/cms/api/builder/templates', { headers: { accept: 'application/json' } });
+			const response = await fetch('/cms/api/builder/templates', { headers: { accept: 'application/json' }, signal: controller.signal });
 			const result = await readResponse(response);
+			if (!templateActive.current || generation !== templateGeneration.current || controller.signal.aborted) return;
 			if (!response.ok) throw new Error(result.message || 'خواندن قالب‌ها ممکن نشد.');
 			if (!result.templates) throw new Error('پاسخ قالب‌ها معتبر نیست.');
 			const saved = result.templates.filter((item) => item.source === 'saved');
 			setTemplateItems([...starters, ...saved]);
 		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'خواندن قالب‌ها ممکن نشد.');
+			if (templateActive.current && generation === templateGeneration.current && !controller.signal.aborted) setTemplateError(error instanceof Error ? error.message : 'خواندن قالب‌ها ممکن نشد.');
 		} finally {
-			setTemplateLoading(false);
+			if (templateListAbort.current === controller) { templateListAbort.current = null; setTemplateLoading(false); }
 		}
 	}
 
-	async function loadSharedSections(): Promise<void> {
+	async function loadSharedSections(generation?: number, signal?: AbortSignal): Promise<void> {
+		const current = () => generation === undefined || (templateActive.current && generation === templateGeneration.current && !signal?.aborted);
 		try {
-			const response = await fetch('/cms/api/builder/sections', { headers: { accept: 'application/json' } });
+			const response = await fetch('/cms/api/builder/sections', { headers: { accept: 'application/json' }, signal });
 			const result = await readResponse(response);
+			if (!current()) return;
 			if (!response.ok) throw new Error(result.message || 'خواندن بخش‌های مشترک ممکن نشد.');
 			if (!result.sections) throw new Error('پاسخ بخش‌های مشترک معتبر نیست.');
 			setSharedSections(result.sections);
-		} catch (error) { setMessage(error instanceof Error ? error.message : 'خواندن بخش‌های مشترک ممکن نشد.'); }
+		} catch (error) {
+			if (current()) (generation === undefined ? setMessage : setTemplateError)(error instanceof Error ? error.message : 'خواندن بخش‌های مشترک ممکن نشد.');
+		}
 	}
 
 	/** Only attach a server baseline if the local node did not change during the request. */
@@ -1024,15 +1119,20 @@ async function refreshRevisionHistory(): Promise<void> {
 	}
 
 	async function insertShared(section: SharedSectionSummary): Promise<void> {
+		const request = beginTemplateRequest();
+		if (!request) return;
+		const target = sectionInsertion;
 		try {
-			const response = await fetch(`/cms/api/builder/sections/${encodeURIComponent(section.id)}`, { headers: { accept: 'application/json' } });
+			const response = await fetch(`/cms/api/builder/sections/${encodeURIComponent(section.id)}`, { headers: { accept: 'application/json' }, signal: request.controller.signal });
 			const result = await readResponse(response);
+			if (!isCurrentTemplateRequest(request)) return;
 			if (!response.ok || !result.section?.fragment) throw new Error(result.message || 'خواندن بخش مشترک ممکن نشد.');
 			const fragment = validatePageDocument(result.section.fragment);
-			if (!runDocumentCommand({ type: 'insert-fragment', fragment, targetId: selectedId })) return;
-			setTemplateDialogOpen(false);
+			if (!insertAtSectionTarget(fragment, target)) return;
+			closeTemplateLibrary();
 			setMessage(`بخش مشترک «${section.name}» به پیش‌نویس اضافه شد؛ انتشار مستقل است.`);
-		} catch (error) { setMessage(error instanceof Error ? error.message : 'افزودن بخش مشترک ممکن نشد.'); }
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'افزودن بخش مشترک ممکن نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function syncShared(section: Pick<SharedSectionSummary, 'id' | 'revision'>): Promise<void> {
@@ -1046,7 +1146,7 @@ async function refreshRevisionHistory(): Promise<void> {
 			if (!response.ok) throw new Error(result.message || 'همگام‌سازی انجام نشد.');
 			if (!result.pages) throw new Error('پاسخ همگام‌سازی معتبر نیست.');
 			const pages = result.pages;
-			setTemplateDialogOpen(false);
+			closeTemplateLibrary();
 			if (pages.some((page) => page.slug === slug)) {
 				if (JSON.stringify(historyRef.current.present) === before && !controllerRef.current?.isDirty()) window.location.reload();
 				else setMessage('همگام‌سازی ذخیره شد، اما تغییر محلی تازه دارید؛ از سند خروجی بگیرید و نسخهٔ سرور را بررسی کنید.');
@@ -1058,6 +1158,17 @@ async function refreshRevisionHistory(): Promise<void> {
 	function detachShared(node: ContainerNode): void {
 		const { sharedSection: _reference, ...independent } = node;
 		if (runDocumentCommand({ type: 'replace', id: node.id, node: independent })) setMessage('پیوند بخش قطع شد؛ محتوای مستقل حفظ شد.');
+	}
+
+	async function loadSiteKits(): Promise<void> {
+		if (siteKitsLoaded.current || siteKitsLoading) return;
+		setSiteKitsLoading(true);
+		try {
+			const { listSiteKits } = await import('../../lib/builder/site-kits.ts');
+			setSiteKits(listSiteKits());
+			siteKitsLoaded.current = true;
+		} catch (error) { setKitStatus(error instanceof Error ? error.message : 'بارگیری بسته‌های آماده ممکن نشد.'); }
+		finally { setSiteKitsLoading(false); }
 	}
 
 	async function installKit(id: string): Promise<void> {
@@ -1131,6 +1242,7 @@ async function refreshRevisionHistory(): Promise<void> {
 		setPackageKit(null); setPackageStatus('');
 		try {
 			if (file.size > 2_900_000) throw new Error('حجم بسته نباید بیش از ۲٫۹ مگابایت باشد.');
+			const { validateSiteKit } = await import('../../lib/builder/site-kits.ts');
 			const kit = validateSiteKit(JSON.parse(await file.text()));
 			setPackageKit(kit);
 			setPackageStatus('بسته برای بررسی آماده است؛ فایل‌های رسانه باید از قبل در کتابخانه موجود باشند.');
@@ -1206,9 +1318,11 @@ async function refreshRevisionHistory(): Promise<void> {
 
 	async function installWordPressBlogDrafts(): Promise<void> {
 		if (!wxrImport || !canWritePosts || wxrPostBusy || wxrBlogBulkBusy || wxrBulkBusy || wxrMapBusy || wxrBlogBulkIds.length || wxrBlogBulkUncertain) return;
+		const tools = migrationToolsRef.current;
+		if (!tools) { setWxrBlogBulkStatus('ابزار تبدیل بارگیری نشده است.'); return; }
 		const prefix = wxrBulkPrefix.trim();
 		let drafts;
-		try { drafts = wxrToBlogDrafts(wxrImport.inspection, prefix, wxrImport.mediaMap); }
+		try { drafts = tools.wxrToBlogDrafts(wxrImport.inspection, prefix, wxrImport.mediaMap); }
 		catch (error) { setWxrBlogBulkStatus(error instanceof Error ? error.message : 'تبدیل نوشته‌ها ممکن نشد.'); return; }
 		if (!window.confirm(`${drafts.length.toLocaleString('fa-IR')} نوشتهٔ مستقل با نامک عددی فقط به‌صورت پیش‌نویس ساخته می‌شوند. صفحه‌های وردپرس در این مسیر وارد نمی‌شوند. ادامه می‌دهید؟`)) return;
 		setWxrBlogBulkBusy(true); setWxrBlogBulkStatus('در حال ساخت نوشته‌های پیش‌نویس…');
@@ -1230,8 +1344,10 @@ async function refreshRevisionHistory(): Promise<void> {
 
 	async function installWordPressDrafts(): Promise<void> {
 		if (!wxrImport || wxrBulkBusy || wxrBlogBulkBusy || wxrPostBusy || wxrMapBusy) return;
+		const tools = migrationToolsRef.current;
+		if (!tools) { setWxrBulkStatus('ابزار تبدیل بارگیری نشده است.'); return; }
 		let documents: PageDocument[];
-		try { documents = wxrToDraftPages(wxrImport.inspection, wxrBulkPrefix.trim(), wxrImport.preferElementor, wxrImport.mediaMap); }
+		try { documents = tools.wxrToDraftPages(wxrImport.inspection, wxrBulkPrefix.trim(), wxrImport.preferElementor, wxrImport.mediaMap); }
 		catch (error) { setWxrBulkStatus(error instanceof Error ? error.message : 'آماده‌سازی صفحه‌ها ممکن نشد.'); return; }
 		if (!window.confirm(`${documents.length.toLocaleString('fa-IR')} صفحه و نوشتهٔ فایل به صفحه‌های جدید پیش‌نویس تبدیل می‌شوند. در صورت تداخل نامک هیچ صفحه‌ای ساخته نمی‌شود و هیچ صفحه‌ای منتشر نمی‌شود. ادامه می‌دهید؟`)) return;
 		setWxrBulkBusy(true); setWxrBulkStatus('در حال ساخت پیش‌نویس‌ها…');
@@ -1303,71 +1419,104 @@ async function refreshRevisionHistory(): Promise<void> {
 		setPresetDialog({ preset, values: Object.fromEntries(preset.parameters.map((field) => [field.key, field.defaultValue])), error: '' });
 	}
 
-	async function loadTemplateDocument(item: TemplateSummary): Promise<PageDocument> {
+	type TemplateRequest = { controller: AbortController; generation: number };
+	function beginTemplateRequest(): TemplateRequest | null {
+		if (!templateActive.current || templateActionAbort.current) return null;
+		const controller = new AbortController();
+		templateActionAbort.current = controller;
+		setTemplateActionBusy(true);
+		setTemplateError('');
+		return { controller, generation: templateGeneration.current };
+	}
+	function isCurrentTemplateRequest(request: TemplateRequest): boolean {
+		return templateActive.current && !request.controller.signal.aborted && request.generation === templateGeneration.current && templateActionAbort.current === request.controller;
+	}
+	function finishTemplateRequest(request: TemplateRequest): void {
+		if (templateActionAbort.current === request.controller) { templateActionAbort.current = null; setTemplateActionBusy(false); }
+	}
+	async function loadTemplateDocument(item: TemplateSummary, signal?: AbortSignal): Promise<PageDocument> {
 		if (item.document) return validatePageDocument(item.document);
-		const response = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' } });
+		const response = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' }, signal });
 		const result = await readResponse(response);
 		if (!response.ok || !result.template?.document) throw new Error(result.message || 'قالب بارگیری نشد.');
 		return validatePageDocument(result.template.document);
 	}
 
+	function insertAtSectionTarget(fragment: PageDocument, target: SectionInsertionTarget): boolean {
+		const current = historyRef.current.present;
+		const location = target.targetId ? findNodeLocation(current.nodes, target.targetId) : null;
+		// A gap must remain a root gap. Do not silently nest into a moved target
+		// or append elsewhere when the target disappeared during a request.
+		if ((target.targetId && (!location || location.parentId !== null)) || (!target.targetId && current.nodes.length)) {
+			setTemplateError('جای درج تغییر کرده است. کتابخانه را ببندید و محل تازه‌ای انتخاب کنید.');
+			return false;
+		}
+		return runDocumentCommand({ type: 'insert-fragment', fragment, targetId: target.targetId, placement: target.placement }, undefined, setTemplateError);
+	}
+
 	async function previewTemplate(item: TemplateSummary): Promise<void> {
-		try { setTemplatePreview({ name: item.name, document: await loadTemplateDocument(item) }); }
-		catch (error) { setMessage(error instanceof Error ? error.message : 'پیش‌نمایش قالب آماده نشد.'); }
+		const request = beginTemplateRequest();
+		if (!request) return;
+		try {
+			const document = await loadTemplateDocument(item, request.controller.signal);
+			if (isCurrentTemplateRequest(request)) setTemplatePreview({ name: item.name, document, item: { ...item, document } });
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'پیش‌نمایش قالب آماده نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function insertTemplate(item: TemplateSummary): Promise<void> {
+		const request = beginTemplateRequest();
+		if (!request) return;
+		const target = sectionInsertion;
 		try {
-			const fragment = await loadTemplateDocument(item);
-			if (!runDocumentCommand({ type: 'insert-fragment', fragment, targetId: selectedId })) return;
-			setTemplateDialogOpen(false);
+			const fragment = await loadTemplateDocument(item, request.controller.signal);
+			if (!isCurrentTemplateRequest(request) || !insertAtSectionTarget(fragment, target)) return;
+			closeTemplateLibrary();
 			emitEditorEvent('template.installed', { templateId: item.id, mode: 'copy' });
 			setMessage(`رونوشت مستقل «${item.name}» اضافه شد؛ تم صفحه تغییر نکرد.`);
-		} catch (error) { setMessage(error instanceof Error ? error.message : 'افزودن بخش انجام نشد.'); }
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'افزودن بخش انجام نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function useTemplate(item: TemplateSummary): Promise<void> {
-		if (historyRef.current.present.nodes.length && !window.confirm('محتوای فعلی با قالب جایگزین می‌شود. ادامه می‌دهید؟')) return;
+		if (item.kind === 'section' || !templateActive.current || templateActionAbort.current) return;
+		const before = historyRef.current.present;
+		if (before.nodes.length && !window.confirm('محتوای فعلی با قالب جایگزین می‌شود. ادامه می‌دهید؟')) return;
+		const request = beginTemplateRequest();
+		if (!request) return;
 		try {
-			let templateDocument = item.document;
-			if (!templateDocument) {
-				const response = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' } });
-				const result = await readResponse(response);
-				if (!response.ok || !result.template?.document) throw new Error(result.message || 'قالب ذخیره‌شده بارگیری نشد.');
-				templateDocument = validatePageDocument(result.template.document);
-			}
-			const next = applyTemplate(templateDocument, historyRef.current.present);
-			if (!runDocumentCommand({ type: 'replace-document', document: next })) return;
-			setTemplateDialogOpen(false);
+			const templateDocument = await loadTemplateDocument(item, request.controller.signal);
+			if (!isCurrentTemplateRequest(request)) return;
+			if (historyRef.current.present !== before) { setTemplateError('صفحه هنگام بارگیری تغییر کرد؛ برای جلوگیری از جایگزینی ناخواسته دوباره تلاش کنید.'); return; }
+			const next = applyTemplate(templateDocument, before);
+			if (!runDocumentCommand({ type: 'replace-document', document: next }, undefined, setTemplateError)) return;
+			closeTemplateLibrary();
 			emitEditorEvent('template.installed', { templateId: item.id, mode: 'replace' });
 			setMessage(`قالب «${item.name}» روی صفحه اعمال شد.`);
-		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'اعمال قالب انجام نشد.');
-		}
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'اعمال قالب انجام نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function duplicateTemplate(item: TemplateSummary): Promise<void> {
+		const request = beginTemplateRequest();
+		if (!request) return;
 		try {
-			let templateDocument = item.document;
-			if (!templateDocument) {
-				const readResponseValue = await fetch(`/cms/api/builder/templates/${encodeURIComponent(item.id)}`, { headers: { accept: 'application/json' } });
-				const result = await readResponse(readResponseValue);
-				if (!readResponseValue.ok || !result.template?.document) throw new Error(result.message || 'قالب برای رونوشت آماده نشد.');
-				templateDocument = validatePageDocument(result.template.document);
-			}
+			const templateDocument = await loadTemplateDocument(item, request.controller.signal);
+			if (!isCurrentTemplateRequest(request)) return;
 			const name = `${item.name.slice(0, 52)} (نسخه)`;
 			const response = await fetch('/cms/api/builder/templates', {
-				method: 'POST',
+				method: 'POST', signal: request.controller.signal,
 				headers: { 'content-type': 'application/json', accept: 'application/json' },
-				body: JSON.stringify({ name, document: validatePageDocument(templateDocument) }),
+				body: JSON.stringify({ name, document: templateDocument }),
 			});
 			const result = await readResponse(response);
-			if (!response.ok) throw new Error(result.message || 'رونوشت قالب ذخیره نشد.');
-			setMessage(`رونوشت «${name}» به کتابخانه افزوده شد.`);
-			await openTemplateLibrary();
-		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'رونوشت قالب انجام نشد.');
-		}
+			if (!isCurrentTemplateRequest(request)) return;
+			if (!response.ok || !result.template?.id) throw new Error(result.message || 'رونوشت قالب ذخیره نشد.');
+			setTemplateItems((items) => [...items, { id: result.template!.id!, name, description: 'قالب ذخیره‌شدهٔ شما', source: 'saved' }]);
+			setTemplateQuery('');
+			setTemplateFilter('saved');
+		} catch (error) { if (isCurrentTemplateRequest(request)) setTemplateError(error instanceof Error ? error.message : 'رونوشت قالب انجام نشد.'); }
+		finally { finishTemplateRequest(request); }
 	}
 
 	async function saveAsTemplate(): Promise<void> {
@@ -1519,22 +1668,29 @@ async function refreshRevisionHistory(): Promise<void> {
 					<button className="builder-template-shortcut" type="button" data-testid="open-template-library" onClick={() => void openTemplateLibrary()}>
 						<span aria-hidden="true">✦</span><span><strong>شروع با طرح آماده</strong><small>صفحه‌ها و بخش‌های قابل ویرایش</small></span><span aria-hidden="true">←</span>
 					</button>
+					<div className="builder-library-controls">
+						<label className="builder-library-search"><span className="sr-only">جست‌وجوی عناصر صفحه</span><input type="search" value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="جست‌وجوی عنصر یا بخش…" /></label>
+						<div className="builder-library-groups" role="group" aria-label="دستهٔ عناصر">
+							{([['all', 'همه'], ['layout', 'چیدمان'], ['content', 'محتوا'], ['media', 'رسانه'], ['commerce', 'فروشگاه'], ['plugins', 'افزونه‌ها']] as const).map(([group, label]) => <button key={group} type="button" aria-pressed={libraryGroup === group} onClick={() => setLibraryGroup(group)}>{label}</button>)}
+						</div>
+					</div>
 					<div className="builder-library" aria-label="عناصر قابل افزودن">
-						{COMPONENT_LIST.filter((definition) => definition.type !== 'GlobalCode' || canPublishCode).map((definition) => (
+						{paletteDefinitions.map((definition) => (
 							<button className="builder-component-card" type="button" key={definition.type} data-testid={`add-component-${definition.type.toLowerCase()}`} draggable onDragStart={(event) => startPaletteDrag(event, definition.type)} onDragEnd={() => setDragOverId(null)} onClick={() => addComponent(definition.type)} title={`${definition.documentation} برای افزودن کلیک کنید یا به صفحه بکشید.`}>
 								<span className="builder-component-card__icon">{componentIcon(definition.type)}</span>
 								<span><strong>{definition.label}</strong><small>{definition.description}</small></span>
 								<span className="builder-component-card__add">+</span>
 							</button>
 						))}
-						<button className="builder-component-card" type="button" data-testid="add-component-grid" draggable onDragStart={(event) => startPaletteDrag(event, 'Container:grid')} onDragEnd={() => setDragOverId(null)} onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
+						{paletteGrid && <button className="builder-component-card" type="button" data-testid="add-component-grid" draggable onDragStart={(event) => startPaletteDrag(event, 'Container:grid')} onDragEnd={() => setDragOverId(null)} onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
 							<span className="builder-component-card__icon">▦</span>
 							<span><strong>شبکه</strong><small>بخش Grid با ستون‌های واکنش‌گرا</small></span>
 							<span className="builder-component-card__add">+</span>
-						</button>
-						{pluginComponents.map((component) => <button className="builder-component-card" type="button" key={`${component.pluginId}/${component.componentId}`} data-testid={`plugin-component-${component.componentId}`} onClick={() => insertPluginComponent(component)}><span className="builder-component-card__icon">◇</span><span><strong>{component.label}</strong><small>مؤلفهٔ افزونه · داده‌محور</small></span><span className="builder-component-card__add">+</span></button>)}
-						{pluginPresets.map((preset) => <button className="builder-component-card" type="button" key={preset.id} onClick={() => choosePluginPreset(preset)} title={preset.description}><span className="builder-component-card__icon">▦</span><span><strong>{preset.label}</strong><small>{preset.description}</small></span><span className="builder-component-card__add">+</span></button>)}
-						{pluginProcessors.map((processor) => <button className="builder-component-card" type="button" key={`${processor.packageId}/${processor.id}`} data-testid={`plugin-processor-${processor.id}`} onClick={() => choosePluginProcessor(processor)} title={processor.description}><span className="builder-component-card__icon">∑</span><span><strong>{processor.label}</strong><small>{processor.description}</small></span><span className="builder-component-card__add">+</span></button>)}
+						</button>}
+						{palettePluginComponents.map((component) => <button className="builder-component-card" type="button" key={`${component.pluginId}/${component.componentId}`} data-testid={`plugin-component-${component.componentId}`} onClick={() => insertPluginComponent(component)}><span className="builder-component-card__icon">◇</span><span><strong>{component.label}</strong><small>مؤلفهٔ افزونه · داده‌محور</small></span><span className="builder-component-card__add">+</span></button>)}
+						{palettePresets.map((preset) => <button className="builder-component-card" type="button" key={preset.id} onClick={() => choosePluginPreset(preset)} title={preset.description}><span className="builder-component-card__icon">▦</span><span><strong>{preset.label}</strong><small>{preset.description}</small></span><span className="builder-component-card__add">+</span></button>)}
+						{paletteProcessors.map((processor) => <button className="builder-component-card" type="button" key={`${processor.packageId}/${processor.id}`} data-testid={`plugin-processor-${processor.id}`} onClick={() => choosePluginProcessor(processor)} title={processor.description}><span className="builder-component-card__icon">∑</span><span><strong>{processor.label}</strong><small>{processor.description}</small></span><span className="builder-component-card__add">+</span></button>)}
+						{!paletteDefinitions.length && !paletteGrid && !palettePluginComponents.length && !palettePresets.length && !paletteProcessors.length && <p className="builder-library-empty" role="status">{libraryGroup === 'plugins' && !paletteNeedle ? 'افزونهٔ صفحه‌ساز فعالی وجود ندارد.' : 'عنصری پیدا نشد.'}</p>}
 					</div>
 					{selectedId ? (
 						<Breadcrumb path={findNodePath(document.nodes, selectedId) ?? []} onSelect={selectNode} />
@@ -1599,8 +1755,12 @@ async function refreshRevisionHistory(): Promise<void> {
 								</header>
 								<div className={`builder-preview-content${dragOverId === '__page__' ? ' builder-preview-content--drag-over' : ''}`} data-testid="builder-canvas" onClick={() => selectNode(null)} onDragOver={(event) => handleDragOver(event, null)} onDragLeave={() => setDragOverId(null)} onDrop={(event) => handleDrop(event, null)}>
 									{document.nodes.length ? <>
-										{document.nodes.map((node) => (
-											<PreviewNode key={node.id} document={document} node={node} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} viewport={viewport} onSelect={selectNode} onInlineEdit={updateInlineText} onDragStart={startDrag} onDragOver={handleDragOver} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />
+										<div className="builder-section-gap"><button type="button" data-testid={`canvas-insert-before-${document.nodes[0].id}`} aria-label="افزودن بخش پیش از نخستین بخش صفحه" onClick={(event) => { event.stopPropagation(); void openTemplateLibrary({ target: { targetId: document.nodes[0].id, placement: 'before' } }); }}><span aria-hidden="true">＋</span> افزودن بخش</button></div>
+										{document.nodes.map((node, index) => (
+											<Fragment key={node.id}>
+												<PreviewNode document={document} node={node} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} viewport={viewport} onSelect={selectNode} onInlineEdit={updateInlineText} onDragStart={startDrag} onDragOver={handleDragOver} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />
+												<div className="builder-section-gap"><button type="button" data-testid={`canvas-insert-after-${node.id}`} aria-label={`افزودن بخش پس از بخش ${index + 1}`} onClick={(event) => { event.stopPropagation(); void openTemplateLibrary({ target: { targetId: node.id, placement: 'after' } }); }}><span aria-hidden="true">＋</span> افزودن بخش</button></div>
+											</Fragment>
 										))}
 										<div className="builder-canvas-dropzone" data-testid="canvas-root-drop" onDragOver={(event) => handleDragOver(event, null)} onDrop={(event) => handleDrop(event, null)}>یک عنصر را برای افزودن به انتهای صفحه اینجا رها کنید</div>
 									</> : (
@@ -1747,9 +1907,9 @@ async function refreshRevisionHistory(): Promise<void> {
 				</div>
 			) : null}
 			{templateDialogOpen ? (
-				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplateDialogOpen(false); }}>
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeTemplateLibrary(); }}>
 					<section className="builder-modal builder-modal--templates" role="dialog" aria-modal="true" aria-labelledby="builder-template-title">
-						<header className="builder-modal__header"><div><h2 id="builder-template-title">کتابخانهٔ قالب‌ها</h2><p>قالب‌ها را روی همین صفحه اعمال کنید یا نمونهٔ خودتان را بازاستفاده کنید.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateDialogOpen(false)}>×</button></header>
+						<header className="builder-modal__header"><div><h2 id="builder-template-title">کتابخانهٔ قالب‌ها</h2><p>بخش‌ها را اضافه کنید یا یک صفحهٔ کامل را با تأیید جایگزین کنید.</p></div><button type="button" aria-label="بستن" onClick={closeTemplateLibrary}>×</button></header>
 						<div className="builder-template-browser">
 							<div className="builder-template-browser__intro"><div><span>کتابخانهٔ طراحی نووکس</span><h3>یک شروع خوب انتخاب کنید</h3><p>طرح‌ها از مؤلفه‌های واقعی ساخته شده‌اند؛ همهٔ متن‌ها، تصویرها و چیدمان قابل ویرایش‌اند.</p></div></div>
 							<div className="builder-template-filters">
@@ -1758,24 +1918,26 @@ async function refreshRevisionHistory(): Promise<void> {
 								</div>
 								<label className="builder-field builder-template-search"><span className="sr-only">جست‌وجوی قالب و بخش</span><input type="search" placeholder="جست‌وجوی طرح‌ها…" value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} /></label>
 							</div>
-							<p className="builder-template-note">تصویرها و متن‌های نمونه را پیش از انتشار با محتوای خود جایگزین کنید. محصولات فروشگاهی از فروشگاه واقعی خوانده می‌شوند.</p>
+							<p className="builder-template-note">{sectionInsertion.targetId ? `محل افزودن: ${sectionInsertion.placement === 'before' ? 'پیش' : 'پس'} از بخش انتخاب‌شده در سطح صفحه.` : 'محل افزودن: صفحهٔ خالی.'} تم صفحه حفظ می‌شود. محصولات از فروشگاه واقعی خوانده می‌شوند؛ متن‌ها و تصویرهای نمونه را پیش از انتشار بررسی کنید.</p>
+							{templateError ? <p className="builder-template-error" role="alert">{templateError}</p> : null}
 							<div className="builder-template-list">
-								{templateItems.filter((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).map((item) => (
+								{templateItems.filter((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && normalizeLibrarySearch(`${item.name} ${item.description}`).includes(normalizeLibrarySearch(templateQuery.trim()))).map((item) => (
 									<article className="builder-template-card" key={`${item.source}-${item.id}`} data-testid={`template-card-${item.id}`}>
 										<TemplateThumbnail item={item} />
 										<div className="builder-template-card__body"><span className="builder-template-card__tag">{item.source === 'saved' ? 'ذخیره‌شده' : item.kind === 'page' ? 'صفحهٔ کامل' : 'بخش آماده'}</span><h3>{item.name}</h3><p>{item.description}</p></div>
 										<div className="builder-template-card__actions">
-											<button type="button" onClick={() => void previewTemplate(item)}>پیش‌نمایش</button>
-											<button type="button" onClick={() => void insertTemplate(item)} title="افزودن به محتوای فعلی بدون تغییر تم">افزودن رونوشت</button>
-											<button className="builder-template-card__use" type="button" onClick={() => void useTemplate(item)} title="جایگزینی محتوای صفحه با این طرح">استفاده</button>
-											<details className="builder-template-card__more"><summary>بیشتر</summary><div><button type="button" onClick={() => void downloadTemplate(item)}>خروجی JSON</button><button type="button" onClick={() => void duplicateTemplate(item)}>رونوشت</button></div></details>
+											<button type="button" disabled={templateActionBusy} onClick={() => void previewTemplate(item)}>پیش‌نمایش</button>
+											<button className={item.kind === 'section' ? 'builder-template-card__use' : undefined} type="button" disabled={templateActionBusy} onClick={() => void insertTemplate(item)} title="افزودن به محتوای فعلی بدون تغییر تم">{item.kind === 'section' ? 'افزودن بخش' : 'افزودن رونوشت'}</button>
+											{item.kind !== 'section' && <button className="builder-template-card__use" type="button" disabled={templateActionBusy} onClick={() => void useTemplate(item)} title="جایگزینی محتوای صفحه با این طرح">استفاده</button>}
+											<details className="builder-template-card__more"><summary>بیشتر</summary><div><button type="button" disabled={templateActionBusy} onClick={() => void downloadTemplate(item)}>خروجی JSON</button><button type="button" disabled={templateActionBusy} onClick={() => void duplicateTemplate(item)}>رونوشت</button></div></details>
 										</div>
 									</article>
 								))}
-								{!templateItems.some((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())) ? <p className="builder-template-empty">{templateLoading ? 'در حال بارگیری قالب‌ها…' : 'قالبی پیدا نشد.'}</p> : null}
+								{!templateItems.some((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && normalizeLibrarySearch(`${item.name} ${item.description}`).includes(normalizeLibrarySearch(templateQuery.trim()))) ? <p className="builder-template-empty">{templateLoading ? 'در حال بارگیری قالب‌ها…' : 'قالبی پیدا نشد.'}</p> : null}
 							</div>
 							<div className="builder-template-advanced"><h3>بسته‌ها و بخش‌های مشترک</h3>
-						<details className="builder-kit-panel"><summary>بستهٔ چندصفحه‌ای کسب‌وکار</summary>
+						<details className="builder-kit-panel" onToggle={(event) => { if (event.currentTarget.open) void loadSiteKits(); }}><summary>بستهٔ چندصفحه‌ای کسب‌وکار</summary>
+							{siteKitsLoading && <p role="status">در حال بارگیری بسته‌ها…</p>}
 							{siteKits.map((kit) => <div key={kit.id}><p>{kit.description}</p><p>نسخهٔ {kit.version} · فارسی، راست‌به‌چپ · مؤلفه‌ها: <bdi>{kit.requiredComponents.join(', ')}</bdi></p><p>پیوندهای میان صفحه‌ها با پیشوند انتخابی ساخته می‌شوند و تا انتشار هر مقصد در دسترس عمومی نیستند.</p><ul>{kit.pages.map((page) => <li key={page.suffix}>{page.title} <button type="button" onClick={() => setTemplatePreview({ name: page.title, document: page.document })}>پیش‌نمایش</button></li>)}</ul><label className="builder-field"><span>پیشوند نامک لاتین برای صفحه‌های تازه</span><input dir="ltr" value={kitPrefix} maxLength={50} onChange={(event) => setKitPrefix(event.target.value)} placeholder="my-business" /></label><button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void installKit(kit.id)}>ساخت پیش‌نویس‌های بسته</button> <button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void updateKit(kit.id)}>بررسی به‌روزرسانی بسته</button></div>)}
 							{kitStatus ? <p role="status">{kitStatus}</p> : null}
 						</details>
@@ -1793,11 +1955,11 @@ async function refreshRevisionHistory(): Promise<void> {
 						</details>
 						<details className="builder-kit-panel"><summary>بخش‌های مشترک</summary>
 							<p>هر صفحه یک تصویر ذخیره‌شده دارد. به‌روزرسانی منبع فقط با همگام‌سازی صریح به پیش‌نویس‌های بدون تعارض می‌رسد.</p>
-							{sharedSections.length ? <ul>{sharedSections.map((section) => <li key={section.id}>{section.name} · نسخهٔ {section.revision} <button type="button" disabled={sharedBusy} onClick={() => void insertShared(section)}>درج بخش مشترک</button> <button type="button" disabled={sharedBusy} onClick={() => void syncShared(section)}>همگام‌سازی پیش‌نویس‌ها</button></li>)}</ul> : <p>بخش مشترکی ثبت نشده است.</p>}
+							{sharedSections.length ? <ul>{sharedSections.map((section) => <li key={section.id}>{section.name} · نسخهٔ {section.revision} <button type="button" disabled={sharedBusy || templateActionBusy} onClick={() => void insertShared(section)}>درج بخش مشترک</button> <button type="button" disabled={sharedBusy || templateActionBusy} onClick={() => void syncShared(section)}>همگام‌سازی پیش‌نویس‌ها</button></li>)}</ul> : <p>بخش مشترکی ثبت نشده است.</p>}
 						</details>
 							</div>
 						</div>
-						<footer className="builder-modal__footer"><button type="button" onClick={() => { setTemplateDialogOpen(false); setSaveSelectedSection(false); setTemplateSaveOpen(true); }}>ذخیرهٔ صفحهٔ فعلی به‌عنوان قالب</button><button type="button" onClick={() => setTemplateDialogOpen(false)}>بستن</button></footer>
+						<footer className="builder-modal__footer"><button type="button" onClick={() => { closeTemplateLibrary(); setSaveSelectedSection(false); setTemplateSaveOpen(true); }}>ذخیرهٔ صفحهٔ فعلی به‌عنوان قالب</button><button type="button" onClick={closeTemplateLibrary}>بستن</button></footer>
 					</section>
 				</div>
 			) : null}
@@ -1823,11 +1985,11 @@ async function refreshRevisionHistory(): Promise<void> {
 				</div>
 			) : null}
 			{templatePreview ? (
-				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplatePreview(null); }}>
+				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeTemplatePreview(); }}>
 					<section className="builder-modal builder-elementor-dialog" role="dialog" aria-modal="true" aria-labelledby="builder-template-preview-title">
-						<header className="builder-modal__header"><h2 id="builder-template-preview-title">پیش‌نمایش {templatePreview.name}</h2><button type="button" aria-label="بستن" onClick={() => setTemplatePreview(null)}>×</button></header>
-						<div className="builder-elementor-report builder-elementor-preview" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) event.preventDefault(); }}><DocumentPreview document={templatePreview.document} viewport={viewport} /></div>
-						<footer className="builder-modal__footer"><button type="button" onClick={() => setTemplatePreview(null)}>بستن</button></footer>
+						<header className="builder-modal__header"><h2 id="builder-template-preview-title">پیش‌نمایش {templatePreview.name}</h2><button type="button" aria-label="بستن" onClick={closeTemplatePreview}>×</button></header>
+						<div className="builder-elementor-report builder-elementor-preview" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) event.preventDefault(); }}><DocumentPreview document={templatePreview.document} viewport={viewport} />{templateError ? <p className="builder-template-error" role="alert">{templateError}</p> : null}</div>
+						<footer className="builder-modal__footer"><button type="button" onClick={closeTemplatePreview}>بستن</button>{templatePreview.item && <button type="button" className="builder-toolbar-button--publish" disabled={templateActionBusy} onClick={() => void insertTemplate(templatePreview.item!)}>{templatePreview.item.kind === 'section' ? 'افزودن این بخش' : 'افزودن رونوشت'}</button>}</footer>
 					</section>
 				</div>
 			) : null}
@@ -2478,15 +2640,15 @@ function PageInspector({ document, onDescription, onTheme, onBreakpoints, onRemo
 					<label className="builder-field"><span>حداکثر عرض موبایل (px)</span><input dir="ltr" type="number" min={320} max={1535} step={1} value={mobileDraft} onChange={(event) => setMobileDraft(event.target.value)} onBlur={() => commitWidth('mobile', mobileDraft)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} /></label>
 					<label className="builder-field"><span>حداکثر عرض تبلت (px)</span><input dir="ltr" type="number" min={640} max={1920} step={1} value={tabletDraft} onChange={(event) => setTabletDraft(event.target.value)} onBlur={() => commitWidth('tablet', tabletDraft)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} /></label>
 					{breakpointError ? <p role="alert">{breakpointError}</p> : null}
-					<button type="button" onClick={() => { if (onBreakpoints(widths.custom?.length ? { ...BREAKPOINT_MAX_WIDTH, custom: widths.custom } : undefined)) setBreakpointError(''); }}>بازگردانی عرض‌های پیش‌فرض</button>
+					<button className="builder-inline-action" type="button" onClick={() => { if (onBreakpoints(widths.custom?.length ? { ...BREAKPOINT_MAX_WIDTH, custom: widths.custom } : undefined)) setBreakpointError(''); }}>بازگردانی عرض‌های پیش‌فرض</button>
 					{(widths.custom ?? []).map((entry) => <div className="builder-field-group" key={entry.id} data-testid={`breakpoint-${entry.id}`}>
 						<label className="builder-field"><span>نام اندازهٔ سفارشی</span><input key={entry.label} defaultValue={entry.label} maxLength={40} onBlur={(event) => { if (!updateCustom(entry.id, { label: event.currentTarget.value })) event.currentTarget.value = entry.label; }} /></label>
 						<label className="builder-field"><span>حداکثر عرض سفارشی (px)</span><input key={entry.maxWidth} dir="ltr" type="number" min={240} max={2560} defaultValue={entry.maxWidth} onBlur={(event) => { if (!updateCustom(entry.id, { maxWidth: Number(event.currentTarget.value) })) event.currentTarget.value = String(entry.maxWidth); }} /></label>
-						<button type="button" onClick={() => { if (window.confirm('این اندازه و همهٔ مقادیر واکنش‌گرای مربوط به آن از صفحه حذف می‌شوند. این تغییر قابل واگرد است. ادامه می‌دهید؟') && onRemoveBreakpoint(entry.id)) setBreakpointError(''); }}>حذف اندازهٔ سفارشی</button>
+						<button className="builder-inline-action builder-inline-action--danger" type="button" onClick={() => { if (window.confirm('این اندازه و همهٔ مقادیر واکنش‌گرای مربوط به آن از صفحه حذف می‌شوند. این تغییر قابل واگرد است. ادامه می‌دهید؟') && onRemoveBreakpoint(entry.id)) setBreakpointError(''); }}>حذف اندازهٔ سفارشی</button>
 					</div>)}
 					<label className="builder-field"><span>نام اندازهٔ تازه</span><input value={customLabel} maxLength={40} onChange={(event) => setCustomLabel(event.target.value)} /></label>
 					<label className="builder-field"><span>عرض اندازهٔ تازه (px)</span><input dir="ltr" type="number" min={240} max={2560} value={customWidth} onChange={(event) => setCustomWidth(event.target.value)} /></label>
-					<button type="button" data-testid="add-breakpoint" disabled={(widths.custom?.length ?? 0) >= MAX_CUSTOM_BREAKPOINTS} onClick={addCustom}>افزودن اندازهٔ سفارشی</button>
+					<button className="builder-inline-action" type="button" data-testid="add-breakpoint" disabled={(widths.custom?.length ?? 0) >= MAX_CUSTOM_BREAKPOINTS} onClick={addCustom}>افزودن اندازهٔ سفارشی</button>
 					<p className="builder-field-hint">اندازه‌ها از عرض بزرگ‌تر به کوچک‌تر ارث می‌برند. حذف اندازه، مقادیر همان اندازه را با تأیید حذف می‌کند.</p>
 				</section>
 				<section className="builder-field-group"><h3>سند</h3><p className="builder-field-hint">نسخهٔ طرحوارهٔ {document.schemaVersion} · {countNodes(document.nodes).toLocaleString('fa-IR')} مؤلفه</p></section>
@@ -2510,7 +2672,12 @@ function previewWidth(document: PageDocument, viewport: Breakpoint): number {
 	return Math.max(lower + 1, Math.min(preferred, maximum));
 }
 
+function normalizeLibrarySearch(value: string): string {
+	return value.toLocaleLowerCase('fa').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[\u064B-\u065F\u0670]/g, '');
+}
+
 function TemplateThumbnail({ item }: { item: TemplateSummary }) {
+	if (item.image) return <div className="builder-template-card__thumbnail builder-template-card__thumbnail--image" aria-hidden="true"><img src={item.image} alt="" loading="lazy" /><span>{item.kind === 'section' ? 'پیش‌نمایش بخش' : 'تصویر در طرح'}</span></div>;
 	if (item.source !== 'starter' || !item.document) return <div className="builder-template-card__thumbnail builder-template-card__thumbnail--saved"><span>◫</span><small>برای دیدن طرح، پیش‌نمایش را باز کنید.</small></div>;
 	const document = { ...item.document, nodes: item.document.nodes.slice(0, 2) };
 	return <div className="builder-template-card__thumbnail" aria-hidden="true" inert><div className="builder-template-card__snapshot"><DocumentPreview document={document} viewport="desktop" /></div></div>;
@@ -2671,7 +2838,7 @@ interface BuilderApiResponse {
 	publishedAt?: string | null;
 	publicUrl?: string;
 	id?: string;
-	template?: { document?: unknown };
+	template?: { id?: string; document?: unknown };
 	section?: { fragment?: unknown };
 	archiveKit?: ArchiveKitSummary;
 	kitReview?: KitReview;
@@ -2691,7 +2858,7 @@ const isWxrArchiveItem = (value: unknown): value is WxrArchiveItemSummary => res
 const isWxrArchiveSummary = (value: unknown): value is WxrArchiveSummary => responseRecord(value) && typeof value.version === 'string' && Array.isArray(value.items) && value.items.length <= 200 && value.items.every(isWxrArchiveItem) && ['ignored', 'assetCount', 'postAssetCount', 'matchedAttachments', 'unmatchedAttachments'].every((key) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (value[key] as number) >= 0);
 const isRevisionSummary = (value: unknown): value is RevisionSummary => responseRecord(value) && Number.isSafeInteger(value.revision) && typeof value.savedAt === 'string' && typeof value.title === 'string' && typeof value.nodeCount === 'number';
 const isMediaItem = (value: unknown): value is MediaPickerItem => responseRecord(value) && typeof value.name === 'string' && typeof value.assetRef === 'string' && typeof value.publicUrl === 'string' && typeof value.previewUrl === 'string' && typeof value.bytes === 'number' && typeof value.modifiedAt === 'string' && typeof value.mimeType === 'string' && typeof value.builtin === 'boolean' && (value.width === undefined || typeof value.width === 'number') && (value.height === undefined || typeof value.height === 'number') && (value.reused === undefined || typeof value.reused === 'boolean');
-const isTemplateSummary = (value: unknown): value is TemplateSummary => responseRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.description === 'string' && (value.source === 'starter' || value.source === 'saved') && value.document === undefined;
+const isTemplateSummary = (value: unknown): value is TemplateSummary => responseRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.description === 'string' && (value.source === 'starter' || value.source === 'saved') && (value.kind === undefined || value.kind === 'page' || value.kind === 'section') && (value.category === undefined || typeof value.category === 'string') && (value.image === undefined || (typeof value.image === 'string' && /^\/media\/[a-z0-9_/-]+\.jpg$/i.test(value.image))) && value.document === undefined;
 const isSectionSummary = (value: unknown): value is SharedSectionSummary => responseRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && Number.isSafeInteger(value.revision) && typeof value.updatedAt === 'string';
 const isPageSummary = (value: unknown): value is { slug: string } => responseRecord(value) && typeof value.slug === 'string';
 const isPostSummary = (value: unknown): value is { id: string } => responseRecord(value) && typeof value.id === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(value.id);
@@ -2714,7 +2881,7 @@ async function readResponse(response: Response): Promise<BuilderApiResponse> {
 		...(value.publishedAt === null || typeof value.publishedAt === 'string' ? { publishedAt: value.publishedAt } : {}),
 		...(typeof value.publicUrl === 'string' ? { publicUrl: value.publicUrl } : {}),
 		...(typeof value.id === 'string' ? { id: value.id } : {}),
-		...(responseRecord(value.template) ? { template: { document: value.template.document } } : {}),
+		...(responseRecord(value.template) ? { template: { document: value.template.document, ...(typeof value.template.id === 'string' ? { id: value.template.id } : {}) } } : {}),
 		...(responseRecord(value.section) ? { section: { fragment: value.section.fragment } } : {}),
 		...(isArchiveKitSummary(value.kit) ? { archiveKit: value.kit } : {}),
 		...(isKitReview(value.review) ? { kitReview: value.review } : {}),

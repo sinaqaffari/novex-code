@@ -1,6 +1,6 @@
 import {
 	addNode, deleteNode, duplicateNode, insertDocumentFragment, moveNode, moveNodeBy, moveNodeToRoot, removeCustomBreakpoint, replaceNode, setNodeHiddenAtBreakpoint,
-	updateNodeProps, updateNodeStyles, updatePageMetadata, type MovePlacement,
+	updateNodeProps, updateNodeStyles, updatePageMetadata, type FragmentPlacement, type MovePlacement,
 } from './operations.ts';
 import { DocumentValidationError, validatePageDocument } from './document.ts';
 import type { Breakpoint, CustomBreakpointId, BuilderComponentType, BuilderNode, NodeStyles, PageDocument } from './types.ts';
@@ -15,7 +15,7 @@ export type DocumentCommand =
 	| { type: 'reorder'; id: string; direction: -1 | 1 }
 	| { type: 'replace'; id: string; node: BuilderNode }
 	| { type: 'replace-document'; document: PageDocument }
-	| { type: 'insert-fragment'; fragment: PageDocument; targetId: string | null }
+	| { type: 'insert-fragment'; fragment: PageDocument; targetId: string | null; placement?: FragmentPlacement }
 	| { type: 'props'; id: string; patch: Record<string, unknown> }
 	| { type: 'styles'; id: string; patch: Partial<NodeStyles>; breakpoint: Breakpoint }
 	| { type: 'visibility'; id: string; breakpoint: Breakpoint; hidden: boolean }
@@ -52,7 +52,7 @@ export function executeDocumentCommand(document: PageDocument, command: Document
 				return { ok: true, document: next, selectedId: null };
 			}
 			case 'insert-fragment': {
-				const result = insertDocumentFragment(document, command.fragment, command.targetId);
+				const result = insertDocumentFragment(document, command.fragment, command.targetId, undefined, command.placement);
 				return { ok: true, document: result.document, selectedId: result.firstId };
 			}
 			case 'props': return { ok: true, document: updateNodeProps(document, command.id, command.patch) };

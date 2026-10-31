@@ -1,14 +1,14 @@
 ---
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import { faDate, faMoney, faNumber, faPercent } from '../../../lib/cms/fa';
-import { readSettings } from '../../../lib/cms/settings';
+import { requestCommerce, requestSettings } from '../../../lib/cms/request-data';
 import { buildDashboardMetrics } from '../../../lib/commerce/stats';
 import { orderStatusLabel, orderStatusTone } from '../../../lib/commerce/types';
 
 export const prerender = false;
 
-const settings = await readSettings();
-const metrics = await buildDashboardMetrics(30);
+const [settings, snapshot] = await Promise.all([requestSettings(Astro.locals), requestCommerce(Astro.locals)]);
+const metrics = await buildDashboardMetrics(30, snapshot);
 const currency = settings.currency;
 
 const maxBar = Math.max(...metrics.series.map((point) => point.total), 1);
@@ -187,20 +187,20 @@ const endedToday = metrics.series.at(-1)?.date ?? '';
 	.kpi__value { font-size: 1.5rem; font-weight: 800; color: var(--ink); }
 	.kpi__foot { font-size: 0.8rem; color: var(--muted); }
 
-	.revenue-chart { max-width: 100%; overflow-x: auto; }
+	.revenue-chart { max-width: 100%; margin: 1.2rem 1.2rem 0; overflow-x: auto; }
 	.revenue-chart__inner { min-width: 36rem; }
 	.revenue-chart__plot { height: 9rem; display: flex; align-items: flex-end; gap: 0.35rem; padding-inline: 0.25rem; border-block-end: 1px solid var(--line); }
 	.revenue-chart__column { height: 100%; min-width: 0; flex: 1 0 0; display: flex; align-items: flex-end; justify-content: center; }
-	.revenue-chart__bar { width: min(100%, 1rem); background: var(--brand); border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: height 0.25s ease; }
+	.revenue-chart__bar { width: min(100%, 1rem); background: var(--accent); border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: height 0.25s ease; }
 	.revenue-chart__bar--zero { background: transparent; }
 	.revenue-chart__axis { display: flex; margin-block-start: 0.4rem; color: var(--muted); font-size: 0.65rem; }
 	.revenue-chart__axis span { min-width: 0; flex: 1 0 0; text-align: center; white-space: nowrap; }
-	.chart-data { margin-block-start: 0.75rem; }
-	.chart-data summary { width: fit-content; color: var(--brand-ink); cursor: pointer; font-size: 0.85rem; }
+	.chart-data { margin: 0.75rem 1.2rem 1.2rem; }
+	.chart-data summary { width: fit-content; color: var(--accent-hover); cursor: pointer; font-size: 0.85rem; }
 	.chart-data .table-wrap { margin-block-start: 0.75rem; max-height: 24rem; overflow: auto; }
 
 	.badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
-	.badge--brand { background: var(--brand-soft); color: var(--brand-ink); border: 1px solid var(--brand-line); }
+	.badge--brand { background: var(--accent-soft); color: var(--accent-hover); border: 1px solid var(--accent-line); }
 	.badge--neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
 
 	.num { font-variant-numeric: tabular-nums; }

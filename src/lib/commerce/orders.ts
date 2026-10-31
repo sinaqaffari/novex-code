@@ -35,11 +35,12 @@ function normalize(value: string): string {
 	return value
 		.toLowerCase()
 		.replace(/[يى]/g, 'ی')
-		.replace(/ك/g, 'ک');
+		.replace(/ك/g, 'ک')
+		.replace(/[\u064B-\u065F\u0670]/g, '');
 }
 
-export async function listOrders(options: OrderListOptions = {}) {
-	const db = await readDatabase();
+export async function listOrders(options: OrderListOptions = {}, snapshot?: Database) {
+	const db = snapshot ?? await readDatabase();
 	const { query = '', status = 'all', sort = 'newest', page = 1, perPage = 10 } = options;
 	const needle = normalize(query.trim());
 
@@ -83,8 +84,8 @@ export async function listOrders(options: OrderListOptions = {}) {
 	};
 }
 
-export async function getOrder(idOrNumber: string): Promise<Order | null> {
-	const db = await readDatabase();
+export async function getOrder(idOrNumber: string, snapshot?: Database): Promise<Order | null> {
+	const db = snapshot ?? await readDatabase();
 	return db.orders.find((order) => order.id === idOrNumber || order.number === idOrNumber) ?? null;
 }
 
@@ -453,23 +454,23 @@ export async function findOrderByPaymentRef(paymentRef: string): Promise<Order |
 	return db.orders.find((item) => item.paymentRef === paymentRef) ?? null;
 }
 
-export async function listCustomers(query = '') {
-	const db = await readDatabase();
+export async function listCustomers(query = '', snapshot?: Database) {
+	const db = snapshot ?? await readDatabase();
 	const needle = normalize(query.trim());
+	// Index once rather than scanning and sorting all orders for every customer.
+	const byCustomer = new Map<string, { ordersCount: number; totalSpent: number; lastOrderAt: string | undefined }>();
+	for (const order of db.orders) {
+		const entry = byCustomer.get(order.customerId) ?? { ordersCount: 0, totalSpent: 0, lastOrderAt: undefined };
+		entry.ordersCount++;
+		if (isRevenue(order.status)) entry.totalSpent += order.total;
+		if (entry.lastOrderAt === undefined || order.createdAt > entry.lastOrderAt) entry.lastOrderAt = order.createdAt;
+		byCustomer.set(order.customerId, entry);
+	}
 	const rows = db.customers
-		.map((customer) => {
-			const orders = db.orders.filter((order) => order.customerId === customer.id);
-			const paid = orders.filter((order) => isRevenue(order.status));
-			return {
-				...customer,
-				ordersCount: orders.length,
-				totalSpent: paid.reduce((sum, order) => sum + order.total, 0),
-				lastOrderAt: orders
-					.map((order) => order.createdAt)
-					.sort()
-					.at(-1),
-			};
-		})
+		.map((customer) => ({
+			...customer,
+			...(byCustomer.get(customer.id) ?? { ordersCount: 0, totalSpent: 0, lastOrderAt: undefined }),
+		}))
 		.filter((customer) =>
 			!needle
 				? true

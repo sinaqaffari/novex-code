@@ -3,49 +3,47 @@ import CmsLayout from '../../components/cms/CmsLayout.astro';
 import Icon from '../../components/cms/Icon.astro';
 import { faDate, faMoney, faNumber } from '../../lib/cms/fa';
 import { listPosts } from '../../lib/cms/posts';
-import { readSettings } from '../../lib/cms/settings';
-import { readDatabase } from '../../lib/commerce/db';
+import { requestCommerce, requestSettings } from '../../lib/cms/request-data';
+import { normalizeSearch } from '../../lib/cms/listing';
+import { can } from '../../lib/cms/rbac';
 import { orderStatusLabel, orderStatusTone, productStatusLabel } from '../../lib/commerce/types';
 
 export const prerender = false;
 
 const query = (Astro.url.searchParams.get('q') ?? '').trim();
-const [posts, settings, db] = await Promise.all([listPosts(), readSettings(), readDatabase()]);
-
-const normalize = (value: string) =>
-	value
-		.toLowerCase()
-		.replace(/[يى]/g, 'ی')
-		.replace(/ك/g, 'ک')
-		.replace(/[\u064B-\u065F\u0670]/g, '')
-		.trim();
-
-const needle = normalize(query);
+const needle = normalizeSearch(query);
+const role = Astro.locals.cmsUser?.role ?? 'subscriber';
+const canWritePosts = can(role, 'cms.posts:write');
+const canPublishPosts = can(role, 'cms.posts:publish');
+const canWriteProducts = can(role, 'commerce.products:write');
+const settings = await requestSettings(Astro.locals);
+const [posts, db] = await Promise.all([
+	needle && can(role, 'cms.posts:read') ? listPosts() : Promise.resolve([]),
+	needle && settings.commerceEnabled && (can(role, 'commerce.products:read') || can(role, 'commerce.orders:read'))
+		? requestCommerce(Astro.locals) : Promise.resolve(null),
+]);
 
 const matchedPosts = needle
-	? posts.filter((post) =>
-			normalize(`${post.title} ${post.description} ${post.tags.join(' ')} ${post.slug}`).includes(needle),
-		)
+	? posts.filter((post) => (canWritePosts || !post.draft) &&
+			normalizeSearch(`${post.title} ${post.description} ${post.tags.join(' ')} ${post.slug}`).includes(needle))
 	: [];
-
-const matchedProducts = needle
-	? db.products.filter((product) =>
-			normalize(`${product.name} ${product.sku} ${product.category} ${product.slug}`).includes(needle),
-		)
+const matchedProducts = needle && db && can(role, 'commerce.products:read')
+	? db.products.filter((product) => (canWriteProducts || product.status === 'active') &&
+			normalizeSearch(`${product.name} ${product.sku} ${product.category} ${product.slug}`).includes(needle))
 	: [];
-
-const matchedOrders = needle
+const matchedOrders = needle && db && can(role, 'commerce.orders:read')
 	? db.orders.filter((order) =>
-			normalize(`${order.number} ${order.customerName} ${order.phone} ${order.email}`).includes(needle),
-		)
+			normalizeSearch(`${order.number} ${order.customerName} ${order.phone} ${order.email}`).includes(needle))
 	: [];
 
 const total = matchedPosts.length + matchedProducts.length + matchedOrders.length;
+const resultLimit = 20;
+const searchParam = new URLSearchParams({ q: query }).toString();
 ---
 
 <CmsLayout
 	title={query ? `نتایج جست‌وجو برای «${query}»` : 'جست‌وجو'}
-	subtitle={query ? `${faNumber(total)} نتیجه در نوشته‌ها، محصولات و سفارش‌ها` : 'در همهٔ بخش‌های پنل جست‌وجو کنید.'}
+	subtitle={query ? `${faNumber(total)} نتیجه در بخش‌های قابل دسترس` : 'در همهٔ بخش‌های پنل جست‌وجو کنید.'}
 >
 	<section class="card">
 		<div class="card__body">
@@ -95,19 +93,19 @@ const total = matchedPosts.length + matchedProducts.length + matchedOrders.lengt
 						<div class="card__head">
 							<div>
 								<h2 class="card__title">نوشته‌ها</h2>
-								<p class="card__hint">{faNumber(matchedPosts.length)} نتیجه</p>
+								<p class="card__hint">{faNumber(matchedPosts.length)} نتیجه {(matchedPosts.length > resultLimit) && <a href={`/cms/posts?${searchParam}`}>— نمایش همه در فهرست</a>}</p>
 							</div>
 							<Icon name="posts" size={18} />
 						</div>
 						<div class="table-wrap">
 							<table class="table">
 								<tbody>
-									{matchedPosts.map((post) => (
+									{matchedPosts.slice(0, resultLimit).map((post) => (
 										<tr>
 											<td>
-												<a class="table__title" href={`/cms/posts/${post.id}`}>
-													{post.title}
-												</a>
+												{canWritePosts && (post.draft || canPublishPosts) ? (
+													<a class="table__title" href={`/cms/posts/${post.id}`}>{post.title}</a>
+												) : <span class="table__title">{post.title}</span>}
 												<span class="table__slug ltr">/blog/{post.slug}</span>
 											</td>
 											<td class="num nowrap">{faDate(post.pubDate)}</td>
@@ -129,19 +127,17 @@ const total = matchedPosts.length + matchedProducts.length + matchedOrders.lengt
 						<div class="card__head">
 							<div>
 								<h2 class="card__title">محصولات</h2>
-								<p class="card__hint">{faNumber(matchedProducts.length)} نتیجه</p>
+								<p class="card__hint">{faNumber(matchedProducts.length)} نتیجه {(matchedProducts.length > resultLimit) && <a href={`/cms/products?${searchParam}`}>— نمایش همه در فهرست</a>}</p>
 							</div>
 							<Icon name="box" size={18} />
 						</div>
 						<div class="table-wrap">
 							<table class="table">
 								<tbody>
-									{matchedProducts.map((product) => (
+									{matchedProducts.slice(0, resultLimit).map((product) => (
 										<tr>
 											<td>
-												<a class="table__title" href={`/cms/products/${product.id}`}>
-													{product.name}
-												</a>
+												{canWriteProducts ? <a class="table__title" href={`/cms/products/${product.id}`}>{product.name}</a> : <span class="table__title">{product.name}</span>}
 												<span class="table__slug ltr">{product.sku}</span>
 											</td>
 											<td class="num nowrap">{faMoney(product.price, settings.currency)}</td>
@@ -163,14 +159,14 @@ const total = matchedPosts.length + matchedProducts.length + matchedOrders.lengt
 						<div class="card__head">
 							<div>
 								<h2 class="card__title">سفارش‌ها</h2>
-								<p class="card__hint">{faNumber(matchedOrders.length)} نتیجه</p>
+								<p class="card__hint">{faNumber(matchedOrders.length)} نتیجه {(matchedOrders.length > resultLimit) && <a href={`/cms/orders?${searchParam}`}>— نمایش همه در فهرست</a>}</p>
 							</div>
 							<Icon name="receipt" size={18} />
 						</div>
 						<div class="table-wrap">
 							<table class="table">
 								<tbody>
-									{matchedOrders.map((order) => (
+									{matchedOrders.slice(0, resultLimit).map((order) => (
 										<tr>
 											<td>
 												<a class="table__title ltr" href={`/cms/orders/${order.id}`} dir="ltr">

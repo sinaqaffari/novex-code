@@ -1,6 +1,7 @@
 import { createEmptyPageDocument, validatePageDocument } from './document.ts';
 import { addNode, createNodeId, updateNodeProps } from './operations.ts';
-import { visualStarterDesigns } from './starter-designs.ts';
+import { visualStarterDesign, visualStarterDesignSummaries } from './starter-designs.ts';
+import { visualStarterSection, visualStarterSectionSummaries } from './starter-sections.ts';
 import type { BuilderNode, PageDocument } from './types.ts';
 
 export interface StarterTemplate {
@@ -201,17 +202,39 @@ function createBusinessPageTemplate(): PageDocument {
 	return document;
 }
 
-const templates: StarterTemplate[] = [
-	{ id: 'hero-intro', kind: 'section', label: 'معرفی ساده', description: 'بخش معرفی با تیتر اصلی و دکمهٔ اقدام.', document: createHeroTemplate() },
-	{ id: 'feature-grid', kind: 'section', label: 'شبکهٔ سه‌ستونه', description: 'چیدمان شبکه‌ای واکنش‌گرا با سه کارت نمونه.', document: createGridTemplate() },
-	{ id: 'contact-cta', kind: 'section', label: 'دعوت به گفت‌وگو', description: 'بخش اقدام نهایی با رنگ‌بندی گرم.', document: createCtaTemplate() },
-	{ id: 'storefront-start', kind: 'page', label: 'فروشگاه فارسی', description: 'صفحهٔ آغاز با پیوند به کاتالوگ و مسیرهای واقعی فروشگاه؛ بدون محصول ساختگی.', document: createStorefrontTemplate() },
-	{ id: 'business-page', kind: 'page', label: 'طرح کلاسیک کسب‌وکار', description: 'طرح اولیهٔ قدیمی با بخش‌های نمونه؛ متن‌ها و قیمت‌ها را پیش از انتشار ویرایش کنید.', document: createBusinessPageTemplate() },
-	...visualStarterDesigns(),
+type BasicStarter = Omit<StarterTemplate, 'document'> & { themeId: PageDocument['themeId']; image?: string; create: () => PageDocument };
+
+const BASIC_STARTERS: readonly BasicStarter[] = [
+	{ id: 'hero-intro', kind: 'section', label: 'معرفی ساده', description: 'بخش معرفی با تیتر اصلی و دکمهٔ اقدام.', themeId: 'ocean', image: '/media/builder-previews/hero-intro.jpg', create: createHeroTemplate },
+	{ id: 'feature-grid', kind: 'section', label: 'شبکهٔ سه‌ستونه', description: 'چیدمان شبکه‌ای واکنش‌گرا با سه کارت نمونه.', themeId: 'site', image: '/media/builder-previews/feature-grid.jpg', create: createGridTemplate },
+	{ id: 'contact-cta', kind: 'section', label: 'دعوت به گفت‌وگو', description: 'بخش اقدام نهایی با رنگ‌بندی گرم.', themeId: 'warm', image: '/media/builder-previews/contact-cta.jpg', create: createCtaTemplate },
+	{ id: 'storefront-start', kind: 'page', label: 'فروشگاه فارسی', description: 'صفحهٔ آغاز با پیوند به کاتالوگ و مسیرهای واقعی فروشگاه؛ بدون محصول ساختگی.', themeId: 'site', create: createStorefrontTemplate },
+	{ id: 'business-page', kind: 'page', label: 'طرح کلاسیک کسب‌وکار', description: 'طرح اولیهٔ قدیمی با بخش‌های نمونه؛ متن‌ها و قیمت‌ها را پیش از انتشار ویرایش کنید.', themeId: 'site', create: createBusinessPageTemplate },
 ];
 
+/** List metadata without eagerly constructing every validated page. */
+export function listStarterTemplateSummaries() {
+	const basic = BASIC_STARTERS.map(({ create: _create, ...summary }) => summary);
+	return [...basic, ...visualStarterDesignSummaries(), ...visualStarterSectionSummaries()];
+}
+
+const templateCache = new Map<string, StarterTemplate>();
+
+/** Construct only the requested bundled document and always return an independent copy. */
+export function getStarterTemplate(id: string): StarterTemplate | undefined {
+	let template = templateCache.get(id);
+	if (!template) {
+		const basic = BASIC_STARTERS.find((item) => item.id === id);
+		if (basic) template = { id: basic.id, label: basic.label, description: basic.description, kind: basic.kind, document: basic.create() };
+		else template = visualStarterDesign(id) ?? visualStarterSection(id);
+		if (!template) return undefined;
+		templateCache.set(id, template);
+	}
+	return { ...template, document: structuredClone(template.document) };
+}
+
 export function listStarterTemplates(): StarterTemplate[] {
-	return templates.map((template) => ({ ...template, document: structuredClone(template.document) }));
+	return listStarterTemplateSummaries().map(({ id }) => getStarterTemplate(id)!);
 }
 
 export function applyTemplate(

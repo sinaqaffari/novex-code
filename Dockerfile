@@ -44,6 +44,7 @@ COPY --from=build --chown=node:node /app/src/content/blog ./src/content/blog
 # Built-in media (including the editable Builder templates) is read at runtime.
 # User uploads are excluded from the build context and remain a separate volume.
 COPY --from=build --chown=node:node /app/src/assets/*.jpg ./src/assets/
+COPY --from=build --chown=node:node /app/src/assets/builder-previews ./src/assets/builder-previews
 
 USER node
 EXPOSE 4321

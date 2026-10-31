@@ -222,13 +222,19 @@ async function listPostsUnlocked(): Promise<PostSummary[]> {
 	const entries = await readdir(BLOG_DIR, { withFileTypes: true });
 	const files = entries.filter((entry) => entry.isFile() && isPostFile(entry.name));
 
-	const posts = await Promise.all(
-		files.map(async (entry) => {
+	// Keep the transaction lock and recovery semantics intact while bounding open
+	// files and queued reads for large blogs. Results retain directory order.
+	const posts: PostSummary[] = new Array(files.length);
+	let next = 0;
+	await Promise.all(Array.from({ length: Math.min(files.length, 16) }, async () => {
+		while (next < files.length) {
+			const index = next++;
+			const entry = files[index];
 			const filePath = path.join(BLOG_DIR, entry.name);
 			const [raw, info] = await Promise.all([readFile(filePath, 'utf8'), stat(filePath)]);
-			return summarize(entry.name, raw, info.mtime, info.size);
-		}),
-	);
+			posts[index] = summarize(entry.name, raw, info.mtime, info.size);
+		}
+	}));
 
 	return posts.sort((a, b) => {
 		const aTime = new Date(a.pubDate).valueOf() || 0;

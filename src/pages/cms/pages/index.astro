@@ -4,18 +4,28 @@ import Icon from '../../../components/cms/Icon.astro';
 import { faNumber, faRelative } from '../../../lib/cms/fa';
 import { can } from '../../../lib/cms/rbac';
 import { listBuilderPages } from '../../../lib/builder/store';
+import { getCatalogSection } from '../../../lib/builder/template-catalog';
 
 export const prerender = false;
 
 const role = Astro.locals.cmsUser?.role ?? 'subscriber';
 const canWrite = can(role, 'cms.pages:write');
 const pages = await listBuilderPages();
+const requestedSection = (Astro.url.searchParams.get('section') ?? '').slice(0, 60);
+const section = canWrite && requestedSection ? getCatalogSection(requestedSection) : undefined;
+const editUrl = (slug: string) => `/cms/builder/${encodeURIComponent(slug)}${section ? `?section=${encodeURIComponent(section.id)}` : ''}`;
 ---
 
 <CmsLayout title="صفحه‌ساز" subtitle={`${faNumber(pages.length)} صفحه در صفحه‌ساز`}>
 	<Fragment slot="actions">
-		{canWrite ? <a class="btn btn--primary btn--sm" href="/cms/pages/new"><Icon name="plus" size={15} /><span>صفحهٔ تازه</span></a> : null}
+		{canWrite ? <><a class="btn btn--outline btn--sm" href="/marketplace">مرور طرح‌های آماده</a><a class="btn btn--primary btn--sm" href="/cms/pages/new"><Icon name="plus" size={15} /><span>صفحهٔ تازه</span></a></> : null}
 	</Fragment>
+
+	{requestedSection && canWrite && !section && <p class="alert alert--warning" role="alert">بخش انتخاب‌شده پیدا نشد. بخش دیگری را از کتابخانه انتخاب کنید.</p>}
+	{section && <section class="card section-destination" aria-labelledby="section-destination-title">
+		<img src={section.image} alt="" />
+		<div><span>افزودن بخش آماده</span><h2 id="section-destination-title">{section.label}</h2><p>یک صفحه را برای ویرایش انتخاب کنید. بخش فقط پس از تأیید شما در ویرایشگر افزوده می‌شود و محتوای فعلی جایگزین نخواهد شد.</p><div><a href={`/cms/pages/new?section=${encodeURIComponent(section.id)}`}>ساخت صفحهٔ تازه با این بخش ←</a><a href="/marketplace?kind=section#templates">بازگشت به بخش‌ها</a></div></div>
+	</section>}
 
 	<section class="card">
 		<div class="card__head">
@@ -55,7 +65,7 @@ const pages = await listBuilderPages();
 									<td class="num">{faRelative(page.updatedAt)}</td>
 									<td>
 										<div class="table__actions">
-											{canWrite ? <a class="btn btn--outline btn--sm" href={`/cms/builder/${encodeURIComponent(page.slug)}`}><Icon name="edit" size={14} /><span>ویرایش</span></a> : null}
+											{canWrite ? <a class="btn btn--outline btn--sm" href={editUrl(page.slug)}><Icon name="edit" size={14} /><span>{section ? 'انتخاب و ویرایش' : 'ویرایش'}</span></a> : null}
 											{page.publishedAt ? <a class="btn btn--ghost btn--sm" href={`/pages/${encodeURIComponent(page.slug)}`} target="_blank" rel="noreferrer" aria-label={`مشاهدهٔ ${page.title}`}><Icon name="eye" size={15} /></a> : null}
 										</div>
 									</td>
@@ -77,3 +87,14 @@ const pages = await listBuilderPages();
 
 	<p class="hint">صفحه‌های Builder در مسیر <code class="ltr">/pages/نامک</code> منتشر می‌شوند؛ نوشته‌های وبلاگ و فروشگاه بدون تغییر باقی می‌مانند.</p>
 </CmsLayout>
+
+<style>
+	.section-destination { display: grid; grid-template-columns: minmax(120px, 210px) 1fr; align-items: center; gap: 1rem; margin-block-end: 1rem; padding: 1rem; }
+	.section-destination img { width: 100%; aspect-ratio: 1.6; object-fit: cover; border-radius: 9px; }
+	.section-destination span { color: #4263d6; font-size: .75rem; font-weight: 700; }
+	.section-destination h2 { margin: .2rem 0; font-size: 1rem; }
+	.section-destination p { margin: .3rem 0 .5rem; color: #647087; font-size: .8rem; line-height: 1.8; }
+	.section-destination div div { display: flex; flex-wrap: wrap; gap: 1rem; }
+	.section-destination a { color: #3857c8; font-size: .8rem; font-weight: 700; }
+	@media (max-width: 480px) { .section-destination { grid-template-columns: 1fr; } .section-destination img { max-height: 160px; } }
+</style>

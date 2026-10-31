@@ -3,7 +3,7 @@
 import { AppError } from '../errors.ts';
 import { slugify } from '../cms/posts.ts';
 import { newId, readDatabase, updateDatabase } from './db.ts';
-import type { Product, ProductStatus } from './types.ts';
+import type { Database, Product, ProductStatus } from './types.ts';
 import { assertProductUploadExists } from './product-media.ts';
 import { parseEnum, parseInteger, parseMoney, requireText, asBool, asText } from './validation.ts';
 
@@ -85,8 +85,8 @@ function timestamp(value: string): number {
 	return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export async function listProducts(options: ProductListOptions = {}) {
-	const db = await readDatabase();
+export async function listProducts(options: ProductListOptions = {}, snapshot?: Database) {
+	const db = snapshot ?? await readDatabase();
 	const {
 		query = '',
 		status = 'all',
@@ -150,8 +150,8 @@ export async function listProducts(options: ProductListOptions = {}) {
 	};
 }
 
-export async function getProduct(idOrSlug: string): Promise<Product | null> {
-	const db = await readDatabase();
+export async function getProduct(idOrSlug: string, snapshot?: Database): Promise<Product | null> {
+	const db = snapshot ?? await readDatabase();
 	return (
 		db.products.find((product) => product.id === idOrSlug || product.slug === idOrSlug) ?? null
 	);

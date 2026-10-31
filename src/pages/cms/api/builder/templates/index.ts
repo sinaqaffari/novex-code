@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { failure, json } from '../../../../../lib/cms/http.ts';
 import { can } from '../../../../../lib/cms/rbac.ts';
 import { BuilderStoreError, listBuilderTemplates, saveBuilderTemplate } from '../../../../../lib/builder/store.ts';
-import { listStarterTemplates } from '../../../../../lib/builder/templates.ts';
+import { listStarterTemplateSummaries } from '../../../../../lib/builder/templates.ts';
 import { readBoundedRequestText } from '../../../../../lib/builder/request.ts';
 
 export const prerender = false;
@@ -11,7 +11,11 @@ export const prerender = false;
 export const GET: APIRoute = async ({ locals }) => {
 	if (!can(locals.cmsUser?.role ?? 'subscriber', 'cms.pages:read')) return failure('اجازهٔ مشاهدهٔ قالب‌ها را ندارید.', 403);
 	try {
-		const starters = listStarterTemplates().map(({ id, label, description, kind, document }) => ({ id, name: label, description, kind, source: 'starter', themeId: document.themeId }));
+		const starters = listStarterTemplateSummaries().map((summary) => ({
+			id: summary.id, name: summary.label, description: summary.description, kind: summary.kind, source: 'starter', themeId: summary.themeId,
+			...('image' in summary && typeof summary.image === 'string' ? { image: summary.image } : {}),
+			...('category' in summary && typeof summary.category === 'string' ? { category: summary.category } : {}),
+		}));
 		const saved = (await listBuilderTemplates()).map((template) => ({ ...template, description: 'قالب ذخیره‌شدهٔ شما', source: 'saved' }));
 		return json({ ok: true, templates: [...starters, ...saved] });
 	} catch {

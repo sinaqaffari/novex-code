@@ -1,0 +1,91 @@
+---
+import '@fontsource-variable/vazirmatn';
+import '../../../styles/design.css';
+import '../../../styles/builder.css';
+import BuilderNode from '../../../components/builder/BuilderNode.astro';
+import { catalogCategoryLabel, getCatalogSection, getCatalogTemplate } from '../../../lib/builder/template-catalog';
+import { getStarterTemplate } from '../../../lib/builder/templates';
+import { compilePageDocument } from '../../../lib/builder/publishing';
+
+export const prerender = false;
+
+const summary = getCatalogTemplate(Astro.params.id ?? '') ?? getCatalogSection(Astro.params.id ?? '');
+const template = summary ? getStarterTemplate(summary.id) : undefined;
+if (!summary || !template) Astro.response.status = 404;
+const compilation = template ? compilePageDocument(template.document) : null;
+if (template && !compilation?.ok) Astro.response.status = 500;
+const document = compilation?.ok ? compilation.page.document : undefined;
+const responsiveCss = compilation?.ok ? compilation.page.responsiveCss : '';
+const themeCss = compilation?.ok ? compilation.page.themeCss : undefined;
+const isFrame = Astro.url.searchParams.get('frame') === '1';
+---
+<!doctype html>
+<html lang="fa" dir="rtl">
+	<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex, follow" /><title>پیش‌نمایش {summary?.label ?? 'طرح'} | نووکس</title></head>
+	<body class:list={['store', 'template-preview', isFrame && 'template-preview--frame']}>
+		{!isFrame && <header class="template-preview__bar">
+			<a class="template-preview__back" href={summary?.kind === 'section' ? '/marketplace?kind=section#templates' : '/marketplace'}>← بازگشت به بازار طرح‌ها</a>
+			{summary && <div class="template-preview__name"><strong>{summary.label}</strong><span>{catalogCategoryLabel(summary)} · پیش‌نمایش {summary.kind === 'section' ? 'بخش بومی' : 'صفحهٔ بومی'}</span></div>}
+			{summary && <div class="template-preview__devices" id="preview-devices" role="group" aria-label="اندازهٔ پیش‌نمایش" hidden><button type="button" data-preview-size="desktop" aria-pressed="true">دسکتاپ</button><button type="button" data-preview-size="tablet" aria-pressed="false">تبلت</button><button type="button" data-preview-size="mobile" aria-pressed="false">موبایل</button></div>}
+			{summary && <a class="template-preview__use" href={summary.kind === 'section' ? `/cms/pages?section=${encodeURIComponent(summary.id)}` : `/cms/pages/new?template=${encodeURIComponent(summary.id)}`}>{summary.kind === 'section' ? 'انتخاب صفحه برای این بخش' : 'استفاده از این طرح'}</a>}
+		</header>}
+		<main id="main">
+			{document ? (
+				<div id="preview-desktop"><article class="nvx-page" data-template-preview={summary?.id} data-builder-theme={document.themeId} style={themeCss}>
+					{summary?.kind !== 'section' && <header class="nvx-page__intro"><h1 class="nvx-page__title">{document.title}</h1>{document.description && <p class="nvx-page__description">{document.description}</p>}</header>}
+					<div class="nvx-page__content">{document.nodes.map((node) => <BuilderNode node={node} />)}</div>
+				</article></div>
+			) : (
+				<section class="template-preview__error" role="status"><h1>{summary ? 'پیش‌نمایش آماده نشد' : 'طرح پیدا نشد'}</h1><p>به بازار طرح‌ها بازگردید و دوباره تلاش کنید.</p><a href="/marketplace">بازگشت به بازار</a></section>
+			)}
+			{summary && !isFrame && <div class="template-preview__frame-wrap" id="preview-frame-wrap" hidden><iframe id="preview-frame" title={`پیش‌نمایش واکنش‌گرای ${summary.label}`} data-src={`/marketplace/${encodeURIComponent(summary.id)}/preview?frame=1`}></iframe></div>}
+		</main>
+		{responsiveCss ? <style set:html={responsiveCss} /> : null}
+	</body>
+</html>
+
+<style>
+	.template-preview { background: #f4f7fb; }
+	.template-preview__bar { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; gap: 1.1rem; min-height: 4.5rem; padding: .7rem clamp(1rem, 3vw, 2.5rem); border-block-end: 1px solid #e1e7f0; background: #fff; box-shadow: 0 4px 15px #1e31570a; }
+	.template-preview__back { flex: none; color: #52627b; font-size: .78rem; font-weight: 700; }
+	.template-preview__devices { display: flex; flex: none; gap: .2rem; padding: .2rem; border: 1px solid #e2e8f1; border-radius: 8px; background: #f5f7fb; }
+	.template-preview__devices[hidden] { display: none; }
+	.template-preview__devices button { min-height: 2rem; padding: .3rem .55rem; border: 0; border-radius: 6px; background: transparent; color: #66758a; font: inherit; font-size: .68rem; cursor: pointer; }
+	.template-preview__devices button[aria-pressed='true'] { background: #fff; color: #355fcf; box-shadow: 0 1px 4px #2d457a20; }
+	.template-preview__frame-wrap { display: flex; justify-content: center; padding: 1.5rem 1rem; }
+	.template-preview__frame-wrap[hidden] { display: none; }
+	.template-preview__frame-wrap iframe { width: min(100%, 768px); height: max(700px, calc(100vh - 7rem)); border: 1px solid #dce5f1; border-radius: 12px; background: #fff; box-shadow: 0 12px 35px #2438591c; }
+	.template-preview--frame .nvx-page { margin-block: 0; border: 0; border-radius: 0; box-shadow: none; }
+	.template-preview__name { flex: 1; min-width: 0; text-align: center; }
+	.template-preview__name strong, .template-preview__name span { display: block; }
+	.template-preview__name strong { color: #1d2c46; font-size: .86rem; }
+	.template-preview__name span { color: #8994a4; font-size: .68rem; }
+	.template-preview__use { flex: none; padding: .7rem 1rem; border-radius: 9px; background: #315cdb; color: #fff; font-size: .78rem; font-weight: 700; text-decoration: none; }
+	.template-preview__use:hover { background: #2149c0; color: #fff; text-decoration: none; }
+	.template-preview .nvx-page { margin-block: 1.5rem; border: 1px solid #e5eaf1; border-radius: 15px; background: white; box-shadow: 0 12px 35px #2438590d; }
+	.template-preview__error { max-width: 40rem; margin: 4rem auto; padding: 2rem; text-align: center; }
+	.template-preview__error p { margin-block: .75rem; }
+	@media (max-width: 620px) { .template-preview__bar { flex-wrap: wrap; gap: .6rem; } .template-preview__name { order: 3; flex: 1 0 100%; text-align: start; } .template-preview__devices { order: 4; } .template-preview__use { margin-inline-start: auto; } .template-preview .nvx-page { margin-block: .5rem; border-radius: 0; } }
+</style>
+
+<script>
+	const controls = document.querySelector<HTMLElement>('#preview-devices');
+	const desktop = document.querySelector<HTMLElement>('#preview-desktop');
+	const wrap = document.querySelector<HTMLElement>('#preview-frame-wrap');
+	const frame = document.querySelector<HTMLIFrameElement>('#preview-frame');
+	if (controls && desktop && wrap && frame) {
+		controls.hidden = false;
+		controls.querySelectorAll<HTMLButtonElement>('[data-preview-size]').forEach((button) => button.addEventListener('click', () => {
+			const size = button.dataset.previewSize;
+			if (size !== 'desktop' && size !== 'tablet' && size !== 'mobile') return;
+			controls.querySelectorAll<HTMLButtonElement>('[data-preview-size]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+			const useFrame = size !== 'desktop';
+			desktop.hidden = useFrame;
+			wrap.hidden = !useFrame;
+			if (useFrame) {
+				frame.style.width = `min(100%, ${size === 'mobile' ? 390 : 768}px)`;
+				if (!frame.hasAttribute('src') && frame.dataset.src) frame.src = frame.dataset.src;
+			}
+		}));
+	}
+</script>

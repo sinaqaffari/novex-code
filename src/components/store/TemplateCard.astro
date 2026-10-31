@@ -1,0 +1,23 @@
+---
+import type { CatalogDesign } from '../../lib/builder/template-catalog';
+import { catalogCategoryLabel } from '../../lib/builder/template-catalog';
+
+interface Props { template: CatalogDesign; eager?: boolean }
+const { template, eager = false } = Astro.props;
+const previewUrl = `/marketplace/${encodeURIComponent(template.id)}/preview`;
+const createUrl = template.kind === 'section' ? `/cms/pages?section=${encodeURIComponent(template.id)}` : `/cms/pages/new?template=${encodeURIComponent(template.id)}`;
+---
+
+<article class="market-card" data-template-id={template.id}>
+	<a class="market-card__art" href={previewUrl} aria-label={`پیش‌نمایش ${template.label}`}>
+		<img src={template.image} alt="" loading={eager ? 'eager' : 'lazy'} decoding="async" />
+		<span class="market-card__art-label">{template.kind === 'section' ? 'پیش‌نمایش بخش' : 'تصویر این طرح'}</span>
+		<span class="market-card__peek" aria-hidden="true">مشاهدهٔ طرح ↗</span>
+	</a>
+	<div class="market-card__body">
+		<div class="market-card__meta"><span>{catalogCategoryLabel(template)}</span><span>{template.kind === 'section' ? 'بخش آماده' : 'صفحهٔ آماده'}</span></div>
+		<h3><a href={previewUrl}>{template.label}</a></h3>
+		<p>{template.description}</p>
+		<div class="market-card__foot"><span>همراه نووکس</span><a href={createUrl}>{template.kind === 'section' ? 'انتخاب صفحه' : 'استفاده از طرح'} <span aria-hidden="true">←</span></a></div>
+	</div>
+</article>
