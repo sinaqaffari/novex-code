@@ -18,6 +18,6 @@ const createUrl = template.kind === 'section' ? `/cms/pages?section=${encodeURIC
 		<div class="market-card__meta"><span>{catalogCategoryLabel(template)}</span><span>{template.kind === 'section' ? 'بخش آماده' : 'صفحهٔ آماده'}</span></div>
 		<h3><a href={previewUrl}>{template.label}</a></h3>
 		<p>{template.description}</p>
-		<div class="market-card__foot"><span>همراه نووکس</span><a href={createUrl}>{template.kind === 'section' ? 'انتخاب صفحه' : 'استفاده از طرح'} <span aria-hidden="true">←</span></a></div>
+		<div class="market-card__foot"><span>{template.kind === 'page' ? 'فرم درخواست قابل ویرایش' : 'همراه نووکس'}</span><a href={createUrl}>{template.kind === 'section' ? 'انتخاب صفحه' : 'استفاده از طرح'} <span aria-hidden="true">←</span></a></div>
 	</div>
 </article>

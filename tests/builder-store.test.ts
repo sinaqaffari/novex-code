@@ -107,3 +107,20 @@ it('preserves unknown store metadata on subsequent writes rather than silently d
 		await rm(directory, { recursive: true, force: true });
 	}
 });
+
+
+it('treats an inherited property name as an ordinary page slug', async () => {
+	const directory = await mkdtemp(path.join(os.tmpdir(), 'novex-builder-slug-'));
+	const old = process.env.BUILDER_DATA_FILE; process.env.BUILDER_DATA_FILE = path.join(directory, 'pages.json');
+	try {
+		const document = addNode(createEmptyPageDocument('constructor', 'صفحهٔ واقعی'), 'Heading', { id: 'node_slug_heading' });
+		assert.equal((await getDraftPage('constructor')).revision, 0);
+		await saveDraftPage({ slug: 'constructor', expectedRevision: 0, document });
+		await publishPage({ slug: 'constructor', expectedRevision: 1, document });
+		assert.equal((await getPublishedPage('constructor'))?.document.title, 'صفحهٔ واقعی');
+		assert.equal((await getPageHistory('constructor')).length, 2);
+	} finally {
+		if (old === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = old;
+		await rm(directory, { recursive: true, force: true });
+	}
+});

@@ -1,0 +1,61 @@
+---
+import CmsLayout from '../../../components/cms/CmsLayout.astro';
+import { can } from '../../../lib/cms/rbac.ts';
+import { faDateTime, faNumber } from '../../../lib/cms/fa.ts';
+import { inquiryBackendConfigured, listInquiries, type InquiryStatus } from '../../../lib/backend/inquiries.ts';
+
+export const prerender = false;
+const rawStatus = Astro.url.searchParams.get('status') ?? '';
+const status = (['new', 'read', 'archived'].includes(rawStatus) ? rawStatus : '') as InquiryStatus | '';
+const rawPage = Number(Astro.url.searchParams.get('page') ?? 1);
+const page = Number.isSafeInteger(rawPage) && rawPage >= 1 && rawPage <= 5001 ? rawPage : 1;
+const configured = inquiryBackendConfigured();
+const mayDelete = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.inquiries:delete');
+let failed = false;
+let result: Awaited<ReturnType<typeof listInquiries>> = { items: [], hasMore: false };
+try { result = await listInquiries({ ...(status ? { status } : {}), offset: (page - 1) * 20, limit: 20 }); }
+catch { failed = true; Astro.response.status = 503; }
+const statusLabels: Record<InquiryStatus, string> = { new: 'جدید', read: 'بررسی‌شده', archived: 'بایگانی' };
+const kindLabels = { contact: 'تماس', reservation: 'درخواست هماهنگی', consultation: 'درخواست مشاوره', enrollment: 'اطلاعات دوره' };
+const link = (nextPage: number, nextStatus = status) => {
+	const q = new URLSearchParams();
+	if (nextStatus) q.set('status', nextStatus);
+	if (nextPage > 1) q.set('page', String(nextPage));
+	return `/cms/inquiries${q.size ? `?${q}` : ''}`;
+};
+---
+<CmsLayout title="درخواست‌های فرم" subtitle="درخواست‌های ثبت‌شده در صفحات منتشرشده" breadcrumbs={[{ label: 'محتوا' }, { label: 'درخواست‌ها' }]}>
+	<section class="card">
+		<div class="card__head"><div><h2 class="card__title">صندوق درخواست‌ها</h2><p class="card__hint">این درخواست‌ها به‌معنای رزرو یا ثبت‌نام تأییدشده نیستند.</p></div></div>
+		<div class="card__body">
+			{failed ? <div class="empty" role="alert"><strong class="empty__title">صندوق درخواست‌ها در دسترس نیست</strong><span>{configured ? 'ارتباط با سرویس Go یا PostgreSQL برقرار نشد. داده‌ها خالی فرض نمی‌شوند؛ پس از بررسی سرویس دوباره تلاش کنید.' : 'سرویس Go و PostgreSQL برای این نصب پیکربندی نشده است.'}</span></div> : <>
+				<nav class="segmented" aria-label="وضعیت درخواست">
+					<a href={link(1, '')} aria-current={!status ? 'page' : undefined}>همه</a>
+					{(['new', 'read', 'archived'] as const).map((item) => <a href={link(1, item)} aria-current={status === item ? 'page' : undefined}>{statusLabels[item]}</a>)}
+				</nav>
+				{result.items.length ? <div class="inquiry-list">
+					{result.items.map((item) => <article class="inquiry-card">
+						<div class="inquiry-card__heading"><strong dir="auto">{item.name}</strong><span class="badge badge--neutral">{statusLabels[item.status] ?? item.status}</span><span class="badge badge--brand">{kindLabels[item.kind] ?? item.kind}</span></div>
+						<p><strong>راه تماس:</strong> <span dir="auto">{item.contact}</span></p>
+						<p><strong>صفحه:</strong> <a href={`/pages/${encodeURIComponent(item.pageSlug)}`}>{item.pageSlug}</a> · {faDateTime(item.createdAt)}</p>
+						<p class="inquiry-card__message" dir="auto">{item.message}</p>
+						<div class="inquiry-card__actions">
+							{(['new', 'read', 'archived'] as const).filter((next) => next !== item.status).map((next) => <form method="post" action={`/cms/api/inquiries/${item.id}`}><input type="hidden" name="status" value={next} /><button class="btn btn--outline btn--sm" type="submit">{next === 'read' ? 'علامت‌گذاری به‌عنوان بررسی‌شده' : next === 'archived' ? 'بایگانی' : 'بازگرداندن به جدید'}</button></form>)}
+						</div>
+						{mayDelete && <details class="inquiry-card__delete"><summary>حذف دائمی</summary><form method="post" action={`/cms/api/inquiries/${item.id}?action=delete`}><label><input type="checkbox" name="confirm" value="delete" required /> حذف دائمی این درخواست را تأیید می‌کنم.</label> <button class="btn btn--danger btn--sm" type="submit">حذف درخواست</button></form></details>}
+					</article>)}
+				</div> : <div class="empty" role="status"><strong class="empty__title">درخواستی در این بخش نیست</strong><span>پس از ارسال فرم صفحهٔ منتشرشده، درخواست اینجا نمایش داده می‌شود.</span></div>}
+				{(page > 1 || result.hasMore) && <nav class="inquiry-pagination" aria-label="صفحه‌های درخواست"><span>صفحهٔ {faNumber(page)}</span>{page > 1 && <a href={link(page - 1)}>قبلی</a>}{result.hasMore && <a href={link(page + 1)}>بعدی</a>}</nav>}
+			</>}
+		</div>
+	</section>
+</CmsLayout>
+<style>
+	.inquiry-list { display: grid; gap: 1rem; margin-block-start: 1rem; }
+	.inquiry-card { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: .75rem; }
+	.inquiry-card p { line-height: 1.8; overflow-wrap: anywhere; }
+	.inquiry-card__heading, .inquiry-card__actions, .inquiry-pagination { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+	.inquiry-card__message { white-space: pre-wrap; padding: .8rem; background: var(--surface-2, #f7f8f9); border-radius: .5rem; }
+	.inquiry-pagination, .inquiry-card__delete { margin-block-start: 1rem; }
+	.inquiry-card__delete form { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; margin-block-start: .5rem; }
+</style>

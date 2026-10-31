@@ -2,6 +2,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { AppError } from '../errors.ts';
 import { assertPostUploadsExist, postUploadName } from '../cms/blog-media.ts';
 import { DB_FILE } from './db.ts';
+import { assertFileStoreNotMigrated, readPostgresCommerce } from './postgres.ts';
 
 const MAX_CATALOG_BYTES = 64 * 1024 * 1024;
 
@@ -23,9 +24,15 @@ export async function assertProductUploadExists(image: string, previous?: string
  * upload-like paths are conservatively protected even if their host is remote. */
 export async function assertProductUploadUnused(name: string): Promise<void> {
 	try {
-		const info = await lstat(DB_FILE);
-		if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_CATALOG_BYTES) throw new Error('unsafe catalog');
-		const raw: unknown = JSON.parse(await readFile(DB_FILE, 'utf8'));
+		let raw: unknown;
+		const mode = process.env.NOVEX_COMMERCE_STORE ?? 'file';
+		if (mode === 'postgres') raw = (await readPostgresCommerce(DB_FILE)).raw;
+		else if (mode === 'file') {
+			await assertFileStoreNotMigrated(DB_FILE);
+			const info = await lstat(DB_FILE);
+			if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_CATALOG_BYTES) throw new Error('unsafe catalog');
+			raw = JSON.parse(await readFile(DB_FILE, 'utf8')) as unknown;
+		} else throw new Error('invalid commerce storage mode');
 		if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray((raw as { products?: unknown }).products)) throw new Error('invalid catalog');
 		for (const value of (raw as { products: unknown[] }).products) {
 			if (!value || typeof value !== 'object' || Array.isArray(value) || typeof (value as { image?: unknown }).image !== 'string') throw new Error('invalid product');

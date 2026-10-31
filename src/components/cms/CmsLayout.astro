@@ -54,9 +54,12 @@ const currentRole: Role = Astro.locals.cmsUser?.role ?? 'subscriber';
 const pluginPages = variant === 'panel' ? listPluginPages() : [];
 const commerceReady = settings.commerceEnabled;
 
-const pendingOrders = variant === 'panel' && commerceReady && can(currentRole, 'commerce.orders:read')
-	? (await requestCommerce(Astro.locals)).orders.filter((order) => order.status === 'pending').length
-	: 0;
+let pendingOrders: number | undefined;
+let commerceUnavailable = false;
+if (variant === 'panel' && commerceReady && can(currentRole, 'commerce.orders:read')) {
+	try { pendingOrders = (await requestCommerce(Astro.locals)).orders.filter((order) => order.status === 'pending').length; }
+	catch { commerceUnavailable = true; }
+}
 
 const flashMap: Record<string, { tone: 'success' | 'error' | 'info'; text: string }> = {
 	created: { tone: 'success', text: 'با موفقیت ساخته شد.' },
@@ -102,6 +105,13 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 				icon: 'grid' as const,
 				match: /^\/cms\/(pages|builder)(\/|$)/,
 				permission: 'cms.pages:read',
+			},
+			{
+				href: '/cms/inquiries',
+				label: 'درخواست‌های فرم',
+				icon: 'ticket' as const,
+				match: /^\/cms\/inquiries(\/|$)/,
+				permission: 'cms.inquiries:read',
 			},
 			{
 				href: '/cms/media',
@@ -357,6 +367,7 @@ const searchQuery = Astro.url.pathname === '/cms/search' ? (Astro.url.searchPara
 
 						<main id="cms-main" class:list={['content', wide && 'content--wide']}>
 							<div class="stack">
+								{commerceUnavailable && <div class="alert alert--error" role="alert" data-commerce-unavailable><Icon name="alert" size={17} /><span>دادهٔ فروشگاه در دسترس نیست؛ شمارش سفارش‌ها نامشخص است. محتوا و تنظیمات همچنان قابل مدیریت‌اند.</span></div>}
 								{flash && (
 									<div
 										class={`alert alert--${flash.tone}`}

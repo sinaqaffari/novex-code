@@ -146,9 +146,9 @@ describe('named responsive breakpoints', () => {
 			delete page.installation.baselineDocument;
 		}
 		await writeFile(file, JSON.stringify(db));
-		const next = prepareSiteKit({ ...kit, version: '1.1.0' }, source.prefix);
-		await updateInstalledKitDrafts(next, { ...source, version: '1.1.0' });
-		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.1.0');
+		const next = prepareSiteKit({ ...kit, version: '1.2.0' }, source.prefix);
+		await updateInstalledKitDrafts(next, { ...source, version: '1.2.0' });
+		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.2.0');
 	}));
 	it('recognizes pristine schema-v3 kit hashes after migration', async () => isolated(async (file) => {
 		const kit = listSiteKits()[0];
@@ -163,8 +163,8 @@ describe('named responsive breakpoints', () => {
 			delete page.installation.baselineDocument;
 		}
 		await writeFile(file, JSON.stringify(db));
-		const next = prepareSiteKit({ ...kit, version: '1.1.0' }, source.prefix);
-		await updateInstalledKitDrafts(next, { ...source, version: '1.1.0' });
-		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.1.0');
+		const next = prepareSiteKit({ ...kit, version: '1.2.0' }, source.prefix);
+		await updateInstalledKitDrafts(next, { ...source, version: '1.2.0' });
+		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.2.0');
 	}));
 });

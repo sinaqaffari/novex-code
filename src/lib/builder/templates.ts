@@ -94,6 +94,7 @@ function createStorefrontTemplate(): PageDocument {
 		document = addNode(document, 'Button', { parentId: cardId, id: buttonId });
 		document = updateNodeProps(document, buttonId, { label, href, variant: 'outline' });
 	}
+	document = addNode(document, 'InquiryForm', { id: 'node_storefront_inquiry' });
 	return document;
 }
 
@@ -108,7 +109,7 @@ function createBusinessPageTemplate(): PageDocument {
 	document = addNode(document, 'Text', { parentId: 'node_bp_header01', id: 'node_bp_sub01' });
 	document = updateNodeProps(document, 'node_bp_sub01', { text: 'ساخت وب‌سایت حرفه‌ای با ویرایشگر بصری نووکس‌کد', size: 'sm', color: 'muted', align: 'start' });
 	document = addNode(document, 'Button', { parentId: 'node_bp_header01', id: 'node_bp_btn01' });
-	document = updateNodeProps(document, 'node_bp_btn01', { label: 'شروع کنید', href: '#contact', variant: 'primary', align: 'end' });
+	document = updateNodeProps(document, 'node_bp_btn01', { label: 'شروع کنید', href: '#inquiry', variant: 'primary', align: 'end' });
 
 	// === Hero Section ===
 	document = addNode(document, 'Container', { id: 'node_bp_hero01' });
@@ -199,6 +200,7 @@ function createBusinessPageTemplate(): PageDocument {
 	document = addNode(document, 'Button', { parentId: 'node_bp_footer01', id: 'node_bp_footbtn01' });
 	document = updateNodeProps(document, 'node_bp_footbtn01', { label: 'تماس با ما', href: '/contact', variant: 'outline', align: 'center' });
 
+	document = addNode(document, 'InquiryForm', { id: 'node_business_inquiry' });
 	return document;
 }
 

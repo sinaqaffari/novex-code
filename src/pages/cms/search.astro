@@ -17,10 +17,11 @@ const canWritePosts = can(role, 'cms.posts:write');
 const canPublishPosts = can(role, 'cms.posts:publish');
 const canWriteProducts = can(role, 'commerce.products:write');
 const settings = await requestSettings(Astro.locals);
+let commerceUnavailable = false;
 const [posts, db] = await Promise.all([
 	needle && can(role, 'cms.posts:read') ? listPosts() : Promise.resolve([]),
 	needle && settings.commerceEnabled && (can(role, 'commerce.products:read') || can(role, 'commerce.orders:read'))
-		? requestCommerce(Astro.locals) : Promise.resolve(null),
+		? requestCommerce(Astro.locals).catch(() => { commerceUnavailable = true; return null; }) : Promise.resolve(null),
 ]);
 
 const matchedPosts = needle
@@ -43,7 +44,7 @@ const searchParam = new URLSearchParams({ q: query }).toString();
 
 <CmsLayout
 	title={query ? `نتایج جست‌وجو برای «${query}»` : 'جست‌وجو'}
-	subtitle={query ? `${faNumber(total)} نتیجه در بخش‌های قابل دسترس` : 'در همهٔ بخش‌های پنل جست‌وجو کنید.'}
+	subtitle={query ? `${faNumber(total)} نتیجه در بخش‌های قابل دسترس${commerceUnavailable ? '؛ فروشگاه بررسی نشد' : ''}` : 'در همهٔ بخش‌های پنل جست‌وجو کنید.'}
 >
 	<section class="card">
 		<div class="card__body">
@@ -84,7 +85,7 @@ const searchParam = new URLSearchParams({ q: query }).toString();
 					<Icon name="alert" size={22} />
 				</span>
 				<span class="empty__title">نتیجه‌ای پیدا نشد</span>
-				<span>املای عبارت را بررسی کنید یا بخش دیگری را جست‌وجو کنید.</span>
+				<span>{commerceUnavailable ? 'نتیجه‌ای در محتوای قابل دسترس نیست؛ جست‌وجوی فروشگاه انجام نشد.' : 'املای عبارت را بررسی کنید یا بخش دیگری را جست‌وجو کنید.'}</span>
 			</div>
 		) : (
 			<div class="stack">

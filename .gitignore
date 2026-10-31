@@ -40,3 +40,9 @@ data/users.json*
 
 # Editor-generated backup copies
 *.bak
+
+# Generated local full-stack credentials; back up separately.
+.novex-secrets/
+
+# Explicit store migration markers belong with the corresponding runtime store.
+*.novex-postgres*

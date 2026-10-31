@@ -32,6 +32,10 @@ try {
 		PLUGIN_STATE_FILE: path.join(temp, 'plugins.json'),
 	};
 	delete env.SITE_URL;
+	delete env.NOVEX_BACKEND_URL;
+	delete env.NOVEX_BACKEND_TOKEN;
+	delete env.NOVEX_COMMERCE_STORE;
+	delete env.NOVEX_BUILDER_STORE;
 	const child = spawn(process.execPath, ['--experimental-strip-types', '--test', ...options, ...(requestedFiles.length ? requestedFiles : suites)], { cwd: root, env, stdio: 'inherit' });
 	const result = await new Promise((resolve, reject) => {
 		child.once('error', reject);

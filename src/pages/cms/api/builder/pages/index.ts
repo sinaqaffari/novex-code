@@ -12,7 +12,8 @@ export const GET: APIRoute = async ({ locals }) => {
 	if (!can(locals.cmsUser?.role ?? 'subscriber', 'cms.pages:read')) return failure('اجازهٔ مشاهدهٔ صفحه‌ها را ندارید.', 403);
 	try {
 		return json({ ok: true, pages: await listBuilderPages() });
-	} catch {
+	} catch (error) {
+		if (error instanceof BuilderStoreError) return json({ ok: false, code: error.code, message: error.message }, error.status);
 		return failure('خواندن صفحه‌ها ممکن نشد.', 500);
 	}
 };

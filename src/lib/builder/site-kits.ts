@@ -91,6 +91,7 @@ export function listSiteKits(): SiteKit[] {
 	].map((page) => {
 		let document = page.document;
 		if (page.suffix === 'contact') {
+			document = addNode(document, 'InquiryForm', { id: 'node_kit_contact_inquiry' });
 			document = addNode(document, 'Image', { id: 'node_kit_contact_image' });
 			document = updateNodeProps(document, 'node_kit_contact_image', { src: 'media://assets/blog-placeholder-about.jpg', alt: 'تصویر نمونهٔ صفحهٔ تماس' });
 		}
@@ -108,10 +109,10 @@ export function listSiteKits(): SiteKit[] {
 		return { ...page, document, links: links.map(({ nodeId, targetSuffix }) => ({ nodeId, targetSuffix })) };
 	});
 	return [validateSiteKit({
-		schemaVersion: 1, id: 'business-starter', version: '1.0.0', name: 'بستهٔ کسب‌وکار فارسی',
+		schemaVersion: 1, id: 'business-starter', version: '1.1.0', name: 'بستهٔ کسب‌وکار فارسی',
 		description: 'سه پیش‌نویس مستقل برای معرفی، خدمات و تماس؛ محتوا و پیوندها را پیش از انتشار بررسی کنید.',
 		category: 'business', language: 'fa', direction: 'rtl', minBuilderSchema: 1, license: 'MIT', author: 'Novex-Code',
-		requiredComponents: ['Container', 'Heading', 'Text', 'Button', 'Image'], assets: ['media://assets/blog-placeholder-about.jpg'],
+		requiredComponents: ['Container', 'Heading', 'Text', 'Button', 'Image', 'InquiryForm'], assets: ['media://assets/blog-placeholder-about.jpg'],
 		pages,
 	})];
 }

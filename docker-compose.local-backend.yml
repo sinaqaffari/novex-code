@@ -1,0 +1,5 @@
+services:
+  backend:
+    # Only local host processes can reach the authenticated internal API.
+    ports:
+      - '127.0.0.1:${NOVEX_BACKEND_PORT:-8081}:8080'

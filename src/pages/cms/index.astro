@@ -18,7 +18,8 @@ const canBuildPages = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages
 const [posts, settings] = await Promise.all([listPosts(), requestSettings(Astro.locals)]);
 const stats = buildStats(posts);
 const commerce = settings.commerceEnabled;
-const metrics = commerce ? await buildDashboardMetrics(14, await requestCommerce(Astro.locals)) : null;
+let metrics: Awaited<ReturnType<typeof buildDashboardMetrics>> | null = null;
+if (commerce) { try { metrics = await buildDashboardMetrics(14, await requestCommerce(Astro.locals)); } catch { /* Content tools remain usable; layout reports the unavailable store. */ } }
 
 const currency = settings.currency;
 const maxBar = metrics ? Math.max(...metrics.series.map((point) => point.total), 1) : 1;
@@ -417,8 +418,7 @@ const trend = (change: number | null) =>
 							</div>
 							<div class="card__body" style="display:flex;flex-direction:column;gap:8px">
 								<p class="hint">
-									ماژول فروشگاه خاموش است. با فعال‌کردن آن، محصولات، سفارش‌ها، مشتریان و
-									کدهای تخفیف به پنل اضافه می‌شوند.
+									{commerce ? 'دادهٔ فروشگاه در دسترس نیست؛ آمار فروش و موجودی خالی فرض نمی‌شود.' : 'ماژول فروشگاه خاموش است. با فعال‌کردن آن، محصولات، سفارش‌ها، مشتریان و کدهای تخفیف به پنل اضافه می‌شوند.'}
 								</p>
 								{canEditSettings && <a class="btn btn--sm" href="/cms/settings">رفتن به تنظیمات</a>}
 							</div>

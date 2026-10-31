@@ -144,7 +144,7 @@ const definitions = {
 			] },
 			...commonStyleFields,
 		],
-		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button', 'Spacer', 'Divider', 'Blockquote', 'Accordion', 'Tabs', 'List', 'ImageGallery', 'VideoEmbed', 'CodeWidget', 'ProductGrid', 'PluginBlock'],
+		allowedChildren: ['Container', 'Heading', 'Text', 'Image', 'Button', 'Spacer', 'Divider', 'Blockquote', 'Accordion', 'Tabs', 'List', 'ImageGallery', 'VideoEmbed', 'CodeWidget', 'ProductGrid', 'InquiryForm', 'PluginBlock'],
 		supportsChildren: true,
 		previewRenderer: 'container',
 		productionRenderer: 'BuilderNode.astro',
@@ -456,6 +456,24 @@ const definitions = {
 		previewRenderer: 'productGrid',
 		productionRenderer: 'BuilderNode.astro',
 	} satisfies ComponentDefinition<'ProductGrid'>,
+	InquiryForm: {
+		type: 'InquiryForm', version: 1, label: 'فرم درخواست', category: 'action',
+		description: 'فرم ارتباط متصل به صندوق درخواست‌ها؛ ذخیره‌سازی توسط سرویس Go و PostgreSQL.',
+		documentation: 'پس از انتشار صفحه و راه‌اندازی سرویس، درخواست در صندوق مدیریت ثبت می‌شود. این فرم رزرو یا ثبت‌نام قطعی انجام نمی‌دهد.',
+		example: 'درخواست تماس، مشاوره، رزرو یا اطلاعات دوره.',
+		defaultProps: { title: 'برای ما بنویسید', description: 'اطلاعات خود را بفرستید تا با شما تماس بگیریم.', buttonLabel: 'ارسال درخواست', kind: 'contact' },
+		fields: [
+			{ key: 'title', label: 'عنوان فرم', kind: 'text', group: 'content', maxLength: 120 },
+			{ key: 'description', label: 'توضیح فرم', kind: 'textarea', group: 'content', maxLength: 300 },
+			{ key: 'buttonLabel', label: 'متن دکمه', kind: 'text', group: 'content', maxLength: 80 },
+			{ key: 'kind', label: 'نوع درخواست', kind: 'select', group: 'content', options: [
+				{ value: 'contact', label: 'تماس' }, { value: 'reservation', label: 'درخواست رزرو' },
+				{ value: 'consultation', label: 'درخواست مشاوره' }, { value: 'enrollment', label: 'درخواست اطلاعات دوره' },
+			] },
+			...commonStyleFields,
+		],
+		allowedChildren: [], supportsChildren: false, previewRenderer: 'inquiryForm', productionRenderer: 'BuilderNode.astro',
+	} satisfies ComponentDefinition<'InquiryForm'>,
 	PluginBlock: {
 		type: 'PluginBlock', version: 1, label: 'مؤلفهٔ افزونه', category: 'content',
 		description: 'مؤلفهٔ داده‌محور با نمایش کنترل‌شده و نسخهٔ مستقل.',
@@ -673,6 +691,15 @@ export function normalizeProps<T extends BuilderComponentType>(
 	}
 	if (type === 'PluginBlock') {
 		return normalizePluginBlockProps(merged) as ComponentPropsByType[T];
+	}
+
+	if (type === 'InquiryForm') {
+		const title = text(merged.title, 'title', 120).trim();
+		const buttonLabel = text(merged.buttonLabel, 'buttonLabel', 80).trim();
+		if (!title || !buttonLabel) throw new Error('Form title and button label are required.');
+		return { title, description: text(merged.description, 'description', 300), buttonLabel,
+			kind: enumValue(merged.kind, 'kind', ['contact', 'reservation', 'consultation', 'enrollment']),
+		} as ComponentPropsByType[T];
 	}
 
 	if (type === 'ProductGrid') {

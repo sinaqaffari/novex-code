@@ -12,8 +12,14 @@ import { validateDeclarativePluginPackage, type DeclarativePluginRecord } from '
 import { collectDocumentAssets, type AssetResolutionOptions } from './assets.ts';
 import { preparePagePublication } from './publishing.ts';
 import type { ValidationDiagnostic } from './diagnostics.ts';
+import { BuilderStoreError } from './store-error.ts';
+export { BuilderStoreError } from './store-error.ts';
 import { assetExists } from '../cms/media.ts';
 import { compareSemVer, isSemVer } from '../plugins/validation.ts';
+import { AppError } from '../errors.ts';
+import { BackendError } from '../backend/inquiries.ts';
+import { builderSnapshotClient } from '../backend/builder.ts';
+import { assertFileStoreNotMigrated, exportSnapshotFile, migrateSnapshotFile, readSnapshotStore, writeSnapshotStore, type StoreMarker } from '../backend/snapshot-store.ts';
 
 const DATABASE_SCHEMA_VERSION = 1;
 const MAX_REVISIONS = 25;
@@ -68,23 +74,28 @@ interface BuilderDatabase {
 	declarativePlugins: Record<string, DeclarativePluginRecord>;
 }
 
-export class BuilderStoreError extends Error {
-	readonly status: number;
-	readonly code: string;
-	readonly currentRevision?: number;
-	readonly diagnostics?: ValidationDiagnostic[];
+let writeQueue: Promise<unknown> = Promise.resolve();
+// Enumerable symbols survive our immutable object spreads but are excluded from JSON.
+// They carry the PostgreSQL CAS revision only through the current write operation.
+const REMOTE_VERSION = Symbol('builder-postgres-version');
+type VersionedBuilderDatabase = BuilderDatabase & { [REMOTE_VERSION]?: { marker: StoreMarker; revision: number } };
 
-	constructor(message: string, status: number, code: string, currentRevision?: number, diagnostics?: ValidationDiagnostic[]) {
-		super(message);
-		this.name = 'BuilderStoreError';
-		this.status = status;
-		this.code = code;
-		this.currentRevision = currentRevision;
-		this.diagnostics = diagnostics;
-	}
+function builderStoreMode(): 'file' | 'postgres' {
+	const mode = process.env.NOVEX_BUILDER_STORE ?? 'file';
+	if (mode !== 'file' && mode !== 'postgres') throw new BuilderStoreError('تنظیم مخزن صفحه‌ساز معتبر نیست.', 503, 'storage_configuration');
+	return mode;
 }
 
-let writeQueue: Promise<unknown> = Promise.resolve();
+function builderStorageError(error: unknown, failClosed = false): never {
+	if (error instanceof BuilderStoreError) throw error;
+	if (error instanceof AppError || error instanceof BackendError) {
+		if (error.status === 409) throw new BuilderStoreError('مخزن صفحه‌ساز هم‌زمان تغییر کرد؛ دوباره ذخیره کنید. اگر خود صفحه تغییر کرده باشد، تعارض نسخه نمایش داده می‌شود.', 409, 'storage_conflict');
+		if (error.status === 413) throw new BuilderStoreError('حجم داده‌های صفحه‌ساز بیش از ظرفیت مخزن است؛ داده‌ای بازنویسی نشد.', 413, 'storage_too_large');
+		throw new BuilderStoreError('مخزن صفحه‌ساز در دسترس نیست یا انتقال آن کامل نشده است.', 503, 'storage_unavailable');
+	}
+	if (failClosed) throw new BuilderStoreError('خواندن مخزن صفحه‌ساز ممکن نیست؛ داده‌ای بازنشانی نشد.', 503, 'storage_unavailable');
+	throw error;
+}
 
 export function builderDatabasePath(): string {
 	return path.resolve(process.cwd(), process.env.BUILDER_DATA_FILE || 'data/builder-pages.json');
@@ -711,22 +722,35 @@ function appendRevision(revisions: BuilderRevision[], revision: BuilderRevision)
 	return [...revisions, revision].slice(-MAX_REVISIONS);
 }
 
+function emptyBuilderDatabase(): BuilderDatabase {
+	return { schemaVersion: DATABASE_SCHEMA_VERSION, pages: Object.create(null) as Record<string, BuilderPageRecord>, templates: {}, sections: {}, declarativePlugins: {} };
+}
+
 async function readDatabase(): Promise<BuilderDatabase> {
 	const pathName = builderDatabasePath();
-	let source: string;
-	try {
-		source = await readFile(pathName, 'utf8');
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return { schemaVersion: DATABASE_SCHEMA_VERSION, pages: {}, templates: {}, sections: {}, declarativePlugins: {} };
-		throw new BuilderStoreError('خواندن داده‌های صفحه‌ساز ممکن نشد.', 500, 'storage_read_failed');
-	}
-
 	let parsed: unknown;
-	try {
-		parsed = JSON.parse(source);
-	} catch {
-		throw new BuilderStoreError('فایل داده‌های صفحه‌ساز خراب است؛ برای جلوگیری از پاک‌شدن اطلاعات، بازنویسی نمی‌شود.', 500, 'storage_corrupt');
+	let remote: Awaited<ReturnType<typeof readSnapshotStore>> | undefined;
+	if (builderStoreMode() === 'postgres') {
+		try { remote = await readSnapshotStore(pathName, builderSnapshotClient); parsed = remote.raw; }
+		catch (error) { return builderStorageError(error, true); }
+	} else {
+		try { await assertFileStoreNotMigrated(pathName); }
+		catch (error) { return builderStorageError(error, true); }
+		let source: string;
+		try { source = await readFile(pathName, 'utf8'); }
+		catch (error) {
+			if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return emptyBuilderDatabase();
+			throw new BuilderStoreError('خواندن داده‌های صفحه‌ساز ممکن نشد.', 500, 'storage_read_failed');
+		}
+		try { parsed = JSON.parse(source); }
+		catch { throw new BuilderStoreError('فایل داده‌های صفحه‌ساز خراب است؛ برای جلوگیری از پاک‌شدن اطلاعات، بازنویسی نمی‌شود.', 500, 'storage_corrupt'); }
 	}
+	const database = normalizeBuilderDatabase(parsed);
+	if (remote) Object.defineProperty(database, REMOTE_VERSION, { value: { marker: remote.marker, revision: remote.revision }, enumerable: true });
+	return database;
+}
+
+function normalizeBuilderDatabase(parsed: unknown): BuilderDatabase {
 	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
 		throw new BuilderStoreError('ساختار فایل صفحه‌ساز معتبر نیست.', 500, 'storage_invalid');
 	}
@@ -741,7 +765,7 @@ async function readDatabase(): Promise<BuilderDatabase> {
 		throw new BuilderStoreError('ساختار بخش‌های مشترک معتبر نیست.', 500, 'sections_invalid');
 	}
 	if (candidate.declarativePlugins !== undefined && (!candidate.declarativePlugins || typeof candidate.declarativePlugins !== 'object' || Array.isArray(candidate.declarativePlugins))) throw new BuilderStoreError('ساختار بسته‌های مؤلفه معتبر نیست.', 500, 'plugin_packages_invalid');
-	const pages: Record<string, BuilderPageRecord> = {};
+	const pages: Record<string, BuilderPageRecord> = Object.create(null) as Record<string, BuilderPageRecord>;
 	for (const [slug, raw] of Object.entries(candidate.pages)) {
 		assertSlug(slug);
 		if (!raw || typeof raw !== 'object' || raw.slug !== slug || !Number.isSafeInteger(raw.revision) || raw.revision < 1 || !Array.isArray(raw.revisions) ||
@@ -837,6 +861,13 @@ async function readDatabase(): Promise<BuilderDatabase> {
 }
 
 async function writeDatabase(database: BuilderDatabase): Promise<void> {
+	if (builderStoreMode() === 'postgres') {
+		const remote = (database as VersionedBuilderDatabase)[REMOTE_VERSION];
+		if (!remote) throw new BuilderStoreError('نسخهٔ مخزن صفحه‌ساز در دسترس نیست؛ هیچ تغییری ذخیره نشد.', 503, 'storage_state_missing');
+		try { await writeSnapshotStore(remote.marker, remote.revision, database, builderSnapshotClient); }
+		catch (error) { builderStorageError(error, true); }
+		return;
+	}
 	const target = builderDatabasePath();
 	await mkdir(path.dirname(target), { recursive: true });
 	const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
@@ -848,4 +879,20 @@ async function writeDatabase(database: BuilderDatabase): Promise<void> {
 		await import('node:fs/promises').then(({ unlink }) => unlink(temporary).catch(() => undefined));
 		throw new BuilderStoreError('ذخیرهٔ صفحه‌ساز انجام نشد؛ تغییرات محلی نگه داشته شده‌اند.', 500, 'storage_write_failed');
 	}
+}
+
+/** Explicit offline import; existing documents, publications and revisions remain in the source file. */
+export async function migrateBuilderToPostgres(options: { allowEmpty?: boolean } = {}): Promise<void> {
+	try { await serializeWrite(() => migrateSnapshotFile(builderDatabasePath(), emptyBuilderDatabase(), (raw) => { normalizeBuilderDatabase(raw); }, options.allowEmpty === true, builderSnapshotClient)); }
+	catch (error) {
+		if (error instanceof AppError && error.status === 409) throw new BuilderStoreError('مقصد PostgreSQL از پیش دارای داده است یا انتقال قبلی تغییر کرده است؛ هیچ داده‌ای بازنویسی نشد.', 409, 'migration_conflict');
+		builderStorageError(error);
+	}
+}
+
+/** Export a consistent builder snapshot to a new private file, never over the source. */
+export async function exportPostgresBuilder(destination: string): Promise<void> {
+	if (builderStoreMode() !== 'postgres') throw new BuilderStoreError('برای خروجی‌گرفتن، مخزن PostgreSQL باید فعال باشد.', 503, 'storage_configuration');
+	try { await exportSnapshotFile(builderDatabasePath(), destination, (raw) => { normalizeBuilderDatabase(raw); }, builderSnapshotClient); }
+	catch (error) { builderStorageError(error); }
 }

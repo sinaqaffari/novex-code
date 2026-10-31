@@ -104,12 +104,12 @@ describe('site kit provenance and conflict-safe updates', () => {
 			const source = { id: kit.id, version: kit.version, prefix: 'upgrade' };
 			const original = prepareSiteKit(kit, source.prefix);
 			await installDraftPages(original, source);
-			assert.equal((await getDraftPage('upgrade-home')).installation?.version, '1.0.0');
+			assert.equal((await getDraftPage('upgrade-home')).installation?.version, kit.version);
 			await publishPage({ slug: 'upgrade-home', expectedRevision: 1, document: original[0] });
-			const newer = { ...kit, version: '1.1.0' };
+			const newer = { ...kit, version: '1.2.0' };
 			const updated = prepareSiteKit(newer, source.prefix);
 			await updateInstalledKitDrafts(updated, { ...source, version: newer.version });
-			assert.equal((await getDraftPage('upgrade-home')).installation?.version, '1.1.0');
+			assert.equal((await getDraftPage('upgrade-home')).installation?.version, '1.2.0');
 			assert.equal((await getDraftPage('upgrade-home')).revision, 3);
 			assert.deepEqual((await getPublishedPage('upgrade-home'))?.document, original[0]);
 			await assert.rejects(updateInstalledKitDrafts(updated, { ...source, version: newer.version }), /نسخهٔ جدیدتری/);
@@ -126,7 +126,7 @@ describe('site kit provenance and conflict-safe updates', () => {
 			const docs = prepareSiteKit(kit, source.prefix);
 			await installDraftPages(docs, source);
 			await saveDraftPage({ slug: docs[1].slug, expectedRevision: 1, document: { ...docs[1], title: 'ویرایش کاربر' } });
-			const newKit = { ...kit, version: '1.1.0', pages: kit.pages.map((page, index) => index === 1 ? { ...page, title: 'تغییر بسته' } : page) };
+			const newKit = { ...kit, version: '1.2.0', pages: kit.pages.map((page, index) => index === 1 ? { ...page, title: 'تغییر بسته' } : page) };
 			await assert.rejects(updateInstalledKitDrafts(prepareSiteKit(newKit, source.prefix), { ...source, version: newKit.version }), /ویرایش شده/);
 			assert.equal((await getDraftPage(docs[0].slug)).revision, 1);
 			assert.equal((await getDraftPage(docs[1].slug)).draft.title, 'ویرایش کاربر');
@@ -159,14 +159,14 @@ it('fails closed if an installed kit page or its complete baseline is missing', 
 		const missingPage = structuredClone(database);
 		delete missingPage.pages[original[2].slug];
 		await writeFile(file, JSON.stringify(missingPage));
-		const newer = prepareSiteKit({ ...kit, version: '1.1.0' }, source.prefix);
-		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.1.0' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'kit_update_conflict');
+		const newer = prepareSiteKit({ ...kit, version: '1.2.0' }, source.prefix);
+		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.2.0' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'kit_update_conflict');
 		assert.equal((await getDraftPage(original[0].slug)).revision, 1);
 		assert.equal((await getDraftPage(original[2].slug)).revision, 0);
 		// Provenance created by older builds without a page-set baseline also fails safely.
 		for (const page of Object.values(database.pages) as Array<{ installation: { pageSlugs?: string[] } }>) delete page.installation.pageSlugs;
 		await writeFile(file, JSON.stringify(database));
-		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.1.0' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'kit_update_conflict');
+		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.2.0' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'kit_update_conflict');
 	} finally {
 		if (old === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = old;
 		await rm(dir, { recursive: true, force: true });
@@ -194,14 +194,14 @@ it('recognizes pristine schema-v2 kit baselines after migration, but not new edi
 			delete page.installation.baselineDocument; // v2 installations did not retain the base document
 		}
 		await writeFile(file, JSON.stringify(db));
-		const newer = prepareSiteKit({ ...kit, version: '1.1.0' }, source.prefix);
-		await updateInstalledKitDrafts(newer, { ...source, version: '1.1.0' });
-		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.1.0');
+		const newer = prepareSiteKit({ ...kit, version: '1.2.0' }, source.prefix);
+		await updateInstalledKitDrafts(newer, { ...source, version: '1.2.0' });
+		assert.equal((await getDraftPage(docs[0].slug)).installation?.version, '1.2.0');
 		// A v3-only customization must not be mistaken for its legacy baseline.
 		await writeFile(file, JSON.stringify(db));
 		const draft = await getDraftPage(docs[0].slug);
 		await saveDraftPage({ slug: docs[0].slug, expectedRevision: draft.revision, document: { ...draft.draft, breakpoints: { tablet: 900, mobile: 500 } } });
-		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.1.0' }), /ویرایش شده/);
+		await assert.rejects(updateInstalledKitDrafts(newer, { ...source, version: '1.2.0' }), /ویرایش شده/);
 	} finally {
 		if (old === undefined) delete process.env.BUILDER_DATA_FILE; else process.env.BUILDER_DATA_FILE = old;
 		await rm(dir, { recursive: true, force: true });
@@ -224,8 +224,8 @@ it('three-way merges independent edits but rejects simultaneous conflicting fiel
 		const local = { ...updateNodeProps(base[0], 'node_bp_head01', { text: 'متن کاربر' }), title: 'عنوان کاربر' };
 		await saveDraftPage({ slug: base[0].slug, expectedRevision: 2, document: local });
 		const upstreamDoc = updateNodeProps(kit.pages[0].document, 'node_bp_head01', { color: 'muted' });
-		const newer = { ...kit, version: '1.1.0', pages: [{ ...kit.pages[0], document: upstreamDoc }, ...kit.pages.slice(1)] };
-		await updateInstalledKitDrafts(prepareSiteKit(newer, source.prefix), { ...source, version: '1.1.0' });
+		const newer = { ...kit, version: '1.2.0', pages: [{ ...kit.pages[0], document: upstreamDoc }, ...kit.pages.slice(1)] };
+		await updateInstalledKitDrafts(prepareSiteKit(newer, source.prefix), { ...source, version: '1.2.0' });
 		const merged = await getDraftPage(base[0].slug);
 		const heading = findNode(merged.draft.nodes, 'node_bp_head01');
 		assert.equal(heading?.type, 'Heading');
@@ -236,9 +236,9 @@ it('three-way merges independent edits but rejects simultaneous conflicting fiel
 		assert.deepEqual((await getPublishedPage(base[0].slug))?.document, base[0]);
 		assert.equal(merged.installation?.baselineDocument?.title, base[0].title);
 		const conflictingDoc = updateNodeProps(upstreamDoc, 'node_bp_head01', { text: 'متن متفاوت بسته' });
-		const conflicting = { ...kit, version: '1.2.0', pages: [{ ...kit.pages[0], document: conflictingDoc }, ...kit.pages.slice(1)] };
+		const conflicting = { ...kit, version: '1.3.0', pages: [{ ...kit.pages[0], document: conflictingDoc }, ...kit.pages.slice(1)] };
 		const otherBefore = await getDraftPage(base[1].slug);
-		await assert.rejects(updateInstalledKitDrafts(prepareSiteKit(conflicting, source.prefix), { ...source, version: '1.2.0' }),
+		await assert.rejects(updateInstalledKitDrafts(prepareSiteKit(conflicting, source.prefix), { ...source, version: '1.3.0' }),
 			(error: unknown) => error instanceof Error && 'code' in error && error.code === 'kit_update_conflict' && 'diagnostics' in error && Array.isArray(error.diagnostics) && error.diagnostics.length > 0);
 		assert.deepEqual(await getDraftPage(base[1].slug), otherBefore);
 		assert.equal((await getDraftPage(base[0].slug)).draft.title, 'عنوان کاربر');

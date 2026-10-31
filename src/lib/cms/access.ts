@@ -31,6 +31,8 @@ const RULES: CmsRouteRule[] = [
 	{ prefix: '/cms/api/settings', read: 'cms.settings:read', write: 'cms.settings:write' },
 	{ prefix: '/cms/settings', read: 'cms.settings:write', write: 'cms.settings:write' },
 	{ prefix: '/cms/api/builder/imports/wordpress-posts', exact: true, read: 'cms.posts:read', write: 'cms.posts:write' },
+	{ prefix: '/cms/api/inquiries', read: 'cms.inquiries:read', write: 'cms.inquiries:write', delete: 'cms.inquiries:delete' },
+	{ prefix: '/cms/inquiries', read: 'cms.inquiries:read', write: 'cms.inquiries:write' },
 	{ prefix: '/cms/api/builder', read: 'cms.pages:read', write: 'cms.pages:write' },
 	{ prefix: '/cms/builder', read: 'cms.pages:read', write: 'cms.pages:write' },
 	{ prefix: '/cms/pages', read: 'cms.pages:read', write: 'cms.pages:write' },

@@ -18,7 +18,8 @@ export const GET: APIRoute = async ({ locals }) => {
 		}));
 		const saved = (await listBuilderTemplates()).map((template) => ({ ...template, description: 'قالب ذخیره‌شدهٔ شما', source: 'saved' }));
 		return json({ ok: true, templates: [...starters, ...saved] });
-	} catch {
+	} catch (error) {
+		if (error instanceof BuilderStoreError) return json({ ok: false, code: error.code, message: error.message }, error.status);
 		return failure('خواندن قالب‌ها ممکن نشد.', 500);
 	}
 };

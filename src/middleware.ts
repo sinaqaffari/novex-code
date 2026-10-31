@@ -5,6 +5,8 @@ import { ensurePluginsBooted } from './lib/plugins/registry';
 import { can } from './lib/cms/rbac';
 import { cmsLandingPage, requiredCmsPermission } from './lib/cms/access';
 import { getUserByUsername } from './lib/cms/users';
+import { AppError } from './lib/errors';
+import { BuilderStoreError } from './lib/builder/store-error';
 
 const LOGIN_PATH = '/cms/login';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -38,6 +40,15 @@ function noStore(response: Response): Response {
 
 /** Every /cms page and API is private; route-specific permissions are checked here. */
 export const onRequest = defineMiddleware(async (context, next) => {
+	const nextWithOperationalErrors = async () => {
+		try { return await next(); }
+		catch (error) {
+			if (!(error instanceof AppError || error instanceof BuilderStoreError) || error.status !== 503) throw error;
+			const message = 'داده‌های موردنیاز موقتاً در دسترس نیست. پس از بررسی سرویس دوباره تلاش کنید.';
+			if ((context.request.headers.get('accept') ?? '').includes('application/json') || context.url.pathname.includes('/api/')) return noStore(json({ ok: false, message }, 503));
+			return noStore(new Response(message, { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } }));
+		}
+	};
 	// Remove the legacy cookie that stored a customer's raw phone number.
 	if (context.cookies.has('novex_last_order')) context.cookies.delete('novex_last_order', { path: '/' });
 
@@ -48,7 +59,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 		return noStore(json({ ok: false, message: 'درخواست از مبدأ نامعتبر رد شد.' }, 403));
 	}
 
-	if (!pathname.startsWith('/cms')) return next();
+	if (!pathname.startsWith('/cms')) return nextWithOperationalErrors();
 
 	let session = readSessionToken(context.cookies.get(SESSION_COOKIE)?.value);
 	let user: Awaited<ReturnType<typeof getUserByUsername>> = null;
@@ -96,6 +107,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
 		}
 	}
 
-	const response = await next();
+	const response = await nextWithOperationalErrors();
 	return pathname.startsWith('/cms') ? noStore(response) : response;
 });

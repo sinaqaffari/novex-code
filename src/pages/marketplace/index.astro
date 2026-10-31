@@ -64,5 +64,5 @@ const categoryUrl = (nextCategory: string) => catalogUrl(kind, nextCategory);
 		{templates.length ? <div class="market-grid">{templates.map((template, index) => <TemplateCard template={template} eager={index < 4} />)}</div> : <div class="market-empty" role="status"><h3>طرحی با این جست‌وجو پیدا نشد</h3><p>عبارت یا دسته‌بندی دیگری را امتحان کنید.</p><a href={kind === 'section' ? '/marketplace?kind=section#templates' : '/marketplace#templates'}>دیدن همهٔ طرح‌ها</a></div>}
 	</section>
 
-	<aside class="market-note"><div><strong>این‌ها قالب وردپرس نیستند.</strong><span>طرح‌ها برای صفحه‌ساز بومی نووکس ساخته شده‌اند؛ پیش از انتشار، محتوا و تصاویر نمونه را با اطلاعات خودتان جایگزین کنید.</span></div><a href="/cms/pages/new">شروع ساخت صفحه ←</a></aside>
+	<aside class="market-note"><div><strong>این‌ها قالب وردپرس نیستند.</strong><span>طرح‌های کامل شامل فرم درخواست قابل ویرایش‌اند؛ ارسال پس از انتشار و راه‌اندازی سرویس Go و PostgreSQL فعال می‌شود. بخش‌های مستقل فقط قطعهٔ طراحی‌اند. محتوا و تصاویر نمونه را پیش از انتشار جایگزین کنید.</span></div><a href="/cms/pages/new">شروع ساخت صفحه ←</a></aside>
 </ShopLayout>

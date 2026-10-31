@@ -3,6 +3,7 @@ import '@fontsource-variable/vazirmatn';
 import '../../../styles/design.css';
 import '../../../styles/builder.css';
 import BuilderNode from '../../../components/builder/BuilderNode.astro';
+import { traversePageNodes } from '../../../lib/builder/operations.ts';
 import { catalogCategoryLabel, getCatalogSection, getCatalogTemplate } from '../../../lib/builder/template-catalog';
 import { getStarterTemplate } from '../../../lib/builder/templates';
 import { compilePageDocument } from '../../../lib/builder/publishing';
@@ -15,6 +16,8 @@ if (!summary || !template) Astro.response.status = 404;
 const compilation = template ? compilePageDocument(template.document) : null;
 if (template && !compilation?.ok) Astro.response.status = 500;
 const document = compilation?.ok ? compilation.page.document : undefined;
+let primaryFormId: string | undefined;
+if (document) traversePageNodes(document, (node) => { if (!primaryFormId && node.type === 'InquiryForm') primaryFormId = node.id; });
 const responsiveCss = compilation?.ok ? compilation.page.responsiveCss : '';
 const themeCss = compilation?.ok ? compilation.page.themeCss : undefined;
 const isFrame = Astro.url.searchParams.get('frame') === '1';
@@ -33,7 +36,7 @@ const isFrame = Astro.url.searchParams.get('frame') === '1';
 			{document ? (
 				<div id="preview-desktop"><article class="nvx-page" data-template-preview={summary?.id} data-builder-theme={document.themeId} style={themeCss}>
 					{summary?.kind !== 'section' && <header class="nvx-page__intro"><h1 class="nvx-page__title">{document.title}</h1>{document.description && <p class="nvx-page__description">{document.description}</p>}</header>}
-					<div class="nvx-page__content">{document.nodes.map((node) => <BuilderNode node={node} />)}</div>
+					<div class="nvx-page__content">{document.nodes.map((node) => <BuilderNode node={node} primaryFormId={primaryFormId} />)}</div>
 				</article></div>
 			) : (
 				<section class="template-preview__error" role="status"><h1>{summary ? 'پیش‌نمایش آماده نشد' : 'طرح پیدا نشد'}</h1><p>به بازار طرح‌ها بازگردید و دوباره تلاش کنید.</p><a href="/marketplace">بازگشت به بازار</a></section>

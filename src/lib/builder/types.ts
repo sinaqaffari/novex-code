@@ -3,7 +3,7 @@ export const COMPONENT_VERSION = 1 as const;
 
 import type { ProductGridBinding } from '../commerce/types.ts';
 
-export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button', 'Spacer', 'Divider', 'Blockquote', 'Accordion', 'Tabs', 'List', 'ImageGallery', 'VideoEmbed', 'CodeWidget', 'GlobalCode', 'ProductGrid', 'PluginBlock'] as const;
+export const BUILDER_COMPONENT_TYPES = ['Container', 'Heading', 'Text', 'Image', 'Button', 'Spacer', 'Divider', 'Blockquote', 'Accordion', 'Tabs', 'List', 'ImageGallery', 'VideoEmbed', 'CodeWidget', 'GlobalCode', 'ProductGrid', 'InquiryForm', 'PluginBlock'] as const;
 export type BuilderComponentType = (typeof BUILDER_COMPONENT_TYPES)[number];
 
 export const BREAKPOINTS = ['desktop', 'tablet', 'mobile'] as const;
@@ -110,6 +110,14 @@ export interface ProductGridProps {
 	binding: ProductGridBinding;
 }
 
+/** A real request form; it never implies that an appointment or enrollment is confirmed. */
+export interface InquiryFormProps {
+	title: string;
+	description: string;
+	buttonLabel: string;
+	kind: 'contact' | 'reservation' | 'consultation' | 'enrollment';
+}
+
 /** Persisted declarative component snapshot; contains data, never executable code. */
 export interface PluginBlockField { key: string; label: string; kind: 'text' | 'textarea' | 'url'; value: string; maxLength: number }
 export interface PluginBlockPart { type: 'heading' | 'text' | 'button'; textKey: string; hrefKey?: string }
@@ -139,6 +147,7 @@ export interface ComponentPropsByType {
 	CodeWidget: CodeWidgetProps;
 	GlobalCode: GlobalCodeProps;
 	ProductGrid: ProductGridProps;
+	InquiryForm: InquiryFormProps;
 	PluginBlock: PluginBlockProps;
 }
 
@@ -218,9 +227,11 @@ export interface ProductGridNode extends NodeBase<'ProductGrid'> {
 	children?: never;
 }
 
+export interface InquiryFormNode extends NodeBase<'InquiryForm'> { children?: never }
+
 export interface PluginBlockNode extends NodeBase<'PluginBlock'> { children?: never }
 
-export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode | SpacerNode | DividerNode | BlockquoteNode | AccordionNode | TabsNode | ListNode | ImageGalleryNode | VideoEmbedNode | CodeWidgetNode | GlobalCodeNode | ProductGridNode | PluginBlockNode;
+export type BuilderNode = ContainerNode | HeadingNode | TextNode | ImageNode | ButtonNode | SpacerNode | DividerNode | BlockquoteNode | AccordionNode | TabsNode | ListNode | ImageGalleryNode | VideoEmbedNode | CodeWidgetNode | GlobalCodeNode | ProductGridNode | InquiryFormNode | PluginBlockNode;
 
 export interface PageDocument {
 	schemaVersion: typeof PAGE_DOCUMENT_SCHEMA_VERSION;
@@ -258,6 +269,6 @@ export interface ComponentDefinition<T extends BuilderComponentType = BuilderCom
 	fields: readonly InspectorField[];
 	allowedChildren: readonly BuilderComponentType[];
 	supportsChildren: boolean;
-	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button' | 'spacer' | 'divider' | 'blockquote' | 'accordion' | 'tabs' | 'list' | 'imageGallery' | 'videoEmbed' | 'codeWidget' | 'globalCode' | 'productGrid' | 'pluginBlock';
+	previewRenderer: 'container' | 'heading' | 'text' | 'image' | 'button' | 'spacer' | 'divider' | 'blockquote' | 'accordion' | 'tabs' | 'list' | 'imageGallery' | 'videoEmbed' | 'codeWidget' | 'globalCode' | 'productGrid' | 'inquiryForm' | 'pluginBlock';
 	productionRenderer: 'BuilderNode.astro';
 }

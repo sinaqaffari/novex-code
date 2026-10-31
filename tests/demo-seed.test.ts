@@ -58,6 +58,14 @@ describe('opt-in demo catalogue seed', () => {
 		assert.equal(second.total, 6);
 	});
 
+	it('never seeds the stale file of a migrated PostgreSQL store', async () => {
+		const databaseFile = await fixtureDatabase({ version: 1, counters: { order: 0 }, products: [], orders: [], customers: [], discounts: [] });
+		const before = await readFile(databaseFile, 'utf8');
+		await writeFile(`${databaseFile}.novex-postgres`, '{"state":"complete"}');
+		await assert.rejects(seedDemoProducts({ databaseFile, apply: true }));
+		assert.equal(await readFile(databaseFile, 'utf8'), before);
+	});
+
 	it('preserves existing records and refuses SKU conflicts or corrupt files', async () => {
 		const existing = {
 			version: 1,

@@ -17,3 +17,6 @@ data
 
 # assets سنگین محلی
 src/assets/uploads
+
+# Never embed generated service credentials into Docker images.
+.novex-secrets

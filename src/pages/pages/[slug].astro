@@ -5,6 +5,8 @@ import '../../styles/builder.css';
 import { getPublishedPage } from '../../lib/builder/store';
 import { compilePageDocument } from '../../lib/builder/publishing';
 import { isValidPageSlug } from '../../lib/builder/document';
+import { traversePageNodes } from '../../lib/builder/operations';
+import { INQUIRY_FEEDBACK_COOKIE, readInquiryFeedback } from '../../lib/backend/inquiries';
 
 export const prerender = false;
 
@@ -12,6 +14,11 @@ const slug = Astro.params.slug ?? '';
 const published = isValidPageSlug(slug) ? await getPublishedPage(slug) : null;
 if (!published) Astro.response.status = 404;
 const document = published?.document;
+let primaryFormId: string | undefined;
+if (document) traversePageNodes(document, (node) => { if (!primaryFormId && node.type === 'InquiryForm') primaryFormId = node.id; });
+const feedback = readInquiryFeedback(Astro.cookies.get(INQUIRY_FEEDBACK_COOKIE)?.value, slug);
+if (feedback) Astro.cookies.delete(INQUIRY_FEEDBACK_COOKIE, { path: '/' });
+if (primaryFormId) Astro.response.headers.set('cache-control', 'no-store');
 const compiled = document ? compilePageDocument(document, slug) : null;
 const responsiveCss = compiled?.ok ? compiled.page.responsiveCss : '';
 const themeCss = compiled?.ok ? compiled.page.themeCss : undefined;
@@ -27,7 +34,7 @@ const themeCss = compiled?.ok ? compiled.page.themeCss : undefined;
 				</header>
 			) : null}
 			<div class="nvx-page__content">
-				{document.nodes.map((node) => <BuilderNode node={node} />)}
+				{document.nodes.map((node) => <BuilderNode node={node} pageSlug={document.slug} primaryFormId={primaryFormId} feedback={feedback} />)}
 			</div>
 		</article>
 	) : (

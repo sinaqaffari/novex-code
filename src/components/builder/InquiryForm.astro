@@ -1,0 +1,39 @@
+---
+import { randomUUID } from 'node:crypto';
+import type { InquiryFormNode } from '../../lib/builder/types.ts';
+import { inquiryBackendConfigured, type InquiryFeedback } from '../../lib/backend/inquiries.ts';
+interface Props {
+	node: InquiryFormNode;
+	style?: string;
+	pageSlug?: string;
+	primaryFormId?: string;
+	feedback?: InquiryFeedback | null;
+}
+const { node, style, pageSlug, primaryFormId, feedback } = Astro.props;
+const active = Boolean(pageSlug) && inquiryBackendConfigured();
+const id = node.id === primaryFormId ? 'inquiry' : node.id;
+const result = feedback?.nodeId === node.id ? feedback.result : null;
+const resultText = result === 'sent' ? 'درخواست شما ثبت شد. این پیام به‌معنای تأیید رزرو یا ثبت‌نام نیست.'
+	: result === 'invalid' ? 'اطلاعات فرم معتبر نیست یا فرم دیگر منتشر نشده است؛ دوباره بررسی کنید.'
+	: result === 'limited' ? 'تعداد درخواست‌ها بیش از حد مجاز است؛ کمی بعد دوباره تلاش کنید.'
+	: result === 'unavailable' ? 'سرویس ثبت درخواست در دسترس نیست؛ پیام شما ذخیره نشده است.' : '';
+---
+<section class="nvx-builder-node nvx-inquiry" id={id} data-builder-id={node.id} style={style} aria-labelledby={`${node.id}-title`}>
+	<h2 id={`${node.id}-title`}>{node.props.title}</h2>
+	{node.props.description && <p>{node.props.description}</p>}
+	{resultText && <p class:list={['nvx-inquiry__notice', result === 'sent' && 'nvx-inquiry__notice--success']} role="status">{resultText}</p>}
+	{!pageSlug ? <p class="nvx-inquiry__notice">پیش‌نمایش فرم؛ ارسال پس از انتشار و راه‌اندازی سرویس فعال می‌شود.</p> : !active ? <p class="nvx-inquiry__notice" role="status">سرویس ثبت درخواست پیکربندی نشده است؛ امکان ارسال وجود ندارد.</p> : null}
+	<form id={node.id === primaryFormId ? node.id : undefined} action="/api/inquiries" method="post">
+		<input type="hidden" name="slug" value={pageSlug ?? ''} />
+		<input type="hidden" name="nodeId" value={node.id} />
+		<input type="hidden" name="requestId" value={randomUUID().replaceAll('-', '')} />
+		<div class="nvx-inquiry__trap" aria-hidden="true"><label>این فیلد را خالی بگذارید<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+		<fieldset disabled={!active}>
+			<label for={`${node.id}-name`}>نام <input id={`${node.id}-name`} name="name" type="text" autocomplete="name" minlength="2" maxlength="120" required /></label>
+			<label for={`${node.id}-contact`}>ایمیل یا شمارهٔ تماس <input id={`${node.id}-contact`} name="contact" type="text" autocomplete="email" minlength="3" maxlength="160" required /></label>
+			<label for={`${node.id}-message`}>پیام <textarea id={`${node.id}-message`} name="message" rows="4" minlength="2" maxlength="2000" required></textarea></label>
+			<p class="nvx-inquiry__privacy">لطفاً اطلاعات حساس پزشکی، مالی یا گذرواژه ارسال نکنید.</p>
+			<button class="nvx-builder-button nvx-builder-button--primary" type="submit">{node.props.buttonLabel}</button>
+		</fieldset>
+	</form>
+</section>

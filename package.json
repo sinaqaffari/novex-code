@@ -19,7 +19,19 @@
 		"test:ci": "npm run check && npm run build && npm test",
 		"docker:build": "docker build -t novex-code .",
 		"docker:up": "docker compose up --build -d",
-		"docker:down": "docker compose down"
+		"docker:down": "docker compose down",
+		"docker:fullstack": "node scripts/fullstack-compose.mjs up",
+		"dev:fullstack": "node scripts/fullstack-compose.mjs dev",
+		"commerce:migrate": "node scripts/fullstack-compose.mjs migrate-commerce",
+		"commerce:export": "node scripts/fullstack-compose.mjs export-commerce",
+		"builder:migrate": "node scripts/fullstack-compose.mjs migrate-builder",
+		"builder:export": "node scripts/fullstack-compose.mjs export-builder",
+		"docker:builder:migrate": "node scripts/fullstack-compose.mjs docker-migrate-builder",
+		"docker:builder:export": "node scripts/fullstack-compose.mjs docker-export-builder",
+		"docker:commerce:migrate": "node scripts/fullstack-compose.mjs docker-migrate-commerce",
+		"docker:commerce:export": "node scripts/fullstack-compose.mjs docker-export-commerce",
+		"docker:fullstack:down": "node scripts/fullstack-compose.mjs down",
+		"test:backend": "go -C backend test ./..."
 	},
 	"dependencies": {
 		"@astrojs/mdx": "^8.1.1",

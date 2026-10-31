@@ -1,10 +1,10 @@
 /**
- * Filesystem-backed commerce store for cooperating processes on one filesystem.
- *
- * Writes share the Builder/media filesystem lock and are committed by atomic rename.
- * This is not a distributed transaction store or a power-loss durability guarantee. The path can be overridden for isolated
- * integration tests with COMMERCE_DB_FILE. A missing file initializes empty —
- * corrupt or unreadable data is never silently replaced.
+ * The default commerce store remains file-backed; writes use atomic rename.
+ * An explicit offline migration can instead opt into Go/PostgreSQL snapshots.
+ * Both modes retain the shared Builder/media filesystem lock: all cooperating
+ * processes must share that filesystem, and it is not distributed fencing.
+ * COMMERCE_DB_FILE identifies the original file and its migration marker.
+ * Corrupt, missing-marker or unreachable migrated data is never reset silently.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -12,6 +12,7 @@ import { link, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/prom
 import { AppError } from '../errors.ts';
 import path from 'node:path';
 import type { Database } from './types.ts';
+import { assertFileStoreNotMigrated, exportCommerceFile, migrateCommerceFile, readPostgresCommerce, writePostgresCommerce } from './postgres.ts';
 
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data');
 export const DB_FILE = path.resolve(process.env.COMMERCE_DB_FILE || path.join(DEFAULT_DATA_DIR, 'commerce.json'));
@@ -115,7 +116,15 @@ async function readPersistedDatabase(): Promise<Database> {
 
 let initialization: Promise<Database> | null = null;
 
+function storeMode(): 'file' | 'postgres' {
+	const mode = process.env.NOVEX_COMMERCE_STORE ?? 'file';
+	if (mode !== 'file' && mode !== 'postgres') throw new AppError('تنظیم مخزن فروشگاه معتبر نیست.', undefined, 503);
+	return mode;
+}
+
 export async function readDatabase(): Promise<Database> {
+	if (storeMode() === 'postgres') return normalize((await readPostgresCommerce(DB_FILE)).raw);
+	await assertFileStoreNotMigrated(DB_FILE);
 	try {
 		return await readPersistedDatabase();
 	} catch (error) {
@@ -152,6 +161,17 @@ export function updateDatabase<T>(mutator: (db: Database) => T | Promise<T>): Pr
 		const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
 		try {
 			return await withBuilderAssetLock(async () => {
+				if (storeMode() === 'postgres') {
+					const persisted = await readPostgresCommerce(DB_FILE);
+					const db = normalize(persisted.raw);
+					const result = await mutator(db);
+					// Keep legacy extension fields on both the root and counters. The
+					// existing domain owns the standard fields and all array elements.
+					const source = persisted.raw as Record<string, unknown>;
+					const counters = source.counters as Record<string, unknown>;
+					await writePostgresCommerce(persisted.marker, persisted.revision, { ...source, ...db, counters: { ...counters, ...db.counters } });
+					return result;
+				}
 				const db = await readDatabase();
 				const result = await mutator(db);
 				await writeDatabase(db);
@@ -169,4 +189,21 @@ export function updateDatabase<T>(mutator: (db: Database) => T | Promise<T>): Pr
 		() => undefined,
 	);
 	return next;
+}
+
+/** Explicit offline import; never modifies or removes the original JSON file. */
+export async function migrateCommerceToPostgres(options: { allowEmpty?: boolean } = {}): Promise<void> {
+	const { BuilderStoreError, withBuilderAssetLock } = await import('../builder/store.ts');
+	try {
+		await withBuilderAssetLock(() => migrateCommerceFile(DB_FILE, createEmptyDatabase(), (raw) => { normalize(raw); }, options.allowEmpty === true));
+	} catch (error) {
+		if (error instanceof BuilderStoreError) throw new AppError(error.message, undefined, error.status);
+		throw error;
+	}
+}
+
+/** Export one consistent PostgreSQL snapshot to a new private file. Never overwrites. */
+export async function exportPostgresCommerce(destination: string): Promise<void> {
+	if (storeMode() !== 'postgres') throw new AppError('برای خروجی‌گرفتن، مخزن PostgreSQL باید صریحاً فعال باشد.', undefined, 503);
+	await exportCommerceFile(DB_FILE, destination, (raw) => { normalize(raw); });
 }

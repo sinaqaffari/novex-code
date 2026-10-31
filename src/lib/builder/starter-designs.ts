@@ -115,7 +115,7 @@ const DESIGNS: readonly LandingDesign[] = [
 	{
 		id: 'education-landing', label: 'آموزش و دوره', description: 'معرفی آموزش، سرفصل‌ها و پرسش‌های متداول با مؤلفه‌های بومی.', theme: 'site', category: 'education',
 		brand: 'مدرسهٔ فردا', kicker: 'یادگیری برای مسیر پیش رو', headline: 'یاد گرفتن را از همین‌جا شروع کنید',
-		intro: 'موضوع آموزش، مخاطبان و مسیر یادگیری را با محتوای خودتان معرفی کنید. ثبت‌نام آنلاین در این طرح نمونه تعریف نشده است.',
+		intro: 'موضوع آموزش، مخاطبان و مسیر یادگیری را با محتوای خودتان معرفی کنید. مخاطب می‌تواند درخواست اطلاعات دوره بفرستد؛ ثبت‌نام قطعی جداگانه انجام می‌شود.',
 		button: 'دریافت اطلاعات', buttonHref: '/contact', image: 'builder-learning.jpg', imageAlt: 'میز مطالعه با دفتر، هدفون و نور طبیعی',
 		sectionTitle: 'مسیر یادگیری شما', sectionText: 'سرفصل‌ها و شیوهٔ ارائهٔ آموزش را با اطلاعات واقعی جایگزین کنید.',
 		cards: [
@@ -170,7 +170,7 @@ function buildDesign(spec: LandingDesign): StarterTemplate {
 		text('kicker', spec.kicker, { color: 'brand', size: 'sm', align: centeredHero ? 'center' : 'start' }),
 		heading('headline', spec.headline, { level: 2, size: 'xl', align: centeredHero ? 'center' : 'start' }),
 		text('intro', spec.intro, { size: 'lg', align: centeredHero ? 'center' : 'start' }),
-		button('primary', spec.button, spec.buttonHref, { align: centeredHero ? 'center' : 'start' }),
+		button('primary', spec.button, spec.buttonHref === '/contact' ? '#inquiry' : spec.buttonHref, { align: centeredHero ? 'center' : 'start' }),
 	], centeredHero ? { width: 'narrow' } : undefined);
 	const cards = spec.cards.map((card, index) => container(`card_${index}`, { background: 'surface', gap: 12, padding: 24 }, [
 		heading(`card_number_${index}`, `۰${index + 1}`, { level: 3, size: 'sm', color: 'brand' }),
@@ -180,7 +180,7 @@ function buildDesign(spec: LandingDesign): StarterTemplate {
 	const nodes: BuilderNode[] = [
 		container('header', { layout: 'row', background: 'none', gap: 16, padding: 16 }, [
 			heading('brand', spec.brand, { level: 2, size: 'md' }),
-			button('header_button', 'تماس با ما', '/contact', { variant: 'outline', align: 'end' }),
+			button('header_button', 'تماس با ما', '#inquiry', { variant: 'outline', align: 'end' }),
 		], { alignItems: 'center', justifyContent: 'space-between' }),
 		container('hero', { layout: centeredHero ? 'stack' : 'grid', background: spec.id === 'portfolio-landing' ? 'surface' : 'soft', gap: 32, padding: 32 }, imageFirst ? [heroImage, heroCopy] : [heroCopy, heroImage], centeredHero ? { alignItems: 'center' } : { columns: 2, alignItems: 'center' }, centeredHero ? undefined : { tablet: { columns: 1 } }),
 		container('services', { background: 'none', gap: 24, padding: 32 }, [
@@ -206,8 +206,16 @@ function buildDesign(spec: LandingDesign): StarterTemplate {
 	nodes.push(container('cta', { background: 'brand', gap: 16, padding: 48 }, [
 		heading('cta_title', spec.ctaTitle, { level: 2, size: 'lg', color: 'surface', align: 'center' }),
 		text('cta_text', spec.ctaText, { color: 'surface', align: 'center' }),
-		button('cta_button', spec.store ? 'رفتن به فروشگاه' : 'تماس با ما', spec.store ? '/shop' : '/contact', { align: 'center', variant: 'outline' }),
+		button('cta_button', spec.store ? 'رفتن به فروشگاه' : 'تماس با ما', spec.store ? '/shop' : '#inquiry', { align: 'center', variant: 'outline' }),
 	]));
+	const form = createBuilderNode('InquiryForm', id('inquiry_form'));
+	const kind: ComponentPropsByType['InquiryForm']['kind'] = spec.category === 'food' || spec.category === 'beauty' || spec.category === 'travel'
+		? 'reservation' : spec.category === 'education' ? 'enrollment' : spec.category === 'shop' ? 'contact' : 'consultation';
+	nodes.push(container('inquiry_section', { background: 'soft', gap: 16, padding: 32 }, [{
+		...form,
+		props: { ...form.props, kind, title: kind === 'reservation' ? 'درخواست هماهنگی' : kind === 'enrollment' ? 'درخواست اطلاعات دوره' : 'برای ما بنویسید',
+			description: 'درخواست شما برای بررسی ثبت می‌شود؛ رزرو، مشاوره یا ثبت‌نام به‌صورت خودکار تأیید نمی‌شود.' },
+	}]));
 	nodes.push(container('footer', { background: 'none', gap: 8, padding: 24 }, [
 		text('footer_text', `${spec.brand} · متن و تصویر این طرح را برای کسب‌وکار خود ویرایش کنید.`, { color: 'muted', size: 'sm', align: 'center' }),
 	]));

@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -141,12 +141,22 @@ async function writeDatabase(databaseFile, database) {
 export async function seedDemoProducts({ databaseFile, apply = false, production = false } = {}) {
 	if (apply && production) throw new Error('افزودن دادهٔ نمایشی در NODE_ENV=production مجاز نیست.');
 	const target = path.resolve(databaseFile ?? process.env.COMMERCE_DB_FILE ?? 'data/commerce.json');
-	const database = await readDatabase(target);
-	const before = database.products.length;
-	const added = addDraftProducts(database);
-
-	if (apply && added > 0) await writeDatabase(target, database);
-	return { target, added, total: database.products.length, before, applied: apply };
+	const run = async () => {
+		if (process.env.NOVEX_COMMERCE_STORE === 'postgres') throw new Error('seed فایل برای فروشگاه PostgreSQL پشتیبانی نمی‌شود؛ از پنل محصولات استفاده کنید.');
+		try {
+			await lstat(`${target}.novex-postgres`);
+			throw new Error('فایل فروشگاه منتقل شده است؛ seed فایل قدیمی را تغییر نمی‌دهد.');
+		} catch (error) { if (error?.code !== 'ENOENT') throw error; }
+		const database = await readDatabase(target);
+		const before = database.products.length;
+		const added = addDraftProducts(database);
+		if (apply && added > 0) await writeDatabase(target, database);
+		return { target, added, total: database.products.length, before, applied: apply };
+	};
+	if (!apply) return run();
+	// Coordinate with normal commerce writes, media deletion and migration.
+	const { withBuilderAssetLock } = await import('../src/lib/builder/store.ts');
+	return withBuilderAssetLock(run);
 }
 
 async function main() {

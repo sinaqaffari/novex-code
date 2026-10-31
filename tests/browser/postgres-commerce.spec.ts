@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { getCommerceSnapshot } from '../../src/lib/backend/commerce.ts';
+
+// The runner migrates only its own fixture file into an explicitly disposable
+// uninitialized PostgreSQL test service. Never use a developer's live service.
+test('the shop template, checkout and CMS use the migrated PostgreSQL store', async ({ page }) => {
+	test.skip(process.env.NOVEX_E2E_COMMERCE_POSTGRES !== 'initialized', 'Requires an explicitly disposable PostgreSQL test service.');
+	await page.goto('/cms/login');
+	await page.getByLabel('نام کاربری').fill('novex-e2e-admin');
+	await page.locator('#cms-password').fill('novex-e2e-password-only-for-local-tests');
+	await page.getByRole('button', { name: 'ورود به پنل' }).click();
+	await page.waitForURL((url) => url.pathname === '/cms');
+	const slug = `pg-shop-${Date.now().toString(36)}`;
+	const created = await page.request.post('/cms/api/builder/pages', { headers: { accept: 'application/json' }, data: { slug, title: 'فروشگاه آزمایشی', templateId: 'shop-landing' } });
+	expect(created.status()).toBe(201);
+	const draft = await created.json();
+	const published = await page.request.post(`/cms/api/builder/pages/${slug}`, { headers: { accept: 'application/json' }, data: { document: draft.document, expectedRevision: draft.revision } });
+	expect(published.status()).toBe(200);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`/pages/${slug}`);
+	await expect(page.locator('.nvx-builder-product-grid')).toContainText('محصول آزمایشی');
+	await page.getByRole('link', { name: 'مشاهدهٔ محصول آزمایشی' }).click();
+	await page.getByRole('button', { name: 'افزودن به سبد خرید' }).click();
+	await page.goto('/shop/cart');
+	await page.getByRole('link', { name: 'ادامهٔ فرآیند خرید' }).click();
+	const idempotencyKey = await page.locator('input[name="idempotencyKey"]').inputValue();
+	const checkoutItems = await page.locator('input[name="checkoutItems"]').inputValue();
+	const customer = { customerName: 'خریدار PostgreSQL آزمایشی', email: '', phone: '09123456789', city: 'تهران', address: 'نشانی آزمایشی', note: '', discountCode: '' };
+	await page.locator('#customerName').fill(customer.customerName);
+	await page.locator('#phone').fill(customer.phone);
+	await page.locator('#city').fill(customer.city);
+	await page.locator('#address').fill(customer.address);
+	await page.getByRole('button', { name: 'ثبت سفارش' }).click();
+	await page.waitForURL((url) => /^\/shop\/order\/NVX-\d+$/.test(url.pathname));
+	await expect(page.locator('.order-payment-message')).toContainText('درگاه پرداخت آنلاین برای این فروشگاه فعال نیست');
+	const number = new URL(page.url()).pathname.split('/').at(-1);
+	const replay = await page.request.post('/shop/api/checkout', { headers: { accept: 'application/json' }, multipart: { ...customer, idempotencyKey, checkoutItems } });
+	expect(replay.status()).toBe(200);
+	expect((await replay.json()).number).toBe(number);
+	const remote = await getCommerceSnapshot();
+	const snapshot = remote.snapshot as { products: Array<{ id: string; stock: number }>; orders: Array<{ number: string; paymentState: string }> };
+	expect(remote.revision).toBeGreaterThan(0);
+	expect(snapshot.products.find((product) => product.id === 'e2e_product_internal_id')?.stock).toBe(1);
+	expect(snapshot.orders).toHaveLength(1);
+	expect(snapshot.orders[0]).toMatchObject({ number, paymentState: 'not-configured' });
+	const original = JSON.parse(await readFile(path.join(process.env.NOVEX_E2E_DATA_DIR!, 'commerce.json'), 'utf8')) as { products: Array<{ id: string; stock: number }>; orders: unknown[] };
+	expect(original.products.find((product) => product.id === 'e2e_product_internal_id')?.stock).toBe(2);
+	expect(original.orders).toHaveLength(0);
+	await page.goto('/cms/orders');
+	await expect(page.locator('main')).toContainText(customer.customerName);
+});

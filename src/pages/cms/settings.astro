@@ -9,6 +9,8 @@ export const prerender = false;
 
 const settings = await requestSettings(Astro.locals);
 const sampleDate = new Date();
+const commerceStore = process.env.NOVEX_COMMERCE_STORE ?? 'file';
+const builderStore = process.env.NOVEX_BUILDER_STORE ?? 'file';
 ---
 
 <CmsLayout
@@ -38,6 +40,7 @@ const sampleDate = new Date();
 						</span>
 					</div>
 					<div class="card__body stack">
+						<p class="hint" data-commerce-storage>{commerceStore === 'postgres' ? 'محصولات و سفارش‌ها برای PostgreSQL پیکربندی شده‌اند؛ هر درخواست ذخیره حداکثر ۱۵ مگابایت است. صفحه‌ساز و تنظیمات مخزن جداگانه دارند؛ از هر دو نسخهٔ پشتیبان بگیرید.' : commerceStore === 'file' ? 'محصولات و سفارش‌ها در فایل محلی نگهداری می‌شوند. انتقال به PostgreSQL فقط با ابزار انتقال آفلاین و صریح انجام می‌شود.' : 'تنظیم مخزن فروشگاه معتبر نیست؛ داده‌ها بازنشانی نمی‌شوند.'}</p>
 						<div class="switch-row">
 							<span class="switch-row__text">
 								<strong>فروشگاه فعال باشد</strong>
@@ -75,6 +78,11 @@ const sampleDate = new Date();
 							>
 						</label>
 					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__head"><div><h2 class="card__title">مخزن صفحه‌ساز</h2><p class="card__hint">وضعیت پیکربندی اسناد، قالب‌ها و انتشار</p></div></div>
+					<div class="card__body"><p class="hint" data-builder-storage>{builderStore === 'postgres' ? 'اسناد و انتشار صفحه‌ساز برای PostgreSQL پیکربندی شده‌اند؛ تنظیمات و رسانه‌ها جداگانه‌اند. هر درخواست ذخیره حداکثر ۱۵ مگابایت است.' : builderStore === 'file' ? 'اسناد و انتشار صفحه‌ساز در فایل محلی نگهداری می‌شوند؛ انتقال به PostgreSQL فقط آفلاین و صریح است.' : 'تنظیم مخزن صفحه‌ساز معتبر نیست؛ داده‌ها بازنشانی نمی‌شوند.'}</p></div>
 				</section>
 
 				<section class="card">

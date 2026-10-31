@@ -58,10 +58,73 @@ await writeFile(path.join(dataDirectory, 'commerce.json'), `${JSON.stringify({
 const args = process.argv.slice(2);
 
 try {
+	const testEnv = { ...process.env, NOVEX_E2E_DATA_DIR: dataDirectory, NOVEX_E2E_UPLOAD_LOG: uploadLog };
+	delete testEnv.NOVEX_BACKEND_URL;
+	delete testEnv.NOVEX_BACKEND_TOKEN;
+	delete testEnv.NOVEX_COMMERCE_STORE;
+	delete testEnv.NOVEX_BUILDER_STORE;
+	// Opt-in only: never let browser tests reach the developer's live database.
+	if (process.env.NOVEX_E2E_BACKEND_URL && process.env.NOVEX_E2E_BACKEND_TOKEN) {
+		testEnv.NOVEX_BACKEND_URL = process.env.NOVEX_E2E_BACKEND_URL;
+		testEnv.NOVEX_BACKEND_TOKEN = process.env.NOVEX_E2E_BACKEND_TOKEN;
+	}
+	delete testEnv.NOVEX_E2E_COMMERCE_POSTGRES;
+	delete testEnv.NOVEX_E2E_COMMERCE_OUTAGE_READY;
+	delete testEnv.NOVEX_E2E_BUILDER_POSTGRES;
+	delete testEnv.NOVEX_E2E_BUILDER_OUTAGE_READY;
+	const specs = args.filter((argument) => argument.endsWith('.spec.ts'));
+	if ((process.env.NOVEX_E2E_PG_COMMERCE || process.env.NOVEX_E2E_PG_BUILDER) && specs.length === 1 && specs[0].endsWith('fullstack-postgres.spec.ts') && (!process.env.NOVEX_E2E_PG_COMMERCE || !process.env.NOVEX_E2E_PG_BUILDER)) throw new Error('The full-stack test requires both disposable store opt-ins.');
+	// This opt-in INITIALIZES a store, so require an explicitly disposable,
+	// uninitialized test service and run only its dedicated test. Never infer it
+	// from a developer's ordinary NOVEX_BACKEND_URL or commerce configuration.
+	if (process.env.NOVEX_E2E_PG_COMMERCE) {
+		const files = args.filter((argument) => argument.endsWith('.spec.ts'));
+		if (process.env.NOVEX_E2E_PG_COMMERCE !== 'initialize-disposable-store' || !testEnv.NOVEX_BACKEND_URL || !testEnv.NOVEX_BACKEND_TOKEN || files.length !== 1 || !['postgres-commerce.spec.ts', 'fullstack-postgres.spec.ts'].some((name) => files[0].endsWith(name))) {
+			throw new Error('PostgreSQL browser tests require a disposable uninitialized backend and a dedicated commerce spec.');
+		}
+		const migrationEnv = { ...testEnv, COMMERCE_DB_FILE: path.join(dataDirectory, 'commerce.json'), BUILDER_DATA_FILE: path.join(dataDirectory, 'builder-pages.json') };
+		const migration = spawn(process.execPath, ['--experimental-strip-types', 'scripts/migrate-commerce.ts', '--confirm-offline'], { cwd: root, env: migrationEnv, stdio: 'inherit' });
+		const migrationResult = await new Promise((resolve, reject) => { migration.once('error', reject); migration.once('exit', (code, signal) => resolve({ code, signal })); });
+		if (migrationResult.signal || migrationResult.code !== 0) throw new Error('Disposable commerce test migration failed.');
+		testEnv.NOVEX_COMMERCE_STORE = 'postgres';
+		testEnv.NOVEX_E2E_COMMERCE_POSTGRES = 'initialized';
+	}
+	if (process.env.NOVEX_E2E_PG_BUILDER) {
+		const files = args.filter((argument) => argument.endsWith('.spec.ts'));
+		if (process.env.NOVEX_E2E_PG_BUILDER !== 'initialize-disposable-store' || !testEnv.NOVEX_BACKEND_URL || !testEnv.NOVEX_BACKEND_TOKEN || files.length !== 1 || !files[0].endsWith('fullstack-postgres.spec.ts')) {
+			throw new Error('Builder PostgreSQL browser tests require a disposable uninitialized backend and only fullstack-postgres.spec.ts.');
+		}
+		const migrationEnv = { ...testEnv, COMMERCE_DB_FILE: path.join(dataDirectory, 'commerce.json'), BUILDER_DATA_FILE: path.join(dataDirectory, 'builder-pages.json') };
+		const migration = spawn(process.execPath, ['--experimental-strip-types', 'scripts/migrate-builder.ts', '--confirm-offline', '--allow-empty'], { cwd: root, env: migrationEnv, stdio: 'inherit' });
+		const migrationResult = await new Promise((resolve, reject) => { migration.once('error', reject); migration.once('exit', (code, signal) => resolve({ code, signal })); });
+		if (migrationResult.signal || migrationResult.code !== 0) throw new Error('Disposable Builder test migration failed.');
+		testEnv.NOVEX_BUILDER_STORE = 'postgres';
+		testEnv.NOVEX_E2E_BUILDER_POSTGRES = 'initialized';
+	}
+	if (process.env.NOVEX_E2E_BUILDER_OUTAGE) {
+		const files = args.filter((argument) => argument.endsWith('.spec.ts'));
+		if (process.env.NOVEX_E2E_BUILDER_OUTAGE !== 'simulate' || process.env.NOVEX_E2E_PG_BUILDER || process.env.NOVEX_E2E_PG_COMMERCE || process.env.NOVEX_E2E_COMMERCE_OUTAGE || files.length !== 1 || !files[0].endsWith('builder-outage.spec.ts')) throw new Error('Builder outage simulation runs only builder-outage.spec.ts.');
+		await writeFile(path.join(dataDirectory, 'builder-pages.json.novex-postgres'), JSON.stringify({ version: 1, state: 'complete', source: 'empty', storeId: 'c'.repeat(32), sourceHash: 'd'.repeat(64) }), { mode: 0o600 });
+		testEnv.NOVEX_BACKEND_URL = 'http://127.0.0.1:9';
+		testEnv.NOVEX_BACKEND_TOKEN = 'outage-test-only-0123456789abcdef0123456789';
+		testEnv.NOVEX_BUILDER_STORE = 'postgres';
+		testEnv.NOVEX_E2E_BUILDER_OUTAGE_READY = '1';
+	}
+	if (process.env.NOVEX_E2E_COMMERCE_OUTAGE) {
+		const files = args.filter((argument) => argument.endsWith('.spec.ts'));
+		if (process.env.NOVEX_E2E_COMMERCE_OUTAGE !== 'simulate' || process.env.NOVEX_E2E_PG_COMMERCE || files.length !== 1 || !files[0].endsWith('commerce-outage.spec.ts')) throw new Error('Outage simulation runs only commerce-outage.spec.ts.');
+		// This fake marker belongs to the disposable fixture file only; there is
+		// no live backend, database, or user data involved in this test.
+		await writeFile(path.join(dataDirectory, 'commerce.json.novex-postgres'), JSON.stringify({ version: 1, state: 'complete', source: 'file', storeId: 'a'.repeat(32), sourceHash: 'b'.repeat(64) }), { mode: 0o600 });
+		testEnv.NOVEX_BACKEND_URL = 'http://127.0.0.1:9';
+		testEnv.NOVEX_BACKEND_TOKEN = 'outage-test-only-0123456789abcdef0123456789';
+		testEnv.NOVEX_COMMERCE_STORE = 'postgres';
+		testEnv.NOVEX_E2E_COMMERCE_OUTAGE_READY = '1';
+	}
 	const child = spawn(process.execPath, [cli, 'test', ...args], {
 		cwd: root,
 		stdio: 'inherit',
-		env: { ...process.env, NOVEX_E2E_DATA_DIR: dataDirectory, NOVEX_E2E_UPLOAD_LOG: uploadLog },
+		env: testEnv,
 	});
 	const result = await new Promise((resolve, reject) => {
 		child.once('error', reject);

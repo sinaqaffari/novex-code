@@ -321,3 +321,19 @@
 .nvx-builder-list { margin: 0; padding-inline-start: 1.5rem; }
 .nvx-builder-list li { padding-block: .2rem; line-height: 1.75; white-space: pre-wrap; }
 .nvx-builder-list a { color: var(--brand, #2563eb); text-decoration: underline; }
+
+/* Real, progressively enhanced request form shared by published pages and preview. */
+.nvx-inquiry { width: min(100%, 42rem); min-width: 0; margin-inline: auto; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--surface, #fff); color: var(--ink, #171a1f); border: 1px solid var(--line, #e5e7eb); border-radius: 1rem; }
+.nvx-inquiry h2 { margin: 0; font-size: 1.5rem; }
+.nvx-inquiry > p { line-height: 1.8; }
+.nvx-inquiry fieldset { display: grid; gap: 1rem; padding: 0; border: 0; margin: 1rem 0 0; min-width: 0; }
+.nvx-inquiry label { display: grid; gap: .4rem; font-weight: 700; }
+.nvx-inquiry input:not([type='hidden']), .nvx-inquiry textarea { display: block; width: 100%; min-width: 0; border: 1px solid var(--line, #c8cdd3); border-radius: .55rem; padding: .7rem .8rem; background: var(--surface, #fff); color: var(--ink, #171a1f); font: inherit; }
+.nvx-inquiry textarea { resize: vertical; }
+.nvx-inquiry input:focus-visible, .nvx-inquiry textarea:focus-visible, .nvx-inquiry button:focus-visible { outline: 2px solid var(--brand, #2563eb); outline-offset: 2px; }
+.nvx-inquiry fieldset:disabled { opacity: .65; }
+.nvx-inquiry button { justify-self: start; cursor: pointer; font: inherit; }
+.nvx-inquiry__notice { border-inline-start: 3px solid #b45309; padding: .7rem .9rem; background: #fff7e9; color: #713f12; border-radius: .3rem; }
+.nvx-inquiry__notice--success { border-color: #15803d; background: #edfcf1; color: #14532d; }
+.nvx-inquiry__privacy { margin: 0; color: var(--muted, #697077); font-size: .875rem; line-height: 1.7; }
+.nvx-inquiry__trap { position: absolute; inset-inline-start: -10000px; width: 1px; height: 1px; overflow: hidden; }

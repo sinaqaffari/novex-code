@@ -4,6 +4,8 @@ import { resolvePluginParts } from '../../lib/builder/plugin-components.ts';
 import { controlledNodeStyle } from '../../lib/builder/render.ts';
 import { resolveNodeStyles } from '../../lib/builder/responsive.ts';
 import ProductGrid from './ProductGrid.astro';
+import InquiryForm from './InquiryForm.astro';
+import type { InquiryFeedback } from '../../lib/backend/inquiries.ts';
 import ExtendedContent from './ExtendedContent.astro';
 import { sandboxedCodeDocument } from '../../lib/builder/sandboxed-code.ts';
 import { globalScriptBootstrap, globalStyleRawText } from '../../lib/builder/global-code.ts';
@@ -15,9 +17,12 @@ import RichTextRun from './RichTextRun.astro';
 
 interface Props {
 	node: BuilderNode;
+	pageSlug?: string;
+	primaryFormId?: string;
+	feedback?: InquiryFeedback | null;
 }
 
-const { node } = Astro.props;
+const { node, pageSlug, primaryFormId, feedback } = Astro.props;
 const style = controlledNodeStyle(resolveNodeStyles(node, 'desktop'));
 const id = node.id;
 const baseClass = 'nvx-builder-node';
@@ -35,7 +40,7 @@ const imageSource = node.type === 'Image' ? resolveBuilderImageSource(node.props
 		data-max-width={node.props.maxWidth}
 		style={`gap:${node.props.gap}px;padding:${node.props.padding}px${style ? `;${style}` : ''}`}
 	>
-		{node.children.map((child) => <Astro.self node={child} />)}
+		{node.children.map((child) => <Astro.self node={child} pageSlug={pageSlug} primaryFormId={primaryFormId} feedback={feedback} />)}
 	</div>
 ) : node.type === 'PluginBlock' ? (
 	<div class:list={[baseClass, 'nvx-builder-plugin']} data-builder-id={id} style={style}>
@@ -79,6 +84,8 @@ const imageSource = node.type === 'Image' ? resolveBuilderImageSource(node.props
 	</Fragment>
 ) : node.type === 'ProductGrid' ? (
 	<ProductGrid node={node} className={baseClass} style={style} />
+) : node.type === 'InquiryForm' ? (
+	<InquiryForm node={node} style={style} pageSlug={pageSlug} primaryFormId={primaryFormId} feedback={feedback} />
 ) : node.type === 'Button' ? (
 	<div class:list={[baseClass, 'nvx-builder-button-wrap']} data-builder-id={id} data-align={node.props.align} style={style}>
 		<a class:list={['nvx-builder-button', `nvx-builder-button--${node.props.variant}`]} href={node.props.href}>{node.props.label}</a>

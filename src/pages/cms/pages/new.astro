@@ -2,6 +2,7 @@
 import CmsLayout from '../../../components/cms/CmsLayout.astro';
 import Icon from '../../../components/cms/Icon.astro';
 import { can } from '../../../lib/cms/rbac';
+import { inquiryBackendConfigured } from '../../../lib/backend/inquiries';
 import { catalogCategoryLabel, getCatalogSection, getCatalogTemplate, listCatalogTemplates } from '../../../lib/builder/template-catalog';
 
 export const prerender = false;
@@ -13,6 +14,7 @@ const selected = templateId && sectionId ? undefined : sectionId ? getCatalogSec
 const templates = listCatalogTemplates();
 const title = (Astro.url.searchParams.get('title') ?? (selected?.kind === 'page' ? selected.label : 'صفحهٔ تازه')).slice(0, 100);
 const slug = (Astro.url.searchParams.get('slug') ?? '').slice(0, 60);
+const inquiryConfigured = inquiryBackendConfigured();
 ---
 
 <CmsLayout title="ساخت صفحه" subtitle="از یک طرح واقعی شروع کنید یا صفحهٔ خالی بسازید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
@@ -38,6 +40,7 @@ const slug = (Astro.url.searchParams.get('slug') ?? '').slice(0, 60);
 			{selected && <input type="hidden" name={selected.kind === 'section' ? 'sectionId' : 'templateId'} value={selected.id} />}
 			<label class="field"><span class="field__label">عنوان صفحه</span><input class="input" name="title" type="text" required maxlength="100" value={title} autocomplete="off" /></label>
 			<label class="field"><span class="field__label">نامک لاتین</span><div class="input-group" dir="ltr"><span class="input-group__prefix">/pages/</span><input class="input" name="slug" type="text" required minlength="1" maxlength="60" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder={selected?.id ?? 'landing-page'} value={slug} autocomplete="off" /></div><span class="field__hint">فقط حروف کوچک انگلیسی، عدد و خط تیره؛ برای هر صفحه نامکی یکتا انتخاب کنید.</span></label>
+			{selected?.kind === 'page' && <p class="hint">این طرح فرم درخواست دارد؛ {inquiryConfigured ? 'نشانی و کلید سرویس پیکربندی شده‌اند؛ اتصال را پس از انتشار بررسی کنید.' : 'تا راه‌اندازی سرویس Go و PostgreSQL، ارسال فرم غیرفعال است.'} درخواست به‌معنای رزرو یا ثبت‌نام قطعی نیست.</p>}
 			{selected && <p class="hint">یک رونوشت مستقل و قابل ویرایش به‌صورت پیش‌نویس ساخته می‌شود؛ متن و تصویرهای نمونه را پیش از انتشار بررسی کنید.</p>}
 			<div class="row" style="justify-content:flex-end"><a class="btn btn--outline" href="/cms/pages">انصراف</a><button class="btn btn--primary" type="submit"><Icon name="plus" size={15} /><span>ساخت و ویرایش</span></button></div>
 		</form>

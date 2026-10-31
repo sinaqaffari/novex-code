@@ -1,0 +1,49 @@
+services:
+  app:
+    environment:
+      NOVEX_BACKEND_URL: http://backend:8080
+      NOVEX_BACKEND_TOKEN: ${NOVEX_BACKEND_TOKEN:?Use npm run docker:fullstack to configure the backend token}
+      NOVEX_COMMERCE_STORE: ${NOVEX_COMMERCE_STORE:-file}
+      NOVEX_BUILDER_STORE: ${NOVEX_BUILDER_STORE:-file}
+    depends_on:
+      backend:
+        condition: service_started
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      LISTEN_ADDR: :8080
+      NOVEX_BACKEND_TOKEN: ${NOVEX_BACKEND_TOKEN:?Use npm run docker:fullstack to configure the backend token}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: novex
+      PGUSER: novex
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Use npm run docker:fullstack to configure the database password}
+      PGSSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Internal only: neither the backend nor PostgreSQL is published to the host.
+
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: novex
+      POSTGRES_USER: novex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use npm run docker:fullstack to configure the database password}
+    volumes:
+      - novex-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U novex -d novex']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  novex-postgres:

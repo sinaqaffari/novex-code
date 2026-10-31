@@ -5,7 +5,8 @@
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
-ENV npm_config_update_notifier=false
+ENV npm_config_update_notifier=false \
+	PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
@@ -26,6 +27,7 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
+	PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
 	HOST=0.0.0.0 \
 	PORT=4321 \
 	TZ=Asia/Tehran
@@ -40,6 +42,10 @@ RUN mkdir -p /app/data /app/src/content/blog /app/src/assets/uploads \
 	&& chown -R node:node /app/data /app/src
 
 COPY --from=build --chown=node:node /app/dist ./dist
+# Offline migrations/exports use the same validated stores and asset lock.
+# These server-only sources are not part of the public client bundle.
+COPY --from=build --chown=node:node /app/src/lib ./src/lib
+COPY --from=build --chown=node:node /app/scripts/migrate-commerce.ts /app/scripts/export-commerce.ts /app/scripts/migrate-builder.ts /app/scripts/export-builder.ts ./scripts/
 COPY --from=build --chown=node:node /app/src/content/blog ./src/content/blog
 # Built-in media (including the editable Builder templates) is read at runtime.
 # User uploads are excluded from the build context and remain a separate volume.

@@ -2074,7 +2074,7 @@ interface TreeNodeProps {
 }
 
 function componentIcon(type: BuilderComponentType): string {
-	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : type === 'ProductGrid' ? '▣' : type === 'Spacer' ? '↕' : type === 'Divider' ? '―' : type === 'Blockquote' ? '❞' : type === 'Accordion' ? '☰' : type === 'ImageGallery' ? '▤' : type === 'VideoEmbed' ? '▶' : '↗';
+	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : type === 'ProductGrid' ? '▣' : type === 'InquiryForm' ? '✉' : type === 'Spacer' ? '↕' : type === 'Divider' ? '―' : type === 'Blockquote' ? '❞' : type === 'Accordion' ? '☰' : type === 'ImageGallery' ? '▤' : type === 'VideoEmbed' ? '▶' : '↗';
 }
 
 function TreeNode({ node, selectedId, dragOverId, dragPlacement, onSelect, onDragStart, onDragOver, onDragOut, onDrop }: TreeNodeProps) {
@@ -2088,6 +2088,7 @@ function TreeNode({ node, selectedId, dragOverId, dragPlacement, onSelect, onDra
 			: node.type === 'Button' ? node.props.label
 				: node.type === 'Image' ? node.props.alt || node.props.src || 'بدون تصویر'
 				: node.type === 'ProductGrid' ? `محصولات ${node.props.binding.selection}`
+				: node.type === 'InquiryForm' ? node.props.title
 				: node.type === 'PluginBlock' ? node.props.label
 				: node.type === 'Spacer' ? `${node.props.size}px`
 				: node.type === 'Divider' ? node.props.lineStyle
@@ -2275,6 +2276,9 @@ if (node.type === 'GlobalCode') {
 if (node.type === 'PluginBlock') {
 	return <div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>{responsiveBadge}<PluginBlockPreview props={node.props} /></div>;
 }
+if (node.type === 'InquiryForm') {
+	return <div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>{responsiveBadge}<InquiryFormPreview node={node} /></div>;
+}
 if (node.type === 'ProductGrid') {
 	return (
 		<div className={className} data-builder-id={node.id} onClick={onClick} style={style} {...dragProps}>
@@ -2291,6 +2295,14 @@ if (node.type === 'ProductGrid') {
 			</div>
 		</div>
 	);
+}
+
+function InquiryFormPreview({ node }: { node: Extract<BuilderNode, { type: 'InquiryForm' }> }) {
+	return <section className="nvx-inquiry" aria-label={node.props.title}>
+		<h2>{node.props.title}</h2>{node.props.description && <p>{node.props.description}</p>}
+		<p className="nvx-inquiry__notice">پیش‌نمایش فرم؛ ارسال پس از انتشار و راه‌اندازی سرویس فعال می‌شود.</p>
+		<fieldset disabled><label>نام<input type="text" /></label><label>ایمیل یا شمارهٔ تماس<input type="text" /></label><label>پیام<textarea rows={3} /></label><button type="button" className="nvx-builder-button nvx-builder-button--primary">{node.props.buttonLabel}</button></fieldset>
+	</section>;
 }
 
 function PluginBlockPreview({ props }: { props: PluginBlockProps }) {
@@ -2759,6 +2771,9 @@ function ReadOnlyNode({ document, node, viewport }: { document: PageDocument; no
 	}
 	if (node.type === 'PluginBlock') {
 		return <div data-builder-id={node.id} className="builder-read-only-node" style={style}><PluginBlockPreview props={node.props} /></div>;
+	}
+	if (node.type === 'InquiryForm') {
+		return <div data-builder-id={node.id} className="builder-read-only-node" style={style}><InquiryFormPreview node={node} /></div>;
 	}
 	if (node.type === 'ProductGrid') {
 		return (
