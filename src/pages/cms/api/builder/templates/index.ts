@@ -11,7 +11,7 @@ export const prerender = false;
 export const GET: APIRoute = async ({ locals }) => {
 	if (!can(locals.cmsUser?.role ?? 'subscriber', 'cms.pages:read')) return failure('اجازهٔ مشاهدهٔ قالب‌ها را ندارید.', 403);
 	try {
-		const starters = listStarterTemplates().map(({ id, label, description, document }) => ({ id, name: label, description, source: 'starter', themeId: document.themeId }));
+		const starters = listStarterTemplates().map(({ id, label, description, kind, document }) => ({ id, name: label, description, kind, source: 'starter', themeId: document.themeId }));
 		const saved = (await listBuilderTemplates()).map((template) => ({ ...template, description: 'قالب ذخیره‌شدهٔ شما', source: 'saved' }));
 		return json({ ok: true, templates: [...starters, ...saved] });
 	} catch {

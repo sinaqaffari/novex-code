@@ -8,7 +8,7 @@ export const prerender = false;
 if (!can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages:write')) return Astro.redirect('/cms/pages');
 ---
 
-<CmsLayout title="ساخت صفحه" subtitle="یک پیش‌نویس تازه برای Builder بسازید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
+<CmsLayout title="ساخت صفحه" subtitle="بعد از ساخت، از طرح آماده یا صفحهٔ خالی شروع کنید." breadcrumbs={[{ label: 'صفحه‌ها', href: '/cms/pages' }, { label: 'صفحهٔ تازه' }]}>
 	<section class="card">
 		<div class="card__head">
 			<div>

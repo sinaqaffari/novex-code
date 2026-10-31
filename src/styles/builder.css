@@ -145,6 +145,9 @@
 .nvx-builder-button--primary:hover { background: var(--brand-hover, #1d4ed8); }
 .nvx-builder-button--outline { background: transparent; color: var(--brand, #2563eb); }
 .nvx-builder-button--outline:hover { background: var(--brand-soft, #eef4ff); }
+/* Outline actions remain legible on the built-in brand-coloured sections. */
+.nvx-builder-container--brand .nvx-builder-button--outline { color: #fff; border-color: rgba(255, 255, 255, .8); }
+.nvx-builder-container--brand .nvx-builder-button--outline:hover { background: rgba(255, 255, 255, .16); }
 
 .nvx-builder-product-grid {
 	min-width: 0;

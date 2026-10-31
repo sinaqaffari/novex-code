@@ -1,11 +1,14 @@
 import { createEmptyPageDocument, validatePageDocument } from './document.ts';
 import { addNode, createNodeId, updateNodeProps } from './operations.ts';
+import { visualStarterDesigns } from './starter-designs.ts';
 import type { BuilderNode, PageDocument } from './types.ts';
 
 export interface StarterTemplate {
 	id: string;
 	label: string;
 	description: string;
+	/** Complete pages replace the page; sections can also be inserted as copies. */
+	kind: 'page' | 'section';
 	document: PageDocument;
 }
 
@@ -199,11 +202,12 @@ function createBusinessPageTemplate(): PageDocument {
 }
 
 const templates: StarterTemplate[] = [
-	{ id: 'hero-intro', label: 'معرفی ساده', description: 'بخش معرفی با تیتر اصلی و دکمهٔ اقدام.', document: createHeroTemplate() },
-	{ id: 'feature-grid', label: 'شبکهٔ سه‌ستونه', description: 'چیدمان شبکه‌ای واکنش‌گرا با سه کارت نمونه.', document: createGridTemplate() },
-	{ id: 'contact-cta', label: 'دعوت به گفت‌وگو', description: 'بخش اقدام نهایی با رنگ‌بندی گرم.', document: createCtaTemplate() },
-	{ id: 'storefront-start', label: 'فروشگاه فارسی', description: 'صفحهٔ آغاز با پیوند به کاتالوگ و مسیرهای واقعی فروشگاه؛ بدون محصول ساختگی.', document: createStorefrontTemplate() },
-	{ id: 'business-page', label: 'صفحهٔ تجاری کامل', description: 'صفحهٔ landing تجاری با سربرگ، بخش هیرو، گرید پاسخ‌گو، کارت‌های ویژگی، شاهکارها، بخش قیمت، سوالات متداول و پانوش؛ ساخته از مؤلفه‌های صفحه‌ساز بدون نیاز به کدنویسی.', document: createBusinessPageTemplate() },
+	{ id: 'hero-intro', kind: 'section', label: 'معرفی ساده', description: 'بخش معرفی با تیتر اصلی و دکمهٔ اقدام.', document: createHeroTemplate() },
+	{ id: 'feature-grid', kind: 'section', label: 'شبکهٔ سه‌ستونه', description: 'چیدمان شبکه‌ای واکنش‌گرا با سه کارت نمونه.', document: createGridTemplate() },
+	{ id: 'contact-cta', kind: 'section', label: 'دعوت به گفت‌وگو', description: 'بخش اقدام نهایی با رنگ‌بندی گرم.', document: createCtaTemplate() },
+	{ id: 'storefront-start', kind: 'page', label: 'فروشگاه فارسی', description: 'صفحهٔ آغاز با پیوند به کاتالوگ و مسیرهای واقعی فروشگاه؛ بدون محصول ساختگی.', document: createStorefrontTemplate() },
+	{ id: 'business-page', kind: 'page', label: 'طرح کلاسیک کسب‌وکار', description: 'طرح اولیهٔ قدیمی با بخش‌های نمونه؛ متن‌ها و قیمت‌ها را پیش از انتشار ویرایش کنید.', document: createBusinessPageTemplate() },
+	...visualStarterDesigns(),
 ];
 
 export function listStarterTemplates(): StarterTemplate[] {

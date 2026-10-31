@@ -1,5 +1,5 @@
 import {
-	addNode, deleteNode, duplicateNode, insertDocumentFragment, moveNode, moveNodeBy, removeCustomBreakpoint, replaceNode, setNodeHiddenAtBreakpoint,
+	addNode, deleteNode, duplicateNode, insertDocumentFragment, moveNode, moveNodeBy, moveNodeToRoot, removeCustomBreakpoint, replaceNode, setNodeHiddenAtBreakpoint,
 	updateNodeProps, updateNodeStyles, updatePageMetadata, type MovePlacement,
 } from './operations.ts';
 import { DocumentValidationError, validatePageDocument } from './document.ts';
@@ -11,6 +11,7 @@ export type DocumentCommand =
 	| { type: 'delete'; id: string }
 	| { type: 'duplicate'; id: string; idFactory?: () => string }
 	| { type: 'move'; id: string; targetId: string; placement: MovePlacement }
+	| { type: 'move-root'; id: string }
 	| { type: 'reorder'; id: string; direction: -1 | 1 }
 	| { type: 'replace'; id: string; node: BuilderNode }
 	| { type: 'replace-document'; document: PageDocument }
@@ -42,6 +43,7 @@ export function executeDocumentCommand(document: PageDocument, command: Document
 				return { ok: true, document: result.document, selectedId: result.newId };
 			}
 			case 'move': return { ok: true, document: moveNode(document, command.id, command.targetId, command.placement), selectedId: command.id };
+			case 'move-root': return { ok: true, document: moveNodeToRoot(document, command.id), selectedId: command.id };
 			case 'reorder': return { ok: true, document: moveNodeBy(document, command.id, command.direction) };
 			case 'replace': return { ok: true, document: replaceNode(document, command.id, command.node), selectedId: command.node.id };
 			case 'replace-document': {

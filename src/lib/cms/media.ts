@@ -4,13 +4,15 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import type { Stats } from 'node:fs';
+import { lstatSync, type Stats } from 'node:fs';
 import { lstat, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { AppError as CmsError } from '../errors.ts';
 
-export const ASSETS_DIR = path.resolve(process.env.CMS_ASSETS_DIR || path.join(process.cwd(), 'src/assets'));
+const BUNDLED_ASSETS_DIR = path.resolve(process.cwd(), 'src/assets');
+const BUNDLED_STARTER_IMAGES = new Set(['builder-studio.jpg', 'builder-journey.jpg', 'builder-portfolio.jpg', 'builder-shop.jpg']);
+export const ASSETS_DIR = path.resolve(process.env.CMS_ASSETS_DIR || BUNDLED_ASSETS_DIR);
 export const UPLOAD_DIR = path.join(ASSETS_DIR, 'uploads');
 export const BLOG_DIR = path.resolve(process.env.CMS_BLOG_DIR || path.join(process.cwd(), 'src/content/blog'));
 
@@ -42,7 +44,7 @@ const MAX_IMAGE_PIXELS = 40_000_000;
 
 export interface MediaItem {
 	name: string;
-	/** Path relative to the blog folder — what a post's `heroImage` expects. */
+	/** Legacy path relative to the blog folder, or a stable public media URL. */
 	reference: string;
 	previewUrl: string;
 	/** Public URL (served by `/media/...`) — safe to use in storefront content. */
@@ -74,7 +76,17 @@ export function resolveAssetPath(reference: string): string | null {
 		? cleaned.slice(cleaned.lastIndexOf('assets/') + 'assets/'.length)
 		: cleaned;
 	const candidate = path.resolve(ASSETS_DIR, normalized);
-	return isInside(ASSETS_DIR, candidate) ? candidate : null;
+	if (!isInside(ASSETS_DIR, candidate)) return null;
+	// An isolated or customized media directory need not contain the immutable
+	// artwork shipped with the application. Never mask a user-owned file,
+	// symlink, permission error, or an upload with a bundled fallback.
+	if (ASSETS_DIR !== BUNDLED_ASSETS_DIR && BUNDLED_STARTER_IMAGES.has(normalized)) {
+		try { lstatSync(candidate); }
+		catch (error) {
+			if ((error as NodeJS.ErrnoException).code === 'ENOENT') return path.join(BUNDLED_ASSETS_DIR, normalized);
+		}
+	}
+	return candidate;
 }
 
 export function toReference(absolutePath: string): string {
@@ -128,10 +140,16 @@ async function collect(directory: string, builtin: boolean): Promise<MediaItem[]
 /** Newest uploads first, then the bundled theme artwork. */
 export async function listMedia(): Promise<MediaItem[]> {
 	await mkdir(UPLOAD_DIR, { recursive: true });
-	const [uploads, builtin] = await Promise.all([
+	const [uploads, builtin, bundled] = await Promise.all([
 		collect(UPLOAD_DIR, false),
 		collect(ASSETS_DIR, true),
+		ASSETS_DIR === BUNDLED_ASSETS_DIR ? Promise.resolve([]) : collect(BUNDLED_ASSETS_DIR, true),
 	]);
+	for (const item of bundled) {
+		if (!BUNDLED_STARTER_IMAGES.has(item.name) || resolveAssetPath(item.name) !== path.join(BUNDLED_ASSETS_DIR, item.name)) continue;
+		const publicUrl = `/media/${encodeURIComponent(item.name)}`;
+		builtin.push({ ...item, reference: publicUrl, previewUrl: `/cms/media/file/${encodeURIComponent(item.name)}`, publicUrl });
+	}
 
 	uploads.sort((a, b) => new Date(b.modifiedAt).valueOf() - new Date(a.modifiedAt).valueOf());
 	builtin.sort((a, b) => a.name.localeCompare(b.name, 'fa'));

@@ -328,6 +328,13 @@ export function moveNode(document: PageDocument, sourceId: string, targetId: str
 	return validatePageDocument({ ...document, nodes: inserted.nodes }, document.slug);
 }
 
+/** Move an existing node to the end of the page, validating the resulting tree. */
+export function moveNodeToRoot(document: PageDocument, id: string): PageDocument {
+	const removed = removeNode(document.nodes, id);
+	if (!removed.removed) throw new Error(`Node '${id}' was not found.`);
+	return validatePageDocument({ ...document, nodes: [...removed.nodes, removed.removed] }, document.slug);
+}
+
 export function moveNodeBy(document: PageDocument, id: string, direction: -1 | 1): PageDocument {
 	const result = moveInList(document.nodes, id, direction);
 	if (!result.found) throw new Error(`Node '${id}' was not found.`);

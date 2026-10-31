@@ -1,6 +1,8 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
-import { COMPONENT_LIST, getComponentDefinition } from '../../lib/builder/registry.ts';
+import { COMPONENT_LIST, getComponentDefinition, isBuilderComponentType } from '../../lib/builder/registry.ts';
+import { dropInsertionPoint, dropPlacement } from '../../lib/builder/drag-drop.ts';
+import type { MovePlacement } from '../../lib/builder/operations.ts';
 import { BREAKPOINT_MAX_WIDTH, MAX_CUSTOM_BREAKPOINTS, breakpointRanges, breakpointWidths, explicitNodeStyle, resolveNodeStyle, resolveNodeStyles } from '../../lib/builder/responsive.ts';
 import { nodeStyleObject } from '../../lib/builder/render.ts';
 import { fieldVisibleInMode } from '../../lib/builder/editor-mode.ts';
@@ -90,6 +92,7 @@ interface TemplateSummary {
 	name: string;
 	description: string;
 	source: 'starter' | 'saved';
+	kind?: 'page' | 'section';
 	document?: PageDocument;
 }
 
@@ -133,6 +136,7 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const [isPublished, setIsPublished] = useState(Boolean(publishedAt));
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
+	const [dragPlacement, setDragPlacement] = useState<MovePlacement>('after');
 	const [viewport, setViewport] = useState<Breakpoint>('desktop');
 	const [status, setStatus] = useState<AutosaveStatus>('saved');
 	const [saveError, setSaveError] = useState('');
@@ -150,6 +154,7 @@ export default function BuilderEditor({ pluginComponents, pluginPresets, pluginP
 	const [sharedCreateTarget, setSharedCreateTarget] = useState<string | null>(null);
 	const [sharedName, setSharedName] = useState('');
 	const [templateQuery, setTemplateQuery] = useState('');
+	const [templateFilter, setTemplateFilter] = useState<'all' | 'page' | 'section' | 'saved'>('all');
 	const siteKits = useMemo(() => listSiteKits(), []);
 	const [kitPrefix, setKitPrefix] = useState('');
 	const [kitStatus, setKitStatus] = useState('');
@@ -871,16 +876,49 @@ async function refreshRevisionHistory(): Promise<void> {
 		}
 	}
 
-	function handleDrop(event: DragEvent<HTMLElement>, target: BuilderNode): void {
+	function startPaletteDrag(event: DragEvent<HTMLElement>, component: BuilderComponentType | 'Container:grid'): void {
+		event.dataTransfer.effectAllowed = 'copy';
+		event.dataTransfer.setData('text/novex-builder-component', component);
+	}
+
+	function handleDragOver(event: DragEvent<HTMLElement>, target: BuilderNode | null): void {
+		const types = Array.from(event.dataTransfer.types);
+		if (!types.includes('text/novex-builder-node') && !types.includes('text/novex-builder-component')) return;
 		event.preventDefault();
 		event.stopPropagation();
-		const sourceId = event.dataTransfer.getData('text/novex-builder-node');
-		if (!sourceId || sourceId === target.id) return;
+		event.dataTransfer.dropEffect = types.includes('text/novex-builder-component') ? 'copy' : 'move';
+		const rect = event.currentTarget.getBoundingClientRect();
+		setDragOverId(target?.id ?? '__page__');
+		setDragPlacement(target ? dropPlacement(target, rect.top, rect.height, event.clientY) : 'after');
+	}
+
+	function handleDrop(event: DragEvent<HTMLElement>, target: BuilderNode | null): void {
+		const types = Array.from(event.dataTransfer.types);
+		if (!types.includes('text/novex-builder-node') && !types.includes('text/novex-builder-component')) return;
+		event.preventDefault();
+		event.stopPropagation();
+		setDragOverId(null);
 		try {
-			const placement = target.type === 'Container' ? 'inside' : 'after';
-			runDocumentCommand({ type: 'move', id: sourceId, targetId: target.id, placement });
+			const current = historyRef.current.present;
+			const actualTarget = target ? findNode(current.nodes, target.id) : null;
+			if (target && !actualTarget) throw new Error('مقصد رها کردن دیگر در صفحه وجود ندارد.');
+			const rect = event.currentTarget.getBoundingClientRect();
+			const placement = actualTarget ? dropPlacement(actualTarget, rect.top, rect.height, event.clientY) : 'after';
+			const component = event.dataTransfer.getData('text/novex-builder-component');
+			if (component) {
+				const isGrid = component === 'Container:grid';
+				const type = isGrid ? 'Container' : component;
+				if (!isBuilderComponentType(type) || (type === 'GlobalCode' && !canPublishCode)) throw new Error('این مؤلفه برای افزودن مجاز نیست.');
+				const location = dropInsertionPoint(current, actualTarget?.id ?? null, placement);
+				runDocumentCommand({ type: 'insert', component: type, ...location, id: createNodeId(), ...(isGrid ? { props: { layout: 'grid', background: 'soft' } } : {}) });
+				return;
+			}
+			const sourceId = event.dataTransfer.getData('text/novex-builder-node');
+			if (!sourceId || sourceId === actualTarget?.id) return;
+			if (actualTarget) runDocumentCommand({ type: 'move', id: sourceId, targetId: actualTarget.id, placement });
+			else runDocumentCommand({ type: 'move-root', id: sourceId });
 		} catch (error) {
-			setMessage(error instanceof Error ? error.message : 'جابجایی مؤلفه انجام نشد.');
+			setMessage(error instanceof Error ? error.message : 'افزودن یا جابه‌جایی مؤلفه انجام نشد.');
 		}
 	}
 
@@ -911,10 +949,12 @@ async function refreshRevisionHistory(): Promise<void> {
 			name: template.label,
 			description: template.description,
 			source: 'starter' as const,
+			kind: template.kind,
 			document: template.document,
-		}));
+		})).sort((a, b) => Number(b.id.endsWith('-landing')) - Number(a.id.endsWith('-landing')) || Number(b.kind === 'page') - Number(a.kind === 'page'));
 		setTemplateItems(starters);
 		setTemplateQuery('');
+		setTemplateFilter('all');
 		setTemplateDialogOpen(true);
 		setTemplateLoading(true);
 		void loadSharedSections();
@@ -1474,17 +1514,20 @@ async function refreshRevisionHistory(): Promise<void> {
 			<div className="builder-workspace">
 				<aside className="builder-panel builder-panel--library" aria-label="افزودن و ساختار صفحه">
 					<div className="builder-panel__heading">
-						<div><h2>ساختار</h2><p>مؤلفه‌ها را اضافه یا مرتب کنید.</p></div>
+						<div><h2>عناصر صفحه</h2><p>بکشید و رها کنید یا برای افزودن کلیک کنید.</p></div>
 					</div>
-					<div className="builder-library">
+					<button className="builder-template-shortcut" type="button" data-testid="open-template-library" onClick={() => void openTemplateLibrary()}>
+						<span aria-hidden="true">✦</span><span><strong>شروع با طرح آماده</strong><small>صفحه‌ها و بخش‌های قابل ویرایش</small></span><span aria-hidden="true">←</span>
+					</button>
+					<div className="builder-library" aria-label="عناصر قابل افزودن">
 						{COMPONENT_LIST.filter((definition) => definition.type !== 'GlobalCode' || canPublishCode).map((definition) => (
-							<button className="builder-component-card" type="button" key={definition.type} data-testid={`add-component-${definition.type.toLowerCase()}`} onClick={() => addComponent(definition.type)} title={definition.documentation}>
+							<button className="builder-component-card" type="button" key={definition.type} data-testid={`add-component-${definition.type.toLowerCase()}`} draggable onDragStart={(event) => startPaletteDrag(event, definition.type)} onDragEnd={() => setDragOverId(null)} onClick={() => addComponent(definition.type)} title={`${definition.documentation} برای افزودن کلیک کنید یا به صفحه بکشید.`}>
 								<span className="builder-component-card__icon">{componentIcon(definition.type)}</span>
 								<span><strong>{definition.label}</strong><small>{definition.description}</small></span>
 								<span className="builder-component-card__add">+</span>
 							</button>
 						))}
-						<button className="builder-component-card" type="button" data-testid="add-component-grid" onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
+						<button className="builder-component-card" type="button" data-testid="add-component-grid" draggable onDragStart={(event) => startPaletteDrag(event, 'Container:grid')} onDragEnd={() => setDragOverId(null)} onClick={() => addComponent('Container', { layout: 'grid', background: 'soft' })} title="یک بخش با چیدمان شبکه‌ای واکنش‌گرا اضافه کنید.">
 							<span className="builder-component-card__icon">▦</span>
 							<span><strong>شبکه</strong><small>بخش Grid با ستون‌های واکنش‌گرا</small></span>
 							<span className="builder-component-card__add">+</span>
@@ -1499,7 +1542,7 @@ async function refreshRevisionHistory(): Promise<void> {
 <div className="builder-tree-heading"><span>لایه‌ها</span><span>{countNodes(document.nodes).toLocaleString('fa-IR')}</span></div>
 					{document.nodes.length ? (
 						<div className="builder-tree" role="list" aria-label="ساختار صفحه">
-							{document.nodes.map((node) => <TreeNode key={node.id} node={node} selectedId={selectedId} dragOverId={dragOverId} onSelect={selectNode} onDragStart={startDrag} onDragOver={() => setDragOverId(node.id)} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />)}
+							{document.nodes.map((node) => <TreeNode key={node.id} node={node} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} onSelect={selectNode} onDragStart={startDrag} onDragOver={handleDragOver} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />)}
 						</div>
 					) : (
 						<p className="builder-tree-empty">هنوز مؤلفه‌ای در صفحه نیست.</p>
@@ -1544,7 +1587,7 @@ async function refreshRevisionHistory(): Promise<void> {
 
 <main className="builder-canvas-area" aria-label="پیش‌نمایش صفحه">
 					<div className="builder-canvas-toolbar">
-						<span className="builder-canvas-hint">برای انتخاب کلیک کنید · برای ویرایش متن دوبار کلیک کنید</span>
+						<span className="builder-canvas-hint">عناصر را به صفحه بکشید · برای ویرایش متن دوبار کلیک کنید</span>
 					</div>
 					<div className={`builder-canvas-scroll builder-canvas-scroll--${viewport}`}>
 						<div className={`builder-canvas-paper builder-canvas-paper--${viewport} ${isMobileRange(document, viewport) ? 'builder-canvas-paper--mobile' : ''}`} style={{ width: `min(100%, ${previewWidth(document, viewport)}px)` }}>
@@ -1554,14 +1597,21 @@ async function refreshRevisionHistory(): Promise<void> {
 									<h1>{document.title || 'بدون عنوان'}</h1>
 									{document.description ? <p>{document.description}</p> : null}
 								</header>
-								<div className="builder-preview-content" data-testid="builder-canvas" onClick={() => selectNode(null)} onDragOver={(event) => event.preventDefault()}>
-									{document.nodes.length ? document.nodes.map((node) => (
-										<PreviewNode key={node.id} document={document} node={node} selectedId={selectedId} dragOverId={dragOverId} viewport={viewport} onSelect={selectNode} onInlineEdit={updateInlineText} onDragStart={startDrag} onDragOver={() => setDragOverId(node.id)} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />
-									)) : (
+								<div className={`builder-preview-content${dragOverId === '__page__' ? ' builder-preview-content--drag-over' : ''}`} data-testid="builder-canvas" onClick={() => selectNode(null)} onDragOver={(event) => handleDragOver(event, null)} onDragLeave={() => setDragOverId(null)} onDrop={(event) => handleDrop(event, null)}>
+									{document.nodes.length ? <>
+										{document.nodes.map((node) => (
+											<PreviewNode key={node.id} document={document} node={node} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} viewport={viewport} onSelect={selectNode} onInlineEdit={updateInlineText} onDragStart={startDrag} onDragOver={handleDragOver} onDragOut={() => setDragOverId(null)} onDrop={handleDrop} />
+										))}
+										<div className="builder-canvas-dropzone" data-testid="canvas-root-drop" onDragOver={(event) => handleDragOver(event, null)} onDrop={(event) => handleDrop(event, null)}>یک عنصر را برای افزودن به انتهای صفحه اینجا رها کنید</div>
+									</> : (
 										<div className="builder-canvas-empty">
-											<div className="builder-canvas-empty__mark">＋</div>
-											<strong>صفحهٔ خود را بسازید</strong>
-											<span>از ستون ساختار یک بخش، شبکه، متن، تصویر، تیتر یا دکمه اضافه کنید.</span>
+											<div className="builder-canvas-empty__mark" aria-hidden="true">✦</div>
+											<strong>صفحهٔ شما از اینجا شروع می‌شود</strong>
+											<span>یک طرح آماده انتخاب کنید یا عناصر را از پنل به اینجا بکشید.</span>
+											<div className="builder-canvas-empty__actions">
+												<button type="button" data-testid="start-with-template" onClick={(event) => { event.stopPropagation(); void openTemplateLibrary(); }}>مشاهدهٔ طرح‌های آماده</button>
+												<button type="button" onClick={(event) => { event.stopPropagation(); addComponent('Container'); }}>افزودن بخش خالی</button>
+											</div>
 										</div>
 									)}
 								</div>
@@ -1698,8 +1748,33 @@ async function refreshRevisionHistory(): Promise<void> {
 			) : null}
 			{templateDialogOpen ? (
 				<div className="builder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTemplateDialogOpen(false); }}>
-					<section className="builder-modal" role="dialog" aria-modal="true" aria-labelledby="builder-template-title">
+					<section className="builder-modal builder-modal--templates" role="dialog" aria-modal="true" aria-labelledby="builder-template-title">
 						<header className="builder-modal__header"><div><h2 id="builder-template-title">کتابخانهٔ قالب‌ها</h2><p>قالب‌ها را روی همین صفحه اعمال کنید یا نمونهٔ خودتان را بازاستفاده کنید.</p></div><button type="button" aria-label="بستن" onClick={() => setTemplateDialogOpen(false)}>×</button></header>
+						<div className="builder-template-browser">
+							<div className="builder-template-browser__intro"><div><span>کتابخانهٔ طراحی نووکس</span><h3>یک شروع خوب انتخاب کنید</h3><p>طرح‌ها از مؤلفه‌های واقعی ساخته شده‌اند؛ همهٔ متن‌ها، تصویرها و چیدمان قابل ویرایش‌اند.</p></div></div>
+							<div className="builder-template-filters">
+								<div className="builder-template-filter-buttons" role="group" aria-label="نوع قالب">
+									{([['all', 'همه'], ['page', 'صفحه‌های کامل'], ['section', 'بخش‌ها'], ['saved', 'ذخیره‌شده']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={templateFilter === value} onClick={() => setTemplateFilter(value)}>{label}</button>)}
+								</div>
+								<label className="builder-field builder-template-search"><span className="sr-only">جست‌وجوی قالب و بخش</span><input type="search" placeholder="جست‌وجوی طرح‌ها…" value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} /></label>
+							</div>
+							<p className="builder-template-note">تصویرها و متن‌های نمونه را پیش از انتشار با محتوای خود جایگزین کنید. محصولات فروشگاهی از فروشگاه واقعی خوانده می‌شوند.</p>
+							<div className="builder-template-list">
+								{templateItems.filter((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).map((item) => (
+									<article className="builder-template-card" key={`${item.source}-${item.id}`} data-testid={`template-card-${item.id}`}>
+										<TemplateThumbnail item={item} />
+										<div className="builder-template-card__body"><span className="builder-template-card__tag">{item.source === 'saved' ? 'ذخیره‌شده' : item.kind === 'page' ? 'صفحهٔ کامل' : 'بخش آماده'}</span><h3>{item.name}</h3><p>{item.description}</p></div>
+										<div className="builder-template-card__actions">
+											<button type="button" onClick={() => void previewTemplate(item)}>پیش‌نمایش</button>
+											<button type="button" onClick={() => void insertTemplate(item)} title="افزودن به محتوای فعلی بدون تغییر تم">افزودن رونوشت</button>
+											<button className="builder-template-card__use" type="button" onClick={() => void useTemplate(item)} title="جایگزینی محتوای صفحه با این طرح">استفاده</button>
+											<details className="builder-template-card__more"><summary>بیشتر</summary><div><button type="button" onClick={() => void downloadTemplate(item)}>خروجی JSON</button><button type="button" onClick={() => void duplicateTemplate(item)}>رونوشت</button></div></details>
+										</div>
+									</article>
+								))}
+								{!templateItems.some((item) => (templateFilter === 'all' || (templateFilter === 'saved' ? item.source === 'saved' : item.source === 'starter' && item.kind === templateFilter)) && `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())) ? <p className="builder-template-empty">{templateLoading ? 'در حال بارگیری قالب‌ها…' : 'قالبی پیدا نشد.'}</p> : null}
+							</div>
+							<div className="builder-template-advanced"><h3>بسته‌ها و بخش‌های مشترک</h3>
 						<details className="builder-kit-panel"><summary>بستهٔ چندصفحه‌ای کسب‌وکار</summary>
 							{siteKits.map((kit) => <div key={kit.id}><p>{kit.description}</p><p>نسخهٔ {kit.version} · فارسی، راست‌به‌چپ · مؤلفه‌ها: <bdi>{kit.requiredComponents.join(', ')}</bdi></p><p>پیوندهای میان صفحه‌ها با پیشوند انتخابی ساخته می‌شوند و تا انتشار هر مقصد در دسترس عمومی نیستند.</p><ul>{kit.pages.map((page) => <li key={page.suffix}>{page.title} <button type="button" onClick={() => setTemplatePreview({ name: page.title, document: page.document })}>پیش‌نمایش</button></li>)}</ul><label className="builder-field"><span>پیشوند نامک لاتین برای صفحه‌های تازه</span><input dir="ltr" value={kitPrefix} maxLength={50} onChange={(event) => setKitPrefix(event.target.value)} placeholder="my-business" /></label><button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void installKit(kit.id)}>ساخت پیش‌نویس‌های بسته</button> <button type="button" disabled={kitBusy || !kitPrefix.trim()} onClick={() => void updateKit(kit.id)}>بررسی به‌روزرسانی بسته</button></div>)}
 							{kitStatus ? <p role="status">{kitStatus}</p> : null}
@@ -1720,20 +1795,7 @@ async function refreshRevisionHistory(): Promise<void> {
 							<p>هر صفحه یک تصویر ذخیره‌شده دارد. به‌روزرسانی منبع فقط با همگام‌سازی صریح به پیش‌نویس‌های بدون تعارض می‌رسد.</p>
 							{sharedSections.length ? <ul>{sharedSections.map((section) => <li key={section.id}>{section.name} · نسخهٔ {section.revision} <button type="button" disabled={sharedBusy} onClick={() => void insertShared(section)}>درج بخش مشترک</button> <button type="button" disabled={sharedBusy} onClick={() => void syncShared(section)}>همگام‌سازی پیش‌نویس‌ها</button></li>)}</ul> : <p>بخش مشترکی ثبت نشده است.</p>}
 						</details>
-						<label className="builder-field builder-template-search"><span>جست‌وجوی قالب و بخش</span><input type="search" value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} /></label>
-						<div className="builder-template-list">
-							{templateLoading ? <p className="builder-template-empty">در حال بارگیری قالب‌ها…</p> : templateItems.filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).length ? templateItems.filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(templateQuery.trim().toLocaleLowerCase())).map((item) => (
-								<article className="builder-template-card" key={`${item.source}-${item.id}`}>
-									<div><span className="builder-template-card__tag">{item.source === 'starter' ? 'قالب آماده' : 'قالب ذخیره‌شده'}</span><h3>{item.name}</h3><p>{item.description}</p></div>
-									<div className="builder-template-card__actions">
-										<button type="button" onClick={() => void previewTemplate(item)}>پیش‌نمایش</button>
-										<button type="button" onClick={() => void insertTemplate(item)}>افزودن رونوشت</button>
-										<button type="button" onClick={() => void downloadTemplate(item)}>خروجی JSON</button>
-										<button type="button" onClick={() => void duplicateTemplate(item)}>رونوشت</button>
-										<button type="button" onClick={() => void useTemplate(item)}>استفاده</button>
-									</div>
-								</article>
-							)) : <p className="builder-template-empty">قالبی پیدا نشد.</p>}
+							</div>
 						</div>
 						<footer className="builder-modal__footer"><button type="button" onClick={() => { setTemplateDialogOpen(false); setSaveSelectedSection(false); setTemplateSaveOpen(true); }}>ذخیرهٔ صفحهٔ فعلی به‌عنوان قالب</button><button type="button" onClick={() => setTemplateDialogOpen(false)}>بستن</button></footer>
 					</section>
@@ -1841,9 +1903,10 @@ interface TreeNodeProps {
 	node: BuilderNode;
 	selectedId: string | null;
 	dragOverId: string | null;
+	dragPlacement: MovePlacement;
 	onSelect: (id: string) => void;
 	onDragStart: (event: DragEvent<HTMLElement>, id: string) => void;
-	onDragOver: (id: string) => void;
+	onDragOver: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 	onDragOut: () => void;
 	onDrop: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 }
@@ -1852,7 +1915,7 @@ function componentIcon(type: BuilderComponentType): string {
 	return type === 'Container' ? '▦' : type === 'Heading' ? 'T' : type === 'Text' ? '¶' : type === 'Image' ? '▧' : type === 'ProductGrid' ? '▣' : type === 'Spacer' ? '↕' : type === 'Divider' ? '―' : type === 'Blockquote' ? '❞' : type === 'Accordion' ? '☰' : type === 'ImageGallery' ? '▤' : type === 'VideoEmbed' ? '▶' : '↗';
 }
 
-function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragOver, onDragOut, onDrop }: TreeNodeProps) {
+function TreeNode({ node, selectedId, dragOverId, dragPlacement, onSelect, onDragStart, onDragOver, onDragOut, onDrop }: TreeNodeProps) {
 	const [expanded, setExpanded] = useState(true);
 	useEffect(() => {
 		if (selectedId && node.type === 'Container' && findNode(node.children, selectedId)) setExpanded(true);
@@ -1876,15 +1939,16 @@ function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragO
 			<div className="builder-tree-node__line">
 			{node.type === 'Container' && node.children.length ? <button className="builder-tree-node__expand" type="button" aria-expanded={expanded} aria-label={expanded ? `بستن ${label}` : `باز کردن ${label}`} onClick={() => setExpanded(!expanded)}>{expanded ? '⌄' : '‹'}</button> : <span className="builder-tree-node__expand-spacer" />}
 			<button
-				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}${isDropTarget ? ' is-drag-over' : ''}`}
+				className={`builder-tree-node__row${selectedId === node.id ? ' is-selected' : ''}${isDropTarget ? ` is-drag-over is-drop-${dragPlacement}` : ''}`}
 				data-testid="tree-node"
 				data-node-id={node.id}
 				aria-pressed={selectedId === node.id}
 				type="button"
 				draggable
 				onClick={() => onSelect(node.id)}
-				onDragStart={(event) => onDragStart(event, node.id)}
-				onDragOver={(event) => { event.preventDefault(); onDragOver(node.id); }}
+				onDragStart={(event) => { event.stopPropagation(); onDragStart(event, node.id); }}
+				onDragEnd={onDragOut}
+				onDragOver={(event) => onDragOver(event, node)}
 				onDragLeave={onDragOut}
 				onDrop={(event) => { onDragOut(); onDrop(event, node); }}
 			>
@@ -1894,7 +1958,7 @@ function TreeNode({ node, selectedId, dragOverId, onSelect, onDragStart, onDragO
 			</div>
 			{node.type === 'Container' && node.children.length && expanded ? (
 				<div className="builder-tree-node__children" role="list">
-					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} dragOverId={dragOverId} onSelect={onSelect} onDragStart={onDragStart} onDragOver={onDragOver} onDragOut={onDragOut} onDrop={onDrop} />)}
+					{node.children.map((child) => <TreeNode key={child.id} node={child} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} onSelect={onSelect} onDragStart={onDragStart} onDragOver={onDragOver} onDragOut={onDragOut} onDrop={onDrop} />)}
 				</div>
 			) : null}
 		</div>
@@ -1942,21 +2006,22 @@ interface PreviewNodeProps {
 	node: BuilderNode;
 	selectedId: string | null;
 	dragOverId: string | null;
+	dragPlacement: MovePlacement;
 	viewport: Breakpoint;
 	onSelect: (id: string) => void;
 	onInlineEdit: (id: string, value: string) => void;
 	onDragStart: (event: DragEvent<HTMLElement>, id: string) => void;
-	onDragOver: (id: string) => void;
+	onDragOver: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 	onDragOut: () => void;
 	onDrop: (event: DragEvent<HTMLElement>, node: BuilderNode) => void;
 }
 
-function PreviewNode({ document, node, selectedId, dragOverId, viewport, onSelect, onInlineEdit, onDragStart, onDragOver, onDragOut, onDrop }: PreviewNodeProps) {
+function PreviewNode({ document, node, selectedId, dragOverId, dragPlacement, viewport, onSelect, onInlineEdit, onDragStart, onDragOver, onDragOut, onDrop }: PreviewNodeProps) {
 	const selected = node.id === selectedId;
 	const style = previewStyle(node, viewport, document);
 	const hidden = hiddenAtBreakpoint(node, viewport);
 	const isDropTarget = dragOverId === node.id;
-	const className = `builder-preview-node${selected ? ' builder-preview-node--selected' : ''}${hidden ? ' builder-preview-node--hidden' : ''}${isDropTarget ? ' builder-preview-node--drag-over' : ''}`;
+	const className = `builder-preview-node${selected ? ' builder-preview-node--selected' : ''}${hidden ? ' builder-preview-node--hidden' : ''}${isDropTarget ? ` builder-preview-node--drag-over builder-preview-node--drop-${dragPlacement}` : ''}`;
 	const onClick = (event: ReactMouseEvent<HTMLElement>) => { event.stopPropagation(); onSelect(node.id); };
 const responsiveBadge = hasResponsiveOverrides(node) ? (
 	<span className="builder-responsive-badge" title="استایل‌های واکنش‌گرا سفارشی در این اندازه" aria-label="تغییرات استایل واکنش‌گرا">R</span>
@@ -1965,7 +2030,8 @@ const responsiveBadge = hasResponsiveOverrides(node) ? (
 const dragProps = {
 	draggable: true,
 	onDragStart: (event: DragEvent<HTMLElement>) => { event.stopPropagation(); onDragStart(event, node.id); },
-	onDragOver: (event: DragEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); onDragOver(node.id); },
+	onDragOver: (event: DragEvent<HTMLElement>) => onDragOver(event, node),
+	onDragEnd: () => onDragOut(),
 	onDragLeave: () => onDragOut(),
 	onDrop: (event: DragEvent<HTMLElement>) => { onDragOut(); onDrop(event, node) },
 };
@@ -1976,7 +2042,7 @@ if (node.type === 'Container') {
 	return (
 		<div className={`${className} nvx-builder-node nvx-builder-container nvx-builder-container--${node.props.background}`} data-builder-id={node.id} data-layout={node.props.layout} data-max-width={node.props.maxWidth} onClick={onClick} style={{ gap: node.props.gap, padding: node.props.padding, ...style }} {...dragProps}>
 			{responsiveBadge}
-			{node.children.length ? node.children.map((child) => <PreviewNode key={child.id} document={document} node={child} selectedId={selectedId} dragOverId={dragOverId} viewport={viewport} onSelect={onSelect} onInlineEdit={onInlineEdit} onDragStart={onDragStart} onDragOver={() => onDragOver(child.id)} onDragOut={onDragOut} onDrop={onDrop} />) : <div className="builder-container-empty">برای افزودن فرزند، یک مؤلفه را از ستون ساختار انتخاب کنید.</div>}
+			{node.children.length ? node.children.map((child) => <PreviewNode key={child.id} document={document} node={child} selectedId={selectedId} dragOverId={dragOverId} dragPlacement={dragPlacement} viewport={viewport} onSelect={onSelect} onInlineEdit={onInlineEdit} onDragStart={onDragStart} onDragOver={onDragOver} onDragOut={onDragOut} onDrop={onDrop} />) : <div className="builder-container-empty">برای افزودن فرزند، یک مؤلفه را از ستون ساختار انتخاب کنید.</div>}
 		</div>
 		);
 	}
@@ -2442,6 +2508,12 @@ function previewWidth(document: PageDocument, viewport: Breakpoint): number {
 	const lower = ranges[index + 1]?.maxWidth ?? 0;
 	const preferred = viewport === 'mobile' ? 390 : viewport === 'tablet' ? 768 : maximum;
 	return Math.max(lower + 1, Math.min(preferred, maximum));
+}
+
+function TemplateThumbnail({ item }: { item: TemplateSummary }) {
+	if (item.source !== 'starter' || !item.document) return <div className="builder-template-card__thumbnail builder-template-card__thumbnail--saved"><span>◫</span><small>برای دیدن طرح، پیش‌نمایش را باز کنید.</small></div>;
+	const document = { ...item.document, nodes: item.document.nodes.slice(0, 2) };
+	return <div className="builder-template-card__thumbnail" aria-hidden="true" inert><div className="builder-template-card__snapshot"><DocumentPreview document={document} viewport="desktop" /></div></div>;
 }
 
 function DocumentPreview({ document, viewport }: { document: PageDocument; viewport: Breakpoint }) {

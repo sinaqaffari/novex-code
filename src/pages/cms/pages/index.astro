@@ -12,7 +12,7 @@ const canWrite = can(role, 'cms.pages:write');
 const pages = await listBuilderPages();
 ---
 
-<CmsLayout title="صفحه‌ها" subtitle={`${faNumber(pages.length)} صفحه در صفحه‌ساز`}>
+<CmsLayout title="صفحه‌ساز" subtitle={`${faNumber(pages.length)} صفحه در صفحه‌ساز`}>
 	<Fragment slot="actions">
 		{canWrite ? <a class="btn btn--primary btn--sm" href="/cms/pages/new"><Icon name="plus" size={15} /><span>صفحهٔ تازه</span></a> : null}
 	</Fragment>
@@ -69,7 +69,7 @@ const pages = await listBuilderPages();
 			<div class="empty">
 				<span class="empty__icon"><Icon name="grid" size={22} /></span>
 				<span class="empty__title">هنوز صفحه‌ای ساخته نشده است</span>
-				<span>یک صفحهٔ تازه بسازید و با بخش، تیتر و دکمه شروع کنید.</span>
+				<span>یک صفحه بسازید؛ سپس از طرح‌های آماده یا عناصر قابل ویرایش شروع کنید.</span>
 				{canWrite ? <a class="btn btn--primary" href="/cms/pages/new" style="margin-top:.6rem"><Icon name="plus" size={15} /><span>ساخت صفحه</span></a> : null}
 			</div>
 		)}

@@ -89,7 +89,7 @@ describe('Builder registry and document contract', () => {
 
 	it('provides reusable starter templates with a token-only grid layout', () => {
 		const templates = listStarterTemplates();
-		assert.equal(templates.length, 5);
+		assert.ok(templates.length >= 9);
 		const grid = templates.find((template) => template.id === 'feature-grid')!;
 		assert.equal(grid.document.nodes.some((node) => node.type === 'Container' && node.props.layout === 'grid'), true);
 		const current = { ...page(), title: 'صفحهٔ من', description: 'توضیح من' };

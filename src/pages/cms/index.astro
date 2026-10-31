@@ -14,6 +14,7 @@ import type { DashboardWidget } from '../../lib/plugins/types';
 export const prerender = false;
 
 const canEditSettings = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.settings:write');
+const canBuildPages = can(Astro.locals.cmsUser?.role ?? 'subscriber', 'cms.pages:write');
 const [posts, settings] = await Promise.all([listPosts(), readSettings()]);
 const stats = buildStats(posts);
 const commerce = settings.commerceEnabled;
@@ -41,6 +42,7 @@ const trend = (change: number | null) =>
 
 <CmsLayout title="داشبورد" subtitle="نمای کلی محتوا و فروش">
 	<Fragment slot="actions">
+		{canBuildPages ? <a class="btn btn--sm" href="/cms/pages/new"><Icon name="grid" size={14} /><span>صفحهٔ تازه</span></a> : null}
 		<a class="btn btn--sm" href="/cms/posts/new">
 			<Icon name="plus" size={14} />
 			<span>نوشتهٔ تازه</span>

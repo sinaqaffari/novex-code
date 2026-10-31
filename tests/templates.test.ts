@@ -11,9 +11,9 @@ import { validatePageDocument } from '../src/lib/builder/document.ts';
 import type { PageDocument } from '../src/lib/builder/types.ts';
 
 describe('Reusable sections and templates', () => {
-	it('returns five starter templates including a Persian storefront starter', () => {
+	it('returns the existing starters and editable visual page designs', () => {
 		const templates = listStarterTemplates();
-		assert.equal(templates.length, 5);
+		assert.equal(templates.length, 9);
 		const ids = templates.map((t) => t.id);
 		assert.ok(ids.includes('hero-intro'));
 		assert.ok(ids.includes('feature-grid'));
